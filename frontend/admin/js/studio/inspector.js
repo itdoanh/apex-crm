@@ -75,7 +75,7 @@
             }
 
             if (msg.type === 'APEX_BUILDER_NODE_HOVERED') {
-                if (isDraggingGizmo || isMovingGizmo || !studioFreezeMode) return;
+                if (isDraggingGizmo || isMovingGizmo || !studioFreezeMode || window.isSpaceKeyPressed || window.isCanvasPanning) return;
                 const hoverBox = document.getElementById('csHoverBox');
                 const hoverTag = document.getElementById('csHoverTag');
                 if (hoverBox && hoverTag && msg.rect) {
@@ -95,10 +95,15 @@
             }
 
             if (msg.type === 'APEX_BUILDER_NODE_CLICKED') {
+                // Tuyệt đối không chọn bất kỳ phần tử/lớp nào khi đang ấn phím Space hoặc đang kéo Pan
+                if (window.isSpaceKeyPressed || window.isCanvasPanning) {
+                    return;
+                }
                 const shield = document.getElementById('csCanvasPanShield');
                 if (shield && typeof isCanvasPanning !== 'undefined' && !isCanvasPanning) {
                     shield.classList.add('hidden');
                     shield.style.pointerEvents = 'none';
+                    shield.style.cursor = '';
                 }
                 handleNodeSelection(msg.data);
             }
@@ -114,9 +119,6 @@
                 if (viewport && (viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight)) {
                     viewport.scrollBy({ left: -msg.dx, top: -msg.dy, behavior: 'instant' });
                 }
-                if (selectedAstNodeId) {
-                    requestNodeRect(selectedAstNodeId);
-                }
             }
 
             if (msg.type === 'APEX_BUILDER_PAN_END') {
@@ -126,12 +128,17 @@
             }
 
             if (msg.type === 'APEX_BUILDER_NODE_DBLCLICKED') {
+                if (window.isSpaceKeyPressed || window.isCanvasPanning) {
+                    return;
+                }
                 handleNodeSelection(msg.data);
                 startInlineTextEdit();
             }
 
             if (msg.type === 'APEX_BUILDER_VIEWPORT_CHANGED') {
-                if (selectedAstNodeId) requestNodeRect(selectedAstNodeId);
+                if (selectedAstNodeId && !window.isCanvasPanning && !window.isSpaceKeyPressed) {
+                    requestNodeRect(selectedAstNodeId);
+                }
             }
 
             if (msg.type === 'APEX_BUILDER_RECT_RESPONSE') {

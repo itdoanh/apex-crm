@@ -338,18 +338,41 @@
                     `            attributes: attrs\n` +
                     `        };\n` +
                     `    }\n` +
+                    `    function setIframeSpaceCursor(state) {\n` +
+                    `        var st = document.getElementById('__apex_pan_cursor_style__');\n` +
+                    `        if (state === 'grab') {\n` +
+                    `            if (!st) {\n` +
+                    `                st = document.createElement('style');\n` +
+                    `                st.id = '__apex_pan_cursor_style__';\n` +
+                    `                document.head.appendChild(st);\n` +
+                    `            }\n` +
+                    `            st.textContent = 'html, body, *, a, button, input { cursor: grab !important; user-select: none !important; -webkit-user-select: none !important; }';\n` +
+                    `        } else if (state === 'grabbing') {\n` +
+                    `            if (!st) {\n` +
+                    `                st = document.createElement('style');\n` +
+                    `                st.id = '__apex_pan_cursor_style__';\n` +
+                    `                document.head.appendChild(st);\n` +
+                    `            }\n` +
+                    `            st.textContent = 'html, body, *, a, button, input { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }';\n` +
+                    `        } else {\n` +
+                    `            if (st) st.remove();\n` +
+                    `        }\n` +
+                    `    }\n` +
                     `    document.addEventListener('click', function(e) {\n` +
                     `        if (window.__APEX_FREEZE_MODE__) { e.preventDefault(); e.stopPropagation(); }\n` +
+                    `        if (__apex_space_pressed || __apex_is_panning) { e.preventDefault(); e.stopPropagation(); return; }\n` +
                     `        var t = getValidTarget(e.target);\n` +
                     `        if (t) window.parent.postMessage({ type: 'APEX_BUILDER_NODE_CLICKED', data: getNodeData(t) }, '*');\n` +
                     `    }, true);\n` +
                     `    document.addEventListener('dblclick', function(e) {\n` +
                     `        if (window.__APEX_FREEZE_MODE__) { e.preventDefault(); e.stopPropagation(); }\n` +
+                    `        if (__apex_space_pressed || __apex_is_panning) { e.preventDefault(); e.stopPropagation(); return; }\n` +
                     `        var t = getValidTarget(e.target);\n` +
                     `        if (t) window.parent.postMessage({ type: 'APEX_BUILDER_NODE_DBLCLICKED', data: getNodeData(t) }, '*');\n` +
                     `    }, true);\n` +
                     `    document.addEventListener('mouseover', function(e) {\n` +
                     `        if (!window.__APEX_BUILDER_ACTIVE__ || !window.__APEX_FREEZE_MODE__) return;\n` +
+                    `        if (__apex_space_pressed || __apex_is_panning) return;\n` +
                     `        var t = getValidTarget(e.target);\n` +
                     `        if (t) {\n` +
                     `            var r = t.getBoundingClientRect();\n` +
@@ -368,9 +391,24 @@
                     `    var __apex_is_panning = false;\n` +
                     `    var __apex_pan_last_x = 0;\n` +
                     `    var __apex_pan_last_y = 0;\n` +
+                    `    var __apex_pan_raf = null;\n` +
+                    `    var __apex_pan_accum_dx = 0;\n` +
+                    `    var __apex_pan_accum_dy = 0;\n` +
+                    `    function applyIframePan() {\n` +
+                    `        __apex_pan_raf = null;\n` +
+                    `        if (__apex_pan_accum_dx === 0 && __apex_pan_accum_dy === 0) return;\n` +
+                    `        var dx = __apex_pan_accum_dx;\n` +
+                    `        var dy = __apex_pan_accum_dy;\n` +
+                    `        __apex_pan_accum_dx = 0;\n` +
+                    `        __apex_pan_accum_dy = 0;\n` +
+                    `        window.scrollBy({ left: -dx, top: -dy, behavior: 'instant' });\n` +
+                    `        window.parent.postMessage({ type: 'APEX_BUILDER_PAN_MOVE', dx: dx, dy: dy }, '*');\n` +
+                    `    }\n` +
                     `    window.addEventListener('mouseup', function() {\n` +
                     `        if (__apex_is_panning) {\n` +
                     `            __apex_is_panning = false;\n` +
+                    `            if (__apex_pan_raf) { cancelAnimationFrame(__apex_pan_raf); applyIframePan(); }\n` +
+                    `            setIframeSpaceCursor(__apex_space_pressed ? 'grab' : null);\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_PAN_END' }, '*');\n` +
                     `        }\n` +
                     `        window.parent.postMessage({ type: 'APEX_BUILDER_IFRAME_MOUSEUP' }, '*');\n` +
@@ -378,6 +416,8 @@
                     `    window.addEventListener('pointerup', function() {\n` +
                     `        if (__apex_is_panning) {\n` +
                     `            __apex_is_panning = false;\n` +
+                    `            if (__apex_pan_raf) { cancelAnimationFrame(__apex_pan_raf); applyIframePan(); }\n` +
+                    `            setIframeSpaceCursor(__apex_space_pressed ? 'grab' : null);\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_PAN_END' }, '*');\n` +
                     `        }\n` +
                     `        window.parent.postMessage({ type: 'APEX_BUILDER_IFRAME_MOUSEUP' }, '*');\n` +
@@ -389,6 +429,7 @@
                     `            __apex_is_panning = true;\n` +
                     `            __apex_pan_last_x = e.clientX;\n` +
                     `            __apex_pan_last_y = e.clientY;\n` +
+                    `            setIframeSpaceCursor('grabbing');\n` +
                     `            window.parent.postMessage({\n` +
                     `                type: 'APEX_BUILDER_PAN_START',\n` +
                     `                clientX: e.clientX,\n` +
@@ -404,12 +445,11 @@
                     `            var dy = e.clientY - __apex_pan_last_y;\n` +
                     `            __apex_pan_last_x = e.clientX;\n` +
                     `            __apex_pan_last_y = e.clientY;\n` +
-                    `            window.scrollBy({ left: -dx, top: -dy, behavior: 'instant' });\n` +
-                    `            window.parent.postMessage({\n` +
-                    `                type: 'APEX_BUILDER_PAN_MOVE',\n` +
-                    `                dx: dx,\n` +
-                    `                dy: dy\n` +
-                    `            }, '*');\n` +
+                    `            __apex_pan_accum_dx += dx;\n` +
+                    `            __apex_pan_accum_dy += dy;\n` +
+                    `            if (!__apex_pan_raf) {\n` +
+                    `                __apex_pan_raf = requestAnimationFrame(applyIframePan);\n` +
+                    `            }\n` +
                     `        }\n` +
                     `    }, true);\n` +
                     `    window.addEventListener('keydown', function(e) {\n` +
@@ -422,6 +462,7 @@
                     `            if (t !== 'input' && t !== 'textarea' && !isEd) {\n` +
                     `                e.preventDefault();\n` +
                     `                __apex_space_pressed = true;\n` +
+                    `                setIframeSpaceCursor('grab');\n` +
                     `                window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: true }, '*');\n` +
                     `            }\n` +
                     `        }\n` +
@@ -432,9 +473,19 @@
                     `        }\n` +
                     `        if (e.code === 'Space' || e.key === ' ') {\n` +
                     `            __apex_space_pressed = false;\n` +
+                    `            __apex_is_panning = false;\n` +
+                    `            setIframeSpaceCursor(null);\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: false }, '*');\n` +
                     `        }\n` +
                     `    }, true);\n` +
+                    `    window.addEventListener('blur', function() {\n` +
+                    `        if (__apex_space_pressed) {\n` +
+                    `            __apex_space_pressed = false;\n` +
+                    `            __apex_is_panning = false;\n` +
+                    `            setIframeSpaceCursor(null);\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: false }, '*');\n` +
+                    `        }\n` +
+                    `    });\n` +
                     `    window.addEventListener('wheel', function(e) {\n` +
                     `        if (e.ctrlKey || e.metaKey) {\n` +
                     `            e.preventDefault();\n` +
@@ -481,6 +532,11 @@
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_SPACE_STATE') {\n` +
                     `            __apex_space_pressed = !!m.pressed;\n` +
+                    `            setIframeSpaceCursor(__apex_space_pressed ? 'grab' : null);\n` +
+                    `        }\n` +
+                    `        if (m.type === 'APEX_CMD_PAN_ACTIVE') {\n` +
+                    `            __apex_is_panning = !!m.active;\n` +
+                    `            setIframeSpaceCursor(__apex_is_panning ? 'grabbing' : (__apex_space_pressed ? 'grab' : null));\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_SET_CONTENT_ZOOM') {\n` +
                     `            var z = parseFloat(m.zoom) || 1.0;\n` +

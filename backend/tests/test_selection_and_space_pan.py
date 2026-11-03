@@ -197,7 +197,7 @@ def run_tests():
             print("=> KẾT LUẬN TEST 1: Khắc phục 100% lỗi không chọn được phần tử trên Canvas Studio!")
 
             # TEST 2: KIỂM THỬ SPACE PAN (KÉO CUỘN NỘI DUNG TRONG KHUNG)
-            print("\n--- TEST 2: KIỂM THỬ SPACE PAN NỘI DUNG PREVIEW ---")
+            print("\n--- TEST 2: KIỂM THỬ SPACE PAN NỘI DUNG PREVIEW (HAND TOOL MODE) ---")
 
             # 2.1 Kiểm tra trạng thái khi ấn phím Space xuống
             page.keyboard.down("Space")
@@ -206,19 +206,41 @@ def run_tests():
             space_pressed = page.evaluate("window.isSpaceKeyPressed")
             assert space_pressed is True, "isSpaceKeyPressed phải là True khi nhấn phím Space"
 
-            # Lá chắn KHÔNG ĐƯỢC bật pointer-events: auto khi chuột chưa nhấn xuống
-            shield_non_blocking = page.evaluate("""() => {
+            # Kiểm tra con trỏ chuột mặc định đổi sang grab (bàn tay mở)
+            shield_cursor = page.evaluate("""() => {
                 const s = document.getElementById('csCanvasPanShield');
-                if (!s) return false;
-                const style = window.getComputedStyle(s);
-                return s.classList.contains('hidden') || style.pointerEvents === 'none';
+                if (!s) return '';
+                return window.getComputedStyle(s).cursor;
             }""")
-            assert shield_non_blocking is True, "Lá chắn phải ở trạng thái non-blocking khi chưa mousedown để không chặn click!"
-            print("=> Non-blocking Guard hoạt động chuẩn: Nhấn Space không làm kẹt lá chắn hay chặn click!")
+            print(f"Con trỏ chuột trên preview khi ấn Space: '{shield_cursor}'")
+            assert "grab" in shield_cursor, f"Con trỏ chuột phải đổi sang bàn tay kéo 'grab' (thực tế: {shield_cursor})"
 
-            # 2.2 Thực hiện kéo chuột cuộn nội dung (MouseDown + Move)
+            # Kiểm tra Gizmo Box bị ẩn khi giữ phím Space
+            gizmo_hidden = page.evaluate("""() => {
+                const g = document.getElementById('csGizmoBox');
+                return !g || g.style.display === 'none' || g.classList.contains('hidden');
+            }""")
+            assert gizmo_hidden is True, "Gizmo Box phải được ẩn khi giữ Space để không chọn nhầm lớp"
+            print("=> Khi giữ Space: Chuột preview tự động đổi sang con trỏ bàn tay kéo (grab) và ẩn Gizmo selection!")
+
+            # 2.2 Thử CLICK CHUỘT trong khi giữ Space: ĐẢM BẢO KHÔNG CHỌN BẤT KỲ LỚP NÀO
+            print("Thử nhấp chuột vào preview trong khi đang giữ Space...")
+            # Click vào tọa độ của thẻ P
             wrapper_box = page.locator("#csIframeWrapper").bounding_box()
             assert wrapper_box is not None
+            test_click_x = wrapper_box["x"] + wrapper_box["width"] / 2
+            test_click_y = wrapper_box["y"] + 150
+
+            page.mouse.click(test_click_x, test_click_y)
+            page.wait_for_timeout(200)
+
+            # Node chọn không được đổi sang phần tử bị click
+            current_selected = page.evaluate("selectedAstNodeId")
+            print(f"Selected node sau khi click lúc giữ Space: {current_selected}")
+            assert current_selected != "node-10" and current_selected != "node-11", "Không được chọn bất kỳ lớp nào khi đang ấn phím Space!"
+            print("=> XÁC NHẬN: Khi ấn phím Space, tuyệt đối KHÔNG chọn lớp nào, chỉ có thể kéo!")
+
+            # 2.3 Thực hiện kéo chuột cuộn nội dung (MouseDown + Move)
             start_x = wrapper_box["x"] + wrapper_box["width"] / 2
             start_y = wrapper_box["y"] + 300
 
@@ -226,7 +248,14 @@ def run_tests():
             page.mouse.down()
             page.wait_for_timeout(100)
 
-            # Khi chuột đang nhấn giữ lúc Space đang bật, pan kích hoạt
+            # Khi chuột đang nhấn giữ lúc Space đang bật, con trỏ đổi sang grabbing
+            dragging_cursor = page.evaluate("""() => {
+                const s = document.getElementById('csCanvasPanShield');
+                return s ? window.getComputedStyle(s).cursor : '';
+            }""")
+            print(f"Con trỏ chuột khi kéo: '{dragging_cursor}'")
+            assert "grabbing" in dragging_cursor, "Con trỏ chuột khi kéo phải là 'grabbing'"
+
             is_panning = page.evaluate("window.isCanvasPanning")
             print(f"Trạng thái isCanvasPanning khi kéo: {is_panning}")
             assert is_panning is True, "isCanvasPanning phải là True khi chuột nhấn xuống"
@@ -252,7 +281,7 @@ def run_tests():
             assert wrapper_transform == "none" or wrapper_transform == "", f"Khung viền phải giữ nguyên vị trí cố định, không được translate (thực tế: {wrapper_transform})"
             print("=> Khung viền #csIframeWrapper giữ nguyên vị trí cố định (transform: none), chỉ cuộn nội dung bên trong!")
 
-            # 2.3 Thả chuột và thả phím Space
+            # 2.4 Thả chuột và thả phím Space
             page.mouse.up()
             page.keyboard.up("Space")
             page.wait_for_timeout(300)
@@ -272,13 +301,13 @@ def run_tests():
             assert post_pan_state["shieldHidden"] is True, "Shield phải bị ẩn ngay khi nhả chuột"
             assert post_pan_state["shieldPointerEvents"] == "none", "Shield phải có pointer-events: none"
 
-            # 2.4 Sau khi pan xong, click chọn phần tử vẫn hoạt động ngay lập tức
-            print("Kiểm tra click chọn lại phần tử sau khi vừa pan xong...")
+            # 2.5 Sau khi pan xong và thả Space, click chọn phần tử hoạt động trở lại bình thường
+            print("Kiểm tra click chọn lại phần tử sau khi đã thả Space...")
             h1.click(timeout=5000)
             page.wait_for_timeout(400)
             after_pan_selected_id = page.evaluate("selectedAstNodeId")
-            assert after_pan_selected_id == h1_selected_id, "Thẻ H1 phải được chọn lại ngay lập tức sau khi pan"
-            print("=> Tuyệt vời: Click chọn phần tử hoạt động tức thì sau khi kéo Space pan!")
+            assert after_pan_selected_id == h1_selected_id, "Thẻ H1 phải được chọn lại ngay lập tức sau khi thả Space"
+            print("=> Tuyệt vời: Click chọn phần tử hoạt động tức thì sau khi thả phím Space!")
 
             screenshot_path = os.path.join(SCREENSHOT_DIR, "24_selection_and_space_pan_verified.png")
             page.screenshot(path=screenshot_path)

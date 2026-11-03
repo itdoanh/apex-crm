@@ -52,11 +52,11 @@
     cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 3L11.5 21L14.5 13.5L22 10.5L4 3Z' fill='%23090d16' stroke='%2338bdf8' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 3, crosshair;
 }
 
-/* Canvas Pan States (Ctrl Hand / Fist) */
-.cs-pan-grab, .cs-pan-grab * {
+/* Canvas Pan States (Spacebar Hand / Grab & Grabbing) */
+.cs-pan-grab, .cs-pan-grab *, #csCanvasPanShield.cs-pan-grab {
     cursor: grab !important;
 }
-.cs-pan-grabbing, .cs-pan-grabbing * {
+.cs-pan-grabbing, .cs-pan-grabbing *, #csCanvasPanShield.cs-pan-grabbing {
     cursor: grabbing !important;
 }
 
