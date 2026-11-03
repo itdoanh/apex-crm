@@ -393,7 +393,10 @@
             renderStudioFileList();
             loadContentIntoEditor(studioFileContents[activeStudioFile] || '');
             selectedAstNodeId = null;
-            document.getElementById('csGizmoBox').classList.add('hidden');
+            const gizmoBox = document.getElementById('csGizmoBox');
+            if (gizmoBox) gizmoBox.classList.add('hidden');
+            const gizmoToolbar = document.getElementById('csGizmoToolbar');
+            if (gizmoToolbar) gizmoToolbar.classList.add('hidden');
             refreshStudioPreview();
         }
 
@@ -635,6 +638,7 @@
             }
 
             if (wrapper) {
+                wrapper.style.margin = 'auto';
                 if (studioDeviceMode === 'pc') {
                     wrapper.style.width = '1440px'; // Kích thước màn hình PC thật (Real Desktop Resolution)
                     wrapper.style.height = '100%';

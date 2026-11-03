@@ -100,7 +100,7 @@ def test_gizmo_and_inspector_suite(admin_token=None):
     print("\n--- [3] KIỂM THỬ PLAYWRIGHT: GIZMO DRAG, RESIZE, CHỐNG DÍNH CHUỘT & 6 PHÂN HỆ INSPECTOR ---")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1600, "height": 960})
+        context = browser.new_context(viewport={"width": 2100, "height": 1050})
 
         playwright_cookies = []
         for cookie in cookie_jar:

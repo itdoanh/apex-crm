@@ -364,12 +364,54 @@
                     `    }\n` +
                     `    window.addEventListener('scroll', notifyVp, { passive: true });\n` +
                     `    window.addEventListener('resize', notifyVp, { passive: true });\n` +
+                    `    var __apex_space_pressed = false;\n` +
+                    `    var __apex_is_panning = false;\n` +
+                    `    var __apex_pan_last_x = 0;\n` +
+                    `    var __apex_pan_last_y = 0;\n` +
                     `    window.addEventListener('mouseup', function() {\n` +
+                    `        if (__apex_is_panning) {\n` +
+                    `            __apex_is_panning = false;\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_PAN_END' }, '*');\n` +
+                    `        }\n` +
                     `        window.parent.postMessage({ type: 'APEX_BUILDER_IFRAME_MOUSEUP' }, '*');\n` +
                     `    });\n` +
                     `    window.addEventListener('pointerup', function() {\n` +
+                    `        if (__apex_is_panning) {\n` +
+                    `            __apex_is_panning = false;\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_PAN_END' }, '*');\n` +
+                    `        }\n` +
                     `        window.parent.postMessage({ type: 'APEX_BUILDER_IFRAME_MOUSEUP' }, '*');\n` +
                     `    });\n` +
+                    `    document.addEventListener('pointerdown', function(e) {\n` +
+                    `        if (__apex_space_pressed || e.button === 1) {\n` +
+                    `            e.preventDefault();\n` +
+                    `            e.stopPropagation();\n` +
+                    `            __apex_is_panning = true;\n` +
+                    `            __apex_pan_last_x = e.clientX;\n` +
+                    `            __apex_pan_last_y = e.clientY;\n` +
+                    `            window.parent.postMessage({\n` +
+                    `                type: 'APEX_BUILDER_PAN_START',\n` +
+                    `                clientX: e.clientX,\n` +
+                    `                clientY: e.clientY\n` +
+                    `            }, '*');\n` +
+                    `        }\n` +
+                    `    }, true);\n` +
+                    `    document.addEventListener('pointermove', function(e) {\n` +
+                    `        if (__apex_is_panning) {\n` +
+                    `            e.preventDefault();\n` +
+                    `            e.stopPropagation();\n` +
+                    `            var dx = e.clientX - __apex_pan_last_x;\n` +
+                    `            var dy = e.clientY - __apex_pan_last_y;\n` +
+                    `            __apex_pan_last_x = e.clientX;\n` +
+                    `            __apex_pan_last_y = e.clientY;\n` +
+                    `            window.scrollBy({ left: -dx, top: -dy, behavior: 'instant' });\n` +
+                    `            window.parent.postMessage({\n` +
+                    `                type: 'APEX_BUILDER_PAN_MOVE',\n` +
+                    `                dx: dx,\n` +
+                    `                dy: dy\n` +
+                    `            }, '*');\n` +
+                    `        }\n` +
+                    `    }, true);\n` +
                     `    window.addEventListener('keydown', function(e) {\n` +
                     `        if (e.key === 'Control' || e.key === 'Meta') {\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: true }, '*');\n` +
@@ -379,6 +421,7 @@
                     `            var isEd = document.activeElement && document.activeElement.isContentEditable;\n` +
                     `            if (t !== 'input' && t !== 'textarea' && !isEd) {\n` +
                     `                e.preventDefault();\n` +
+                    `                __apex_space_pressed = true;\n` +
                     `                window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: true }, '*');\n` +
                     `            }\n` +
                     `        }\n` +
@@ -388,6 +431,7 @@
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: false }, '*');\n` +
                     `        }\n` +
                     `        if (e.code === 'Space' || e.key === ' ') {\n` +
+                    `            __apex_space_pressed = false;\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: false }, '*');\n` +
                     `        }\n` +
                     `    }, true);\n` +
@@ -434,6 +478,9 @@
                     `                }\n` +
                     `                window.parent.postMessage({ type: 'APEX_BUILDER_RECT_RESPONSE', data: getNodeData(el) }, '*');\n` +
                     `            }\n` +
+                    `        }\n` +
+                    `        if (m.type === 'APEX_CMD_SPACE_STATE') {\n` +
+                    `            __apex_space_pressed = !!m.pressed;\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_SET_CONTENT_ZOOM') {\n` +
                     `            var z = parseFloat(m.zoom) || 1.0;\n` +

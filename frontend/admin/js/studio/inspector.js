@@ -95,7 +95,34 @@
             }
 
             if (msg.type === 'APEX_BUILDER_NODE_CLICKED') {
+                const shield = document.getElementById('csCanvasPanShield');
+                if (shield && typeof isCanvasPanning !== 'undefined' && !isCanvasPanning) {
+                    shield.classList.add('hidden');
+                    shield.style.pointerEvents = 'none';
+                }
                 handleNodeSelection(msg.data);
+            }
+
+            if (msg.type === 'APEX_BUILDER_PAN_START') {
+                if (typeof startCanvasPanFromIframe === 'function') {
+                    startCanvasPanFromIframe(msg);
+                }
+            }
+
+            if (msg.type === 'APEX_BUILDER_PAN_MOVE') {
+                const viewport = document.getElementById('csCanvasViewport');
+                if (viewport && (viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight)) {
+                    viewport.scrollBy({ left: -msg.dx, top: -msg.dy, behavior: 'instant' });
+                }
+                if (selectedAstNodeId) {
+                    requestNodeRect(selectedAstNodeId);
+                }
+            }
+
+            if (msg.type === 'APEX_BUILDER_PAN_END') {
+                if (typeof endCanvasPan === 'function') {
+                    endCanvasPan();
+                }
             }
 
             if (msg.type === 'APEX_BUILDER_NODE_DBLCLICKED') {
@@ -219,6 +246,10 @@
             const gizmoBox = document.getElementById('csGizmoBox');
             const gizmoTag = document.getElementById('csGizmoTag');
             const gizmoSize = document.getElementById('csGizmoSize');
+            const toolbar = document.getElementById('csGizmoToolbar');
+            const contextTag = document.getElementById('csGizmoContextTag');
+            const contextSize = document.getElementById('csGizmoContextSize');
+            const contextId = document.getElementById('csGizmoContextId');
             const btnImg = document.getElementById('btnGizmoChangeImg');
             const btnLink = document.getElementById('btnGizmoChangeLink');
 
@@ -236,6 +267,11 @@
                 gizmoTag.innerHTML = `${isLocked ? '<i class="fa-solid fa-lock text-yellow-400 mr-1"></i>' : ''}${tag.toUpperCase()} ${classSummary}`;
             }
             if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)}px`;
+
+            if (toolbar) toolbar.classList.remove('hidden');
+            if (contextTag) contextTag.innerText = tag.toUpperCase();
+            if (contextSize) contextSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)} px`;
+            if (contextId) contextId.innerText = `#${selectedAstNodeId || ''}`;
 
             const handles = gizmoBox.querySelectorAll('.cs-gizmo-handle');
             handles.forEach(h => h.style.display = isLocked ? 'none' : '');

@@ -325,7 +325,10 @@
             syncCodeEditorFromAst(updated);
             pushStudioHistory(`Xóa <${node ? node.tag : 'thẻ'}>`, updated, null);
             selectedAstNodeId = null;
-            document.getElementById('csGizmoBox').classList.add('hidden');
+            const gizmoBox = document.getElementById('csGizmoBox');
+            if (gizmoBox) gizmoBox.classList.add('hidden');
+            const gizmoToolbar = document.getElementById('csGizmoToolbar');
+            if (gizmoToolbar) gizmoToolbar.classList.add('hidden');
             refreshStudioPreview();
             renderAstLayerTree();
             showToastNotification('Đã xóa phần tử khỏi mã nguồn');
