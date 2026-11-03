@@ -74,7 +74,7 @@ def setup_test_landing(token):
 </html>"""
     }
     req = urllib.request.Request(
-        f"{BASE_URL}/api/landings",
+        f"{BASE_URL}/api/landings/save",
         data=json.dumps(landing_data).encode('utf-8'),
         headers={
             "Content-Type": "application/json",
@@ -105,7 +105,7 @@ def run_tests():
 
         page = context.new_page()
         page.on("console", lambda msg: print(f"CONSOLE [{msg.type}]: {msg.text}"))
-        page.on("pageerror", lambda err: print(f"PAGEERROR: {err}"))
+        page.on("pageerror", lambda err: print(f"PAGEERROR: {err} | {getattr(err, 'stack', '')}"))
         # Chèn token vào localStorage
         page.goto(f"{BASE_URL}/ads/")
         page.evaluate(f"token => {{ localStorage.setItem('apex_admin_token', token); }}", token)
@@ -301,7 +301,7 @@ def run_tests():
         }""", target_node_id)
         page.wait_for_timeout(500)
 
-        insp_tab = page.evaluate("() => currentInspectorTab")
+        insp_tab = page.evaluate("() => window.currentInspectorTab || window.currentInspTab || currentInspTab")
         assert insp_tab == "layers", f"Inspector phải tự động chuyển sang tab 'layers', nhận được: {insp_tab}"
         print("  [OK] Bấm phần tử trên Canvas -> Inspector tự động chuyển sang tab 'layers' và cuộn đến node!")
 

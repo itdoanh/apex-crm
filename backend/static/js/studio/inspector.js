@@ -19,6 +19,8 @@
         var selectedAstNodeId = null;
         var selectedNodeMeta = null;
         var currentInspTab = 'content';
+        window.currentInspTab = currentInspTab;
+        window.currentInspectorTab = currentInspTab;
         var isDraggingGizmo = false;
         var isMovingGizmo = false;
         var currentResizeDir = '';
@@ -345,6 +347,8 @@
         // Chuyển đổi Tab trong Visual Inspector
         function switchInspectorTab(tab) {
             currentInspTab = tab;
+            window.currentInspTab = tab;
+            window.currentInspectorTab = tab;
             const tabs = ['content', 'classes', 'styles', 'layers'];
             tabs.forEach(t => {
                 const btn = document.getElementById('btnInspTab' + t.charAt(0).toUpperCase() + t.slice(1));
