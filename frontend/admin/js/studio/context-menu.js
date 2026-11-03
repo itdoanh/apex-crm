@@ -363,6 +363,9 @@
         // Chọn node từ Cây Layer hoặc Breadcrumb (Hỗ trợ cuộn mượt Iframe)
         function selectAstNode(nodeId, scrollToIframe = false) {
             selectedAstNodeId = nodeId;
+            if (typeof expandAncestorsInLayerTree === 'function') {
+                expandAncestorsInLayerTree(nodeId);
+            }
             const node = astMapper.astMap[nodeId];
             if (node) {
                 const nodeData = {
@@ -378,5 +381,9 @@
             }
             requestNodeRect(nodeId, scrollToIframe);
             renderAstLayerTree();
+            setTimeout(() => {
+                const row = document.getElementById('layer-row-' + nodeId);
+                if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }, 50);
         }
 

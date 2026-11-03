@@ -276,7 +276,7 @@ def run_tests():
 
         # 4.1. Chọn từ Cây Layer -> Canvas Preview tự động chọn, bật gizmo, cuộn mượt
         target_node_id = mob_edit_res["h1Id"]
-        page.evaluate(f"() => selectAstNode('{target_node_id}', true)")
+        page.evaluate(f"() => {{ switchInspectorTab('layers'); selectAstNode('{target_node_id}', true); }}")
         page.wait_for_timeout(500)
 
         selected_id = page.evaluate("() => selectedAstNodeId")
