@@ -14,6 +14,7 @@ backend/apex-test-build.exe
 
 # Environment & Secrets
 .env
+.env.*
 .env.local
 .env.*.local
 *service-account*.json

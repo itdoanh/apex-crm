@@ -27,7 +27,7 @@ if (-not $ApexBackendDir) {
     if ($PotentialBackend -and (Test-Path $PotentialBackend)) {
         $ApexBackendDir = $PotentialBackend.Path
     } else {
-        $ApexBackendDir = "C:\apex-landing\backend"
+        $ApexBackendDir = "C:\apex\backend"
     }
 }
 
