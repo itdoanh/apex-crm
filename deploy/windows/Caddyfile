@@ -1,0 +1,78 @@
+# ==============================================================================
+# CADDYFILE CHO WINDOWS SERVER 2025 DATACENTER (APEX FINTECH PRODUCTION)
+# Tự động cấp và gia hạn SSL (Let's Encrypt / ZeroSSL) On-Demand cho MỌI TÊN MIỀN
+# Tối ưu hóa dung lượng ổ đĩa với cơ chế xoay vòng nhật ký (Log Rotation) tự động
+# ==============================================================================
+
+{
+    # 1. Cơ chế On-Demand TLS (Tự động cấp SSL khi có tên miền trỏ về)
+    on_demand_tls {
+        # Endpoint thẩm định: Go Backend kiểm tra RAM Cache (<0.05ms)
+        # Chỉ cấp SSL nếu domain đã đăng ký trong CRM (chống rate-limit abuse)
+        ask http://127.0.0.1:8080/api/internal/check-domain
+        interval 2m
+        burst 5
+    }
+
+    # Email quản trị nhận cảnh báo chứng chỉ SSL
+    email admin@hanghoaphaisinh.net
+
+    # Giới hạn dung lượng log toàn cục để bảo vệ phân vùng đĩa 30GB
+    log {
+        output file C:/caddy/logs/caddy.log {
+            roll_size 10mb
+            roll_keep 3
+            roll_keep_for 7d
+        }
+        format console
+        level INFO
+    }
+}
+
+# ------------------------------------------------------------------------------
+# 1. TÊN MIỀN QUẢN TRỊ ADMIN CRM (crm.hanghoaphaisinh.net)
+# ------------------------------------------------------------------------------
+crm.hanghoaphaisinh.net {
+    log {
+        output file C:/caddy/logs/access_crm.log {
+            roll_size 10mb
+            roll_keep 3
+            roll_keep_for 7d
+        }
+        format console
+    }
+
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+    }
+}
+
+# ------------------------------------------------------------------------------
+# 2. TOÀN BỘ TÊN MIỀN LANDING PAGE KHÁC (Tự động kích hoạt On-Demand TLS)
+# Áp dụng cho: dautuhanghoa.vn, *.hanghoaphaisinh.net, domain-khach.com,...
+# Bất kỳ domain nào trỏ A Record hoặc NameServer về server sẽ có HTTPS tức thì!
+# ------------------------------------------------------------------------------
+:443 {
+    tls {
+        on_demand
+    }
+
+    log {
+        output file C:/caddy/logs/access_landings.log {
+            roll_size 10mb
+            roll_keep 3
+            roll_keep_for 7d
+        }
+        format console
+    }
+
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+    }
+}

@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # CSDL PostgreSQL lưu trữ toàn bộ Leads, Landing Pages, Google Sheets và Audit Logs
+  postgres:
+    image: postgres:16-alpine
+    container_name: apex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-apex_leads}
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - apex_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-apex_leads}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - apex-network
+
+  # Máy chủ Apex Backend (Golang) phục vụ CRM, Studio, APIs & Multi-Landing Routing
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: apex-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-apex_leads}
+      DB_SSLMODE: disable
+      ALLOW_ORIGINS: "*"
+      ADMIN_KEY: ${ADMIN_KEY:-apex080}
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "${PORT:-8080}:8080"
+    networks:
+      - apex-network
+
+volumes:
+  apex_postgres_data:
+    name: apex_postgres_data
+
+networks:
+  apex-network:
+    name: apex-network
+    driver: bridge

@@ -1,0 +1,25 @@
+[Unit]
+Description=Apex Fintech Landing Page & CRM Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/apex-landing
+ExecStart=/var/www/apex-landing/apex-server
+Restart=always
+RestartSec=5s
+
+# Giới hạn file descriptors chống cạn kiệt tài nguyên
+LimitNOFILE=65535
+
+# Tự động đọc biến môi trường từ file .env
+EnvironmentFile=/var/www/apex-landing/.env
+
+# Ghi log chuẩn qua journalctl
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

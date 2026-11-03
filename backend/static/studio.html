@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-slate-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apex Visual Web Builder &amp; Studio</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#151f32' }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome 6.4.0 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Be Vietnam Pro & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Studio Stylesheets -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/studio.css">
+</head>
+<body class="h-full bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
+
+    <!-- ============================================================== -->
+    <!-- APEX LADI VISUAL WEB BUILDER WORKSPACE                        -->
+    <!-- ============================================================== -->
+    <div id="codeStudioModal" class="fixed inset-0 z-50 bg-slate-950 flex flex-col h-full w-full">
+        <!-- Studio Header Bar -->
+        <div class="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between flex-shrink-0 gap-2">
+            <div class="flex items-center space-x-2 min-w-0 flex-shrink">
+                <a href="/ads" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition shadow-sm flex-shrink-0" title="Quay lại CRM Core">
+                    <i class="fa-solid fa-arrow-left text-cyan-400"></i>
+                    <span class="hidden md:inline">Quay lại CRM</span>
+                </a>
+
+                <div class="flex items-center space-x-1.5 flex-shrink-0">
+                    <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 text-base shadow-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </span>
+                    <span class="font-black text-sm text-white tracking-wide hidden lg:inline">Apex Studio</span>
+                </div>
+                <span class="text-slate-600 hidden sm:inline">/</span>
+                <span id="csLandingBadge" class="bg-cyan-950 text-cyan-300 border border-cyan-800/80 font-mono text-xs px-2 py-0.5 rounded-lg truncate max-w-[120px]">mxv_080_online</span>
+                <span id="csLandingName" class="text-xs text-slate-400 hidden 2xl:inline truncate max-w-xs">Hội Thảo Giao Dịch Hàng Hóa</span>
+                <div class="hidden 2xl:flex items-center space-x-1 pl-2">
+                    <span id="csCurrentFileBadge" class="bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs px-3 py-1 rounded-lg flex items-center gap-1.5">
+                        <i class="fa-brands fa-html5 text-orange-500"></i>
+                        <span id="csActiveFileName">index.html</span>
+                    </span>
+                    <span id="csSaveStatus" class="text-[11px] text-slate-400 font-mono ml-2">Đã đồng bộ</span>
+                </div>
+            </div>
+
+            <!-- Center: View Mode Switcher & Freeze Mode Toggle -->
+            <div class="flex items-center space-x-2">
+                <!-- 3 Chế độ xem: Code Only | Split 2-Way | Visual Builder -->
+                <div class="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-xs">
+                    <button type="button" id="btnModeCode" onclick="setStudioViewMode('code')" class="px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-white" title="Chế độ soạn thảo Code toàn màn hình">
+                        <i class="fa-solid fa-code"></i>
+                        <span class="hidden sm:inline">Chỉ Code</span>
+                    </button>
+                    <button type="button" id="btnModeSplit" onclick="setStudioViewMode('split')" class="px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 bg-cyan-600 text-white shadow" title="Chế độ song song: Vừa sửa Code vừa xem Visual (2 chiều)">
+                        <i class="fa-solid fa-table-columns"></i>
+                        <span class="hidden sm:inline">Code ↔ Visual</span>
+                    </button>
+                    <button type="button" id="btnModeVisual" onclick="setStudioViewMode('visual')" class="px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-white" title="Chế độ Visual Web Builder kéo thả trực quan">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                        <span class="hidden sm:inline">Visual Builder</span>
+                    </button>
+                </div>
+
+                <!-- Chế độ Tương tác / Đóng băng hiệu ứng: Design Freeze vs Interactive -->
+                <button type="button" id="btnToggleFreeze" onclick="toggleStudioFreezeMode()" class="bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Bật/Tắt chế độ Thiết Kế (Đóng băng hiệu ứng để dễ kéo thả & click layer)">
+                    <i id="iconToggleFreeze" class="fa-solid fa-snowflake text-cyan-400"></i>
+                    <span id="textToggleFreeze" class="hidden md:inline">Thiết Kế (Freeze)</span>
+                </button>
+
+                <!-- Nút bật/tắt Panel Thuộc Tính (Inspector) -->
+                <button type="button" id="btnToggleInspector" onclick="toggleInspectorPanel()" class="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-800/60 px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Bật/Tắt bảng chỉnh sửa thuộc tính trực quan">
+                    <i class="fa-solid fa-palette text-amber-400"></i>
+                    <span class="hidden lg:inline">Thuộc Tính</span>
+                </button>
+
+                <!-- Cụm Lịch Sử Thao Tác Photoshop: Undo / Redo & History Stack Dropdown -->
+                <div class="relative flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-xs shadow-inner">
+                    <!-- Nút Undo (Hoàn tác) -->
+                    <button type="button" id="btnStudioUndo" onclick="studioUndo()" disabled
+                        class="px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 text-slate-600 cursor-not-allowed opacity-50"
+                        title="Hoàn tác bước trước (Ctrl + Z)">
+                        <i class="fa-solid fa-rotate-left text-xs"></i>
+                    </button>
+                    <!-- Nút Redo (Làm lại) -->
+                    <button type="button" id="btnStudioRedo" onclick="studioRedo()" disabled
+                        class="px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 text-slate-600 cursor-not-allowed opacity-50"
+                        title="Làm lại bước vừa khôi phục (Ctrl + Y hoặc Ctrl + Shift + Z)">
+                        <i class="fa-solid fa-rotate-right text-xs"></i>
+                    </button>
+                    <!-- Nút Time-Travel History Dropdown -->
+                    <button type="button" id="btnStudioHistory" onclick="toggleStudioHistoryDropdown()"
+                        class="px-2 py-1 rounded-lg font-mono text-[10px] text-cyan-400 hover:text-cyan-300 hover:bg-slate-800/80 transition flex items-center gap-1.5"
+                        title="Xem danh sách lịch sử thao tác Photoshop (tối đa 50 bước)">
+                        <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
+                        <span id="csHistoryBadge" class="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-300">0/0</span>
+                    </button>
+
+                    <!-- Photoshop Style History Panel Dropdown -->
+                    <div id="csHistoryDropdown" class="hidden absolute top-full mt-2 left-1/2 -translate-x-1/2 w-72 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col font-sans">
+                        <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-clock-rotate-left text-cyan-400 text-xs"></i>
+                                <span>Lịch Sử Bước (Photoshop)</span>
+                            </span>
+                            <span id="csHistoryTotalBadge" class="text-[9px] font-mono text-cyan-400 bg-cyan-950/80 border border-cyan-800/60 px-1.5 py-0.5 rounded">0 / 50</span>
+                        </div>
+                        <div id="csHistoryListContainer" class="max-h-64 overflow-y-auto p-1.5 space-y-0.5 text-xs font-mono inspector-scroll">
+                            <div class="text-slate-500 text-xs italic p-3 text-center">Chưa có lịch sử thao tác</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Studio Action Toolbar -->
+            <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+                <button onclick="restoreTemplateCode()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1" title="Khôi phục mã nguồn mẫu ladi.html gốc">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span class="hidden xl:inline">Mẫu MXV</span>
+                </button>
+                <button onclick="saveStudioCode()" id="btnSaveCode" class="bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-cyan-800/60 transition flex items-center gap-1.5 shadow" title="Lưu mã nguồn trực tiếp (Ctrl + S)">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span class="hidden sm:inline">Lưu Code (Ctrl+S)</span>
+                </button>
+                <button onclick="deployCodeLive()" id="btnDeployLive" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3.5 py-1.5 rounded-lg transition shadow-lg flex items-center gap-1.5" title="Xuất bản chính thức ra trang web (Ctrl + Enter)">
+                    <i class="fa-solid fa-rocket"></i>
+                    <span class="hidden sm:inline">Deploy</span>
+                </button>
+                <button onclick="openStudioSettings()" id="btnStudioSettings" class="bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-amber-800/60 transition flex items-center gap-1" title="Cài đặt Landing Page">
+                    <i class="fa-solid fa-sliders text-amber-400"></i>
+                    <span class="hidden xl:inline">Cài Đặt</span>
+                </button>
+                <button onclick="openStudioFormScanner()" id="btnStudioScanForm" class="bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-indigo-800 transition flex items-center gap-1" title="Quét form tự động & ánh xạ trường Lead">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                    <span class="hidden xl:inline">Quét Form</span>
+                </button>
+                <button onclick="closeCodeStudio()" id="btnCloseStudio" class="bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-xs px-2.5 py-1.5 rounded-lg border border-rose-800 transition" title="Đóng Studio">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Studio Workspace Body -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left Panel: File & Directory Tree Explorer (240px) -->
+            <div id="csFileExplorerPanel" class="w-60 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 transition-all duration-200">
+                <div class="p-2.5 border-b border-slate-800 flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-folder-tree text-cyan-400"></i>
+                        <span>Thư Mục &amp; Tệp</span>
+                    </span>
+                    <div class="flex items-center space-x-1">
+                        <button onclick="openNewFolderModal()" class="text-amber-400 hover:text-amber-300 text-xs px-1.5 py-0.5 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Tạo thư mục mới">
+                            <i class="fa-solid fa-folder-plus text-[10px]"></i>
+                            <span class="text-[10px] font-semibold">Mục</span>
+                        </button>
+                        <button onclick="openNewFileModal()" class="text-cyan-400 hover:text-cyan-300 text-xs px-1.5 py-0.5 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Tạo tệp tin mới">
+                            <i class="fa-solid fa-file-circle-plus text-[10px]"></i>
+                            <span class="text-[10px] font-semibold">Tệp</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- File list with Hierarchical Directory Tree -->
+                <div id="csFileList" class="flex-1 overflow-y-auto p-1.5 space-y-0.5 text-xs font-mono">
+                    <!-- Render via JS Tree -->
+                </div>
+                <div class="p-2.5 bg-slate-950 border-t border-slate-800 text-[10px] text-slate-400 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span>Ctrl + S:</span>
+                        <span class="text-slate-300 font-mono">Lưu mã nguồn</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span>Ctrl + Enter:</span>
+                        <span class="text-slate-300 font-mono">Xuất bản Deploy</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Panel: Code Editor (Surgical Non-Destructive Source Editor) -->
+            <div id="csEditorContainer" class="flex-1 flex flex-col bg-slate-950 overflow-hidden relative transition-all duration-200">
+                <div class="flex-1 flex overflow-hidden">
+                    <!-- Line Numbers gutter -->
+                    <div id="csLineNumbers" class="w-12 bg-slate-900/60 border-r border-slate-800/80 py-3 px-2 text-right text-slate-600 font-mono text-xs select-none overflow-hidden leading-6">
+                        1
+                    </div>
+                    <!-- Editor Textarea -->
+                    <textarea id="csCodeEditor" spellcheck="false"
+                        oninput="onCodeEditorInput()" onscroll="syncEditorScroll()"
+                        onkeydown="handleEditorKeyDown(event)"
+                        class="flex-1 bg-transparent text-slate-100 font-mono text-xs leading-6 p-3 focus:outline-none resize-none overflow-auto whitespace-pre tab-4"></textarea>
+                </div>
+                <!-- Status Bar -->
+                <div class="h-6 bg-slate-900 border-t border-slate-800 px-3 flex items-center justify-between text-[11px] text-slate-400 font-mono flex-shrink-0">
+                    <div class="flex items-center space-x-4">
+                        <span id="csLineCol">Dòng: 1, Cột: 1</span>
+                        <span id="csTotalLines">Tổng: 1 dòng</span>
+                        <span id="csAstNodeCount" class="text-cyan-400 font-mono hidden sm:inline">AST Nodes: 0</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                <a href="/ads" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition shadow-sm mr-2" title="Quay lại CRM Core">
+                    <i class="fa-solid fa-arrow-left text-cyan-400"></i>
+                    <span>Quay lại CRM</span>
+                </a>
+
+                        <span id="csSyncIndicator" class="text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-circle text-[7px]"></i> 2-Way Live</span>
+                        <span id="csEncoding">UTF-8</span>
+                        <span id="csFileType">HTML</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right-Center Panel: Visual Web Canvas with Overlay Gizmo Isolation -->
+            <div id="csPreviewPanel" class="flex-1 bg-slate-900 border-l border-slate-800 flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden">
+                <!-- Preview Toolbar -->
+                <div class="h-10 bg-slate-850 border-b border-slate-800 px-3 flex items-center justify-between flex-shrink-0">
+                    <!-- Viewport Switcher: PC, Laptop, Mobile -->
+                    <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs">
+                        <button id="btnDevicePC" onclick="setStudioDevice('pc')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 bg-cyan-600 text-white" title="Chế độ xem PC / Desktop (1440px)">
+                            <i class="fa-solid fa-desktop"></i>
+                            <span class="hidden sm:inline">PC (1440px)</span>
+                        </button>
+                        <button id="btnDeviceLaptop" onclick="setStudioDevice('laptop')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 text-slate-300 hover:text-white" title="Chế độ xem Laptop (1024px)">
+                            <i class="fa-solid fa-laptop"></i>
+                            <span class="hidden sm:inline">Laptop (1024px)</span>
+                        </button>
+                        <button id="btnDeviceMobile" onclick="setStudioDevice('mobile')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 text-slate-300 hover:text-white" title="Chế độ xem Mobile (390px)">
+                            <i class="fa-solid fa-mobile-screen"></i>
+                            <span class="hidden sm:inline">Mobile (390px)</span>
+                        </button>
+                    </div>
+
+                    <!-- Right Toolbar Items -->
+                    <div class="flex items-center space-x-1.5">
+                        <span id="csFreezeStatusBadge" class="bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md hidden lg:inline">
+                            🧊 Freeze Active
+                        </span>
+                        <button onclick="refreshStudioPreview()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded-lg border border-slate-700 transition" title="Tải lại xem trước">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                        <button onclick="openStudioPreviewNewTab()" class="bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs px-2.5 py-1 rounded-lg border border-slate-700 transition flex items-center gap-1" title="Mở trang xem trước trong tab mới">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            <span class="hidden md:inline">Mở Tab</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Iframe & Overlay Canvas Viewport Wrapper -->
+                <div class="flex-1 bg-slate-950 overflow-auto p-4 flex items-center justify-center relative">
+                    <div id="csIframeWrapper" class="w-full h-full bg-white rounded-xl overflow-hidden shadow-2xl transition-all duration-300 border border-slate-800 relative select-none">
+                        <!-- Lớp Dưới: Sandboxed Iframe (Chạy toàn bộ CSS, Tailwind JIT CDN, Font, scripts thực tế) -->
+                        <iframe id="csPreviewIframe" class="w-full h-full border-0" src="about:blank"></iframe>
+
+                        <!-- Tấm chắn bảo vệ chống dính chuột khi kéo dãn hoặc di chuyển (Drag Shield 100% Anti-Sticking) -->
+                        <div id="csDragShield" class="absolute inset-0 z-50 hidden bg-transparent select-none cursor-crosshair"></div>
+
+                        <!-- Lớp Trên: Editor Overlay Canvas Isolation (Cách ly lớp tương tác, không đè hay phá DOM gốc) -->
+                        <div id="csOverlayCanvas" class="absolute inset-0 pointer-events-none overflow-hidden z-20">
+                            <!-- Hover Guide Box (Viền xanh mỏng khi rê chuột) -->
+                            <div id="csHoverBox" class="absolute hidden border-2 border-cyan-400 border-dashed bg-cyan-500/10 pointer-events-none transition-all duration-75 z-10 rounded">
+                                <span id="csHoverTag" class="absolute -top-5 left-0 bg-cyan-500 text-slate-950 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap">div</span>
+                            </div>
+
+                            <!-- Selected Gizmo Box (Khung viền điều khiển kéo thả & 8 chốt biến đổi kích thước) -->
+                            <div id="csGizmoBox" class="absolute hidden border-2 border-indigo-500 bg-indigo-500/10 z-30 select-none shadow-xl pointer-events-none">
+                                <!-- Tag Header & Drag-to-Move Grabber -->
+                                <div id="csGizmoHeader" onpointerdown="startGizmoMove(event)" class="absolute -top-7 left-0 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-[11px] font-bold px-2 py-0.5 rounded-t flex items-center gap-1.5 shadow pointer-events-auto cursor-grab active:cursor-grabbing whitespace-nowrap transition-colors" title="Bấm giữ chuột và kéo để di chuyển vị trí">
+                                    <i class="fa-solid fa-arrows-up-down-left-right text-[10px] text-indigo-200"></i>
+                                    <span id="csGizmoTag">div</span>
+                                    <span class="text-indigo-200 text-[10px]">|</span>
+                                    <span id="csGizmoSize" class="text-indigo-200 text-[10px]">0 × 0 px</span>
+                                </div>
+
+                                <!-- 8 Resize Handles (Chốt kéo co giãn kích thước bằng PointerCapture API) -->
+                                <div class="cs-gizmo-handle cs-handle-nw" onpointerdown="startGizmoResize(event, 'nw')"></div>
+                                <div class="cs-gizmo-handle cs-handle-n"  onpointerdown="startGizmoResize(event, 'n')"></div>
+                                <div class="cs-gizmo-handle cs-handle-ne" onpointerdown="startGizmoResize(event, 'ne')"></div>
+                                <div class="cs-gizmo-handle cs-handle-e"  onpointerdown="startGizmoResize(event, 'e')"></div>
+                                <div class="cs-gizmo-handle cs-handle-se" onpointerdown="startGizmoResize(event, 'se')"></div>
+                                <div class="cs-gizmo-handle cs-handle-s"  onpointerdown="startGizmoResize(event, 's')"></div>
+                                <div class="cs-gizmo-handle cs-handle-sw" onpointerdown="startGizmoResize(event, 'sw')"></div>
+                                <div class="cs-gizmo-handle cs-handle-w"  onpointerdown="startGizmoResize(event, 'w')"></div>
+
+                                <!-- Floating Gizmo Quick Action Bar (Thao tác nhanh ngay trên canvas) -->
+                                <div id="csGizmoToolbar" class="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 rounded-xl px-2 py-1 flex items-center gap-1 shadow-2xl backdrop-blur-md pointer-events-auto whitespace-nowrap z-40">
+                                    <!-- Nút Kéo Di Chuyển -->
+                                    <button type="button" onpointerdown="startGizmoMove(event)" class="text-xs text-indigo-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1 cursor-grab active:cursor-grabbing" title="Bấm giữ chuột để kéo di chuyển phần tử">
+                                        <i class="fa-solid fa-arrows-up-down-left-right text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Kéo</span>
+                                    </button>
+
+                                    <!-- Sửa Chữ Trực Tiếp -->
+                                    <button type="button" onclick="startInlineTextEdit()" class="text-xs text-cyan-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Sửa chữ trực tiếp tại chỗ">
+                                        <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Sửa Chữ</span>
+                                    </button>
+
+                                    <!-- Hoán đổi thứ tự DOM: Lên / Xuống -->
+                                    <div class="flex items-center bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
+                                        <button type="button" onclick="moveCurrentNodeUp()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển lên trước thẻ cùng cấp">
+                                            <i class="fa-solid fa-arrow-up"></i>
+                                        </button>
+                                        <button type="button" onclick="moveCurrentNodeDown()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển xuống sau thẻ cùng cấp">
+                                            <i class="fa-solid fa-arrow-down"></i>
+                                        </button>
+                                    </div>
+
+                                    <!-- Căn Chỉnh Nhanh -->
+                                    <div class="flex items-center bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
+                                        <button type="button" onclick="quickAlignNode('left')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn lề trái"><i class="fa-solid fa-align-left"></i></button>
+                                        <button type="button" onclick="quickAlignNode('center')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn giữa khối (mx-auto)"><i class="fa-solid fa-align-center"></i></button>
+                                        <button type="button" onclick="quickAlignNode('right')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn lề phải"><i class="fa-solid fa-align-right"></i></button>
+                                        <button type="button" onclick="quickAlignNode('full')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Kéo dài toàn chiều rộng (100%)"><i class="fa-solid fa-arrows-left-right"></i></button>
+                                    </div>
+
+                                    <!-- Class & Style Tabs -->
+                                    <button type="button" onclick="openVisualInspectorTab('classes')" class="text-xs text-emerald-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Sửa class / Tailwind utilities">
+                                        <i class="fa-solid fa-tags text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Class</span>
+                                    </button>
+                                    <button type="button" onclick="openVisualInspectorTab('styles')" class="text-xs text-amber-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Mở bảng chỉnh sửa Style trực quan">
+                                        <i class="fa-solid fa-palette text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Style</span>
+                                    </button>
+
+                                    <!-- Thao Tác Theo Ngữ Cảnh Thẻ -->
+                                    <button type="button" id="btnGizmoChangeImg" onclick="promptChangeImage()" class="hidden text-xs text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Thay đổi đường dẫn ảnh src">
+                                        <i class="fa-solid fa-image text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Đổi Ảnh</span>
+                                    </button>
+                                    <button type="button" id="btnGizmoChangeLink" onclick="promptChangeLink()" class="hidden text-xs text-sky-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Thay đổi đường dẫn liên kết href">
+                                        <i class="fa-solid fa-link text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Đổi Link</span>
+                                    </button>
+
+                                    <!-- Thao tác cấu trúc -->
+                                    <button type="button" onclick="duplicateCurrentNode()" class="text-xs text-slate-300 hover:text-white px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Nhân bản phần tử này">
+                                        <i class="fa-solid fa-copy text-[10px]"></i>
+                                    </button>
+                                    <button type="button" onclick="selectParentNode()" class="text-xs text-slate-300 hover:text-white px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Chọn thẻ cha bao quanh">
+                                        <i class="fa-solid fa-arrow-up text-[10px]"></i>
+                                    </button>
+                                    <button type="button" onclick="deleteCurrentNode()" class="text-xs text-rose-400 hover:text-rose-200 px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Xóa phần tử khỏi mã nguồn">
+                                        <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CONTEXT MENU CHUỘT PHẢI CHUYÊN NGHIỆP (STUDIO CONTEXT MENU) -->
+                        <div id="csContextMenu" class="hidden fixed z-[100] w-64 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 text-xs text-slate-200 select-none animate-in fade-in zoom-in-95 duration-100">
+                            <!-- Header thông tin node -->
+                            <div class="px-2.5 py-1.5 bg-slate-800/80 rounded-xl mb-1 flex items-center justify-between border border-slate-700/50">
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <span id="ctxMenuTagIcon" class="text-cyan-400 text-xs"><i class="fa-solid fa-cube"></i></span>
+                                    <span id="ctxMenuTagBadge" class="font-bold text-white uppercase text-[11px]">DIV</span>
+                                    <span id="ctxMenuIdBadge" class="text-[10px] text-slate-400 font-mono truncate">#ve_1</span>
+                                </div>
+                                <span id="ctxMenuTypeBadge" class="text-[9px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-800/60 px-1 py-0.2 rounded">Khung</span>
+                            </div>
+
+                            <!-- Nhóm 1: Soạn Thảo & Đổi Thẻ -->
+                            <div class="space-y-0.5">
+                                <button type="button" onclick="handleContextMenuAction('inline-edit')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-pen-to-square text-cyan-400 text-xs w-4"></i>
+                                        <span>Sửa chữ trực tiếp</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">DblClick</span>
+                                </button>
+
+                                <!-- Submenu Đổi Thẻ HTML -->
+                                <div class="relative group/tagmenu">
+                                    <button type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition text-slate-200 hover:text-white">
+                                        <span class="flex items-center gap-2">
+                                            <i class="fa-solid fa-code text-indigo-400 text-xs w-4"></i>
+                                            <span>Đổi thẻ HTML...</span>
+                                        </span>
+                                        <i class="fa-solid fa-chevron-right text-[10px] text-slate-500"></i>
+                                    </button>
+                                    <!-- Submenu Popup chọn tag -->
+                                    <div class="hidden group-hover/tagmenu:grid grid-cols-2 gap-1 absolute left-full top-0 ml-1 w-52 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl p-2 shadow-2xl z-[110]">
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'h1')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-cyan-300">&lt;h1&gt; Tiêu đề 1</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'h2')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-cyan-300">&lt;h2&gt; Tiêu đề 2</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'h3')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-cyan-300">&lt;h3&gt; Tiêu đề 3</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'p')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-amber-300">&lt;p&gt; Đoạn văn</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'span')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-amber-300">&lt;span&gt; Nội dòng</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'a')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-sky-300">&lt;a&gt; Liên kết</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'button')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-sky-300">&lt;button&gt; Nút</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'div')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-slate-300">&lt;div&gt; Khung</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'section')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-slate-300">&lt;section&gt; Mục</button>
+                                        <button type="button" onclick="handleContextMenuAction('change-tag', 'form')" class="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white text-left font-mono text-[11px] text-emerald-300">&lt;form&gt; Biểu mẫu</button>
+                                    </div>
+                                </div>
+
+                                <!-- Đổi ảnh / Đổi link -->
+                                <button type="button" id="ctxItemChangeImg" onclick="handleContextMenuAction('change-img')" class="hidden w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-image text-purple-400 text-xs w-4"></i>
+                                        <span>Đổi đường dẫn ảnh (src)...</span>
+                                    </span>
+                                </button>
+                                <button type="button" id="ctxItemChangeLink" onclick="handleContextMenuAction('change-link')" class="hidden w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-link text-sky-400 text-xs w-4"></i>
+                                        <span>Đổi liên kết (href)...</span>
+                                    </span>
+                                </button>
+                            </div>
+
+                            <div class="h-px bg-slate-800 my-1"></div>
+
+                            <!-- Nhóm 2: Clipboard & Nhân Bản -->
+                            <div class="space-y-0.5">
+                                <button type="button" onclick="handleContextMenuAction('cut')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-scissors text-rose-400 text-xs w-4"></i>
+                                        <span>Cắt</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+X</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('copy')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-copy text-amber-400 text-xs w-4"></i>
+                                        <span>Sao chép phần tử</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+C</span>
+                                </button>
+                                <button type="button" id="ctxItemPaste" onclick="handleContextMenuAction('paste')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-paste text-emerald-400 text-xs w-4"></i>
+                                        <span>Dán phần tử bên dưới</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+V</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('copy-style')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-brush text-indigo-400 text-xs w-4"></i>
+                                        <span>Sao chép Style CSS</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+Alt+C</span>
+                                </button>
+                                <button type="button" id="ctxItemPasteStyle" onclick="handleContextMenuAction('paste-style')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-paint-roller text-cyan-400 text-xs w-4"></i>
+                                        <span>Dán Style CSS</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+Alt+V</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('duplicate')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-clone text-teal-400 text-xs w-4"></i>
+                                        <span>Nhân bản</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+D</span>
+                                </button>
+                            </div>
+
+                            <div class="h-px bg-slate-800 my-1"></div>
+
+                            <!-- Nhóm 3: Thứ Tự & Cấu Trúc DOM -->
+                            <div class="space-y-0.5">
+                                <button type="button" onclick="handleContextMenuAction('move-up')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-arrow-up text-slate-400 text-xs w-4"></i>
+                                        <span>Di chuyển lên trước</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Alt+↑</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('move-down')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-arrow-down text-slate-400 text-xs w-4"></i>
+                                        <span>Di chuyển xuống sau</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Alt+↓</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('move-top')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-angles-up text-slate-400 text-xs w-4"></i>
+                                        <span>Đưa lên đầu cùng cấp</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Shift+Alt+↑</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('move-bottom')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-angles-down text-slate-400 text-xs w-4"></i>
+                                        <span>Đưa xuống cuối cùng cấp</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Shift+Alt+↓</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('select-parent')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-turn-up text-slate-400 text-xs w-4"></i>
+                                        <span>Chọn thẻ cha</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Esc</span>
+                                </button>
+                            </div>
+
+                            <div class="h-px bg-slate-800 my-1"></div>
+
+                            <!-- Nhóm 4: Ẩn/Hiện & Khóa -->
+                            <div class="space-y-0.5">
+                                <button type="button" id="ctxItemVisibility" onclick="handleContextMenuAction('toggle-visibility')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i id="ctxIconVisibility" class="fa-solid fa-eye-slash text-amber-400 text-xs w-4"></i>
+                                        <span id="ctxTextVisibility">Ẩn phần tử (display: none)</span>
+                                    </span>
+                                </button>
+                                <button type="button" id="ctxItemLock" onclick="handleContextMenuAction('toggle-lock')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i id="ctxIconLock" class="fa-solid fa-lock text-yellow-400 text-xs w-4"></i>
+                                        <span id="ctxTextLock">Khóa layer này</span>
+                                    </span>
+                                </button>
+                            </div>
+
+                            <div class="h-px bg-slate-800 my-1"></div>
+
+                            <!-- Nhóm 5: Hoàn tác, Làm lại & Xóa -->
+                            <div class="space-y-0.5">
+                                <button type="button" onclick="handleContextMenuAction('undo')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-rotate-left text-slate-400 text-xs w-4"></i>
+                                        <span>Hoàn tác</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+Z</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('redo')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2 text-slate-200 group-hover:text-white">
+                                        <i class="fa-solid fa-rotate-right text-slate-400 text-xs w-4"></i>
+                                        <span>Làm lại</span>
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-mono">Ctrl+Y</span>
+                                </button>
+                                <button type="button" onclick="handleContextMenuAction('delete')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-rose-950/50 text-rose-400 hover:text-rose-300 flex items-center justify-between transition group">
+                                    <span class="flex items-center gap-2">
+                                        <i class="fa-solid fa-trash-can text-rose-500 text-xs w-4"></i>
+                                        <span class="font-bold">Xóa phần tử</span>
+                                    </span>
+                                    <span class="text-[10px] text-rose-500/70 font-mono">Del</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Visual Property Inspector (Bảng Thuộc Tính Trực Quan 4 Phân Hệ) -->
+            <div id="csVisualInspector" class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden">
+                <!-- Inspector Header -->
+                <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center space-x-2 truncate">
+                        <span id="inspTagBadge" class="bg-indigo-950 text-indigo-300 border border-indigo-800 text-[11px] font-mono px-2 py-0.5 rounded font-bold">chưa chọn</span>
+                        <span id="inspIdBadge" class="text-slate-400 text-[10px] font-mono truncate">click layer để sửa</span>
+                    </div>
+                    <button type="button" onclick="toggleInspectorPanel()" class="text-slate-400 hover:text-white p-1" title="Đóng bảng thuộc tính">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Breadcrumb Hierarchy Path -->
+                <div id="inspBreadcrumb" class="px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-[10px] text-slate-400 font-mono flex items-center space-x-1 overflow-x-auto whitespace-nowrap">
+                    <span>body</span>
+                </div>
+
+                <!-- Inspector Tab Bar: Content | Classes | Styles | Layers -->
+                <div class="flex border-b border-slate-800 bg-slate-900 text-xs">
+                    <button type="button" id="btnInspTabContent" onclick="switchInspectorTab('content')" class="flex-1 py-2 font-bold text-center border-b-2 border-cyan-400 text-white transition flex items-center justify-center gap-1" title="Nội dung & Thuộc tính">
+                        <i class="fa-solid fa-pen-nib text-[10px]"></i>
+                        <span>Nội Dung</span>
+                    </button>
+                    <button type="button" id="btnInspTabClasses" onclick="switchInspectorTab('classes')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Class & Tailwind Utilities">
+                        <i class="fa-solid fa-tags text-[10px]"></i>
+                        <span>Class</span>
+                    </button>
+                    <button type="button" id="btnInspTabStyles" onclick="switchInspectorTab('styles')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Bố cục, Kích thước, Màu sắc">
+                        <i class="fa-solid fa-palette text-[10px]"></i>
+                        <span>Style</span>
+                    </button>
+                    <button type="button" id="btnInspTabLayers" onclick="switchInspectorTab('layers')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Cây cấu trúc DOM Layers">
+                        <i class="fa-solid fa-layer-group text-[10px]"></i>
+                        <span>Layer</span>
+                    </button>
+                </div>
+
+                <!-- Inspector Tab Contents Container -->
+                <div class="flex-1 overflow-y-auto p-3 space-y-4 inspector-scroll text-xs">
+                    <!-- SECTION 1: NỘI DUNG & THUỘC TÍNH (CONTENT & ATTRS) -->
+                    <div id="inspSectionContent" class="space-y-3.5">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
+                                <span>Nội Dung Văn Bản (Text)</span>
+                                <span class="text-[9px] text-cyan-400 font-mono">AST Splice</span>
+                            </label>
+                            <textarea id="inspTextContent" rows="3" oninput="onInspectorTextInput()" placeholder="Nhập nội dung văn bản..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+
+                        <!-- Specific Attributes -->
+                        <div id="inspAttrLinkGroup" class="hidden space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-link text-[9px]"></i> Thuộc tính Thẻ &lt;a&gt;
+                            </span>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn đích (href)</label>
+                                <input type="text" id="inspAttrHref" onchange="onInspectorAttrChange('href', this.value)" placeholder="https://... hoặc #lien-he" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Mở trang (target)</label>
+                                <select id="inspAttrTarget" onchange="onInspectorAttrChange('target', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <option value="">Mặc định (cùng tab)</option>
+                                    <option value="_blank">Tab mới (_blank)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="inspAttrImgGroup" class="hidden space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-image text-[9px]"></i> Thuộc tính Thẻ &lt;img&gt;
+                            </span>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn ảnh (src)</label>
+                                <input type="text" id="inspAttrSrc" onchange="onInspectorAttrChange('src', this.value)" placeholder="/assets/img/... hoặc URL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Mô tả thay thế (alt)</label>
+                                <input type="text" id="inspAttrAlt" onchange="onInspectorAttrChange('alt', this.value)" placeholder="Mô tả ảnh..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mã Định Danh Thẻ</span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">id</label>
+                                    <input type="text" id="inspAttrId" onchange="onInspectorAttrChange('id', this.value)" placeholder="my-id" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">title</label>
+                                    <input type="text" id="inspAttrTitle" onchange="onInspectorAttrChange('title', this.value)" placeholder="Tooltip text" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 2: CLASS & TAILWIND UTILITY PILLS -->
+                    <div id="inspSectionClasses" class="hidden space-y-3.5">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
+                                <span>Class Đang Hoạt Động</span>
+                                <span class="text-[9px] text-emerald-400 font-mono">Tailwind JIT CDN</span>
+                            </label>
+                            <!-- Active Class Pills Container -->
+                            <div id="inspActiveClasses" class="flex flex-wrap gap-1 bg-slate-950 p-2.5 rounded-xl border border-slate-800 min-h-[50px] max-h-36 overflow-y-auto inspector-scroll">
+                                <span class="text-[10px] text-slate-500 italic">Chưa có class</span>
+                            </div>
+                        </div>
+
+                        <!-- Add Class Input -->
+                        <div class="flex gap-1.5">
+                            <input type="text" id="inspAddClassInput" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomClassFromInput();}" placeholder="Nhập class Tailwind (ví dụ: bg-blue-600)..." class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            <button type="button" onclick="addCustomClassFromInput()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition shadow">Thêm</button>
+                        </div>
+
+                        <!-- Quick Utility Presets (Click là gán ngay) -->
+                        <div class="space-y-2 pt-1 border-t border-slate-800/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gợi ý Tailwind phổ biến (Click để gán):</span>
+
+                            <!-- Typography & Colors -->
+                            <div class="space-y-1">
+                                <span class="text-[9px] text-slate-500 font-semibold">Màu &amp; Cỡ Chữ:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    <button type="button" onclick="addQuickClass('text-white')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-white</button>
+                                    <button type="button" onclick="addQuickClass('text-cyan-400')" class="bg-slate-850 hover:bg-slate-750 text-cyan-400 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-cyan-400</button>
+                                    <button type="button" onclick="addQuickClass('text-amber-400')" class="bg-slate-850 hover:bg-slate-750 text-amber-400 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-amber-400</button>
+                                    <button type="button" onclick="addQuickClass('font-bold')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">font-bold</button>
+                                    <button type="button" onclick="addQuickClass('text-xl')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-xl</button>
+                                    <button type="button" onclick="addQuickClass('text-3xl')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-3xl</button>
+                                    <button type="button" onclick="addQuickClass('text-center')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">text-center</button>
+                                </div>
+                            </div>
+
+                            <!-- Layout & Spacing -->
+                            <div class="space-y-1">
+                                <span class="text-[9px] text-slate-500 font-semibold">Bố Cục &amp; Khoảng Cách:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    <button type="button" onclick="addQuickClass('flex')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">flex</button>
+                                    <button type="button" onclick="addQuickClass('items-center')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">items-center</button>
+                                    <button type="button" onclick="addQuickClass('justify-between')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">justify-between</button>
+                                    <button type="button" onclick="addQuickClass('p-4')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">p-4</button>
+                                    <button type="button" onclick="addQuickClass('p-6')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">p-6</button>
+                                    <button type="button" onclick="addQuickClass('gap-4')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">gap-4</button>
+                                    <button type="button" onclick="addQuickClass('mx-auto')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">mx-auto</button>
+                                </div>
+                            </div>
+
+                            <!-- Background & Rounded -->
+                            <div class="space-y-1">
+                                <span class="text-[9px] text-slate-500 font-semibold">Nền &amp; Bo Góc:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    <button type="button" onclick="addQuickClass('bg-slate-900')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">bg-slate-900</button>
+                                    <button type="button" onclick="addQuickClass('bg-cyan-600')" class="bg-slate-850 hover:bg-slate-750 text-cyan-400 text-[10px] px-2 py-0.5 rounded border border-slate-800">bg-cyan-600</button>
+                                    <button type="button" onclick="addQuickClass('rounded-xl')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">rounded-xl</button>
+                                    <button type="button" onclick="addQuickClass('rounded-2xl')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">rounded-2xl</button>
+                                    <button type="button" onclick="addQuickClass('shadow-2xl')" class="bg-slate-850 hover:bg-slate-750 text-slate-200 text-[10px] px-2 py-0.5 rounded border border-slate-800">shadow-2xl</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 3: BỐ CỤC & STYLE (VISUAL STYLES) -->
+                    <div id="inspSectionStyles" class="hidden space-y-3.5">
+                        <!-- 1. BỐ CỤC & FLEXBOX (LAYOUT) -->
+                        <div class="space-y-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-table-cells-large text-[9px]"></i> Bố Cục (Layout)
+                            </span>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Hiển thị (Display)</label>
+                                <select id="inspStyleDisplay" onchange="onInspectorStyleChange('display', this.value); toggleFlexGroup(this.value);" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <option value="">Mặc định (Inherit)</option>
+                                    <option value="block">Block (Khối đứng)</option>
+                                    <option value="flex">Flexbox (Hàng/Cột linh hoạt)</option>
+                                    <option value="grid">Grid (Lưới ô)</option>
+                                    <option value="inline-block">Inline-Block (Khối trên dòng)</option>
+                                    <option value="inline">Inline (Trên dòng)</option>
+                                    <option value="none">None (Ẩn đi)</option>
+                                </select>
+                            </div>
+                            <div id="inspFlexControls" class="space-y-2 pt-1.5 border-t border-slate-800/80">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Hướng Flex</label>
+                                        <select id="inspStyleFlexDirection" onchange="onInspectorStyleChange('flex-direction', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                            <option value="">Mặc định</option>
+                                            <option value="row">Hàng ngang (Row)</option>
+                                            <option value="column">Cột dọc (Column)</option>
+                                            <option value="row-reverse">Đảo ngược hàng</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Khoảng cách (Gap)</label>
+                                        <input type="text" id="inspStyleGap" onchange="onInspectorStyleChange('gap', this.value)" placeholder="8px / 1rem" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Căn ngang (Justify)</label>
+                                        <select id="inspStyleJustifyContent" onchange="onInspectorStyleChange('justify-content', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                            <option value="">Mặc định</option>
+                                            <option value="flex-start">Đầu (Start)</option>
+                                            <option value="center">Giữa (Center)</option>
+                                            <option value="flex-end">Cuối (End)</option>
+                                            <option value="space-between">Dãn 2 đầu (Between)</option>
+                                            <option value="space-around">Dãn đều (Around)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Căn dọc (Align)</label>
+                                        <select id="inspStyleAlignItems" onchange="onInspectorStyleChange('align-items', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                            <option value="">Mặc định</option>
+                                            <option value="stretch">Kéo dãn (Stretch)</option>
+                                            <option value="center">Giữa (Center)</option>
+                                            <option value="flex-start">Trên (Start)</option>
+                                            <option value="flex-end">Dưới (End)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. HỘP KHOẢNG CÁCH (BOX MODEL: MARGIN & PADDING) -->
+                        <div class="space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-vector-square text-[9px]"></i> Khoảng Cách (Box Model Spacing)
+                            </span>
+                            <div class="bg-slate-900/90 border border-amber-500/40 rounded-xl p-2 relative text-center text-[10px]">
+                                <span class="absolute top-1 left-2 text-[8px] font-mono text-amber-400 uppercase font-bold">Margin</span>
+                                <div class="flex justify-center mb-1">
+                                    <input type="text" id="inspStyleMarginTop" onchange="onInspectorStyleChange('margin-top', this.value)" placeholder="top" class="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center text-[10px] text-white font-mono focus:border-amber-400 focus:outline-none">
+                                </div>
+                                <div class="flex items-center justify-between gap-1 mb-1">
+                                    <input type="text" id="inspStyleMarginLeft" onchange="onInspectorStyleChange('margin-left', this.value)" placeholder="left" class="w-14 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-amber-400 focus:outline-none">
+                                    <div class="flex-1 bg-slate-950 border border-cyan-500/40 rounded-lg p-2 relative text-center">
+                                        <span class="absolute top-0.5 left-1.5 text-[8px] font-mono text-cyan-400 uppercase font-bold">Padding</span>
+                                        <div class="flex justify-center mb-1">
+                                            <input type="text" id="inspStylePaddingTop" onchange="onInspectorStyleChange('padding-top', this.value)" placeholder="top" class="w-14 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-cyan-400 focus:outline-none">
+                                        </div>
+                                        <div class="flex items-center justify-between gap-1 mb-1">
+                                            <input type="text" id="inspStylePaddingLeft" onchange="onInspectorStyleChange('padding-left', this.value)" placeholder="left" class="w-12 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-cyan-400 focus:outline-none">
+                                            <span class="text-[9px] text-slate-500 font-mono">CORE</span>
+                                            <input type="text" id="inspStylePaddingRight" onchange="onInspectorStyleChange('padding-right', this.value)" placeholder="right" class="w-12 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-cyan-400 focus:outline-none">
+                                        </div>
+                                        <div class="flex justify-center">
+                                            <input type="text" id="inspStylePaddingBottom" onchange="onInspectorStyleChange('padding-bottom', this.value)" placeholder="bottom" class="w-14 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-cyan-400 focus:outline-none">
+                                        </div>
+                                    </div>
+                                    <input type="text" id="inspStyleMarginRight" onchange="onInspectorStyleChange('margin-right', this.value)" placeholder="right" class="w-14 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-center text-[10px] text-white font-mono focus:border-amber-400 focus:outline-none">
+                                </div>
+                                <div class="flex justify-center">
+                                    <input type="text" id="inspStyleMarginBottom" onchange="onInspectorStyleChange('margin-bottom', this.value)" placeholder="bottom" class="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center text-[10px] text-white font-mono focus:border-amber-400 focus:outline-none">
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between text-[10px]">
+                                <span class="text-slate-400">Căn lề tự động:</span>
+                                <button type="button" onclick="applyCenterMargin()" class="bg-slate-850 hover:bg-slate-750 text-cyan-400 border border-slate-700 px-2 py-0.5 rounded font-mono text-[10px]">margin: 0 auto</button>
+                            </div>
+                        </div>
+
+                        <!-- 3. KÍCH THƯỚC & VỊ TRÍ (DIMENSIONS & POSITION) -->
+                        <div class="space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i> Kích Thước &amp; Vị Trí
+                            </span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div class="flex items-center justify-between mb-0.5">
+                                        <label class="text-[10px] text-slate-400">Rộng (width)</label>
+                                        <div class="flex gap-1 text-[9px]">
+                                            <button type="button" onclick="setDimensionPreset('width','auto')" class="text-cyan-400 hover:text-white">auto</button>
+                                            <button type="button" onclick="setDimensionPreset('width','100%')" class="text-cyan-400 hover:text-white">100%</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" id="inspStyleWidth" onchange="onInspectorStyleChange('width', this.value)" placeholder="auto / 300px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-0.5">
+                                        <label class="text-[10px] text-slate-400">Cao (height)</label>
+                                        <div class="flex gap-1 text-[9px]">
+                                            <button type="button" onclick="setDimensionPreset('height','auto')" class="text-cyan-400 hover:text-white">auto</button>
+                                            <button type="button" onclick="setDimensionPreset('height','100%')" class="text-cyan-400 hover:text-white">100%</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" id="inspStyleHeight" onchange="onInspectorStyleChange('height', this.value)" placeholder="auto / 200px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Rộng tối đa (max-w)</label>
+                                    <input type="text" id="inspStyleMaxWidth" onchange="onInspectorStyleChange('max-width', this.value)" placeholder="none / 1200px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Rộng tối thiểu (min-w)</label>
+                                    <input type="text" id="inspStyleMinWidth" onchange="onInspectorStyleChange('min-width', this.value)" placeholder="0px / 280px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                            <div class="pt-1.5 border-t border-slate-800/80">
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Định vị (Position)</label>
+                                <select id="inspStylePosition" onchange="onInspectorStyleChange('position', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <option value="">Mặc định (Static)</option>
+                                    <option value="relative">Tương đối (Relative)</option>
+                                    <option value="absolute">Tuyệt đối (Absolute)</option>
+                                    <option value="fixed">Cố định (Fixed)</option>
+                                    <option value="sticky">Bám dính (Sticky)</option>
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1.5 pt-1">
+                                <div>
+                                    <label class="block text-[9px] text-slate-500 mb-0.5">Top</label>
+                                    <input type="text" id="inspStyleTop" onchange="onInspectorStyleChange('top', this.value)" placeholder="auto" class="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] text-slate-500 mb-0.5">Left</label>
+                                    <input type="text" id="inspStyleLeft" onchange="onInspectorStyleChange('left', this.value)" placeholder="auto" class="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] text-slate-500 mb-0.5">Z-Index</label>
+                                    <input type="text" id="inspStyleZIndex" onchange="onInspectorStyleChange('z-index', this.value)" placeholder="auto / 10" class="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. CHỮ (TYPOGRAPHY) -->
+                        <div class="space-y-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-font text-[9px]"></i> Chữ (Typography)
+                            </span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Cỡ chữ (font-size)</label>
+                                    <input type="text" id="inspStyleFontSize" onchange="onInspectorStyleChange('font-size', this.value)" placeholder="16px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Màu chữ</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="color" id="inspStyleColorPicker" onchange="onInspectorColorPick('color', this.value)" class="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer">
+                                        <input type="text" id="inspStyleColor" onchange="onInspectorStyleChange('color', this.value)" placeholder="#ffffff" class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 flex-wrap">
+                                <span class="text-[9px] text-slate-500">Cỡ nhanh:</span>
+                                <button type="button" onclick="setQuickFontSize('14px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">14</button>
+                                <button type="button" onclick="setQuickFontSize('16px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">16</button>
+                                <button type="button" onclick="setQuickFontSize('18px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">18</button>
+                                <button type="button" onclick="setQuickFontSize('24px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">24</button>
+                                <button type="button" onclick="setQuickFontSize('32px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">32</button>
+                                <button type="button" onclick="setQuickFontSize('48px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">48</button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Độ đậm (weight)</label>
+                                    <select id="inspStyleFontWeight" onchange="onInspectorStyleChange('font-weight', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="">Mặc định</option>
+                                        <option value="300">Mỏng (300)</option>
+                                        <option value="400">Bình thường (400)</option>
+                                        <option value="500">Trung bình (500)</option>
+                                        <option value="600">Bán đậm (600)</option>
+                                        <option value="700">Đậm (700)</option>
+                                        <option value="800">Rất đậm (800)</option>
+                                        <option value="900">Đặc biệt đậm (900)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Căn lề (align)</label>
+                                    <select id="inspStyleTextAlign" onchange="onInspectorStyleChange('text-align', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="">Mặc định</option>
+                                        <option value="left">Căn trái</option>
+                                        <option value="center">Căn giữa</option>
+                                        <option value="right">Căn phải</option>
+                                        <option value="justify">Căn đều 2 bên</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Kiểu chữ (transform)</label>
+                                    <select id="inspStyleTextTransform" onchange="onInspectorStyleChange('text-transform', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="">Mặc định</option>
+                                        <option value="uppercase">IN HOA (UPPER)</option>
+                                        <option value="lowercase">in thường (lower)</option>
+                                        <option value="capitalize">In Hoa Chữ Đầu</option>
+                                        <option value="none">Bình thường (none)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Khoảng cách dòng</label>
+                                    <input type="text" id="inspStyleLineHeight" onchange="onInspectorStyleChange('line-height', this.value)" placeholder="1.5 / 24px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 5. NỀN & HIỆU ỨNG (BACKGROUND & EFFECTS) -->
+                        <div class="space-y-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-wand-magic-sparkles text-[9px]"></i> Nền &amp; Hiệu Ứng (Background &amp; Effects)
+                            </span>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Màu nền</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="color" id="inspStyleBgColorPicker" onchange="onInspectorColorPick('background-color', this.value)" class="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer">
+                                    <input type="text" id="inspStyleBgColor" onchange="onInspectorStyleChange('background-color', this.value)" placeholder="#0f172a / transparent" class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    <button type="button" onclick="onInspectorStyleChange('background-color', 'transparent'); document.getElementById('inspStyleBgColor').value='transparent';" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-2 py-1 rounded border border-slate-700">Trong suốt</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Hình nền (URL Image)</label>
+                                <input type="text" id="inspStyleBgImage" onchange="onInspectorStyleChange('background-image', this.value ? `url('${this.value}')` : '')" placeholder="https://... hoặc /assets/..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-0.5">
+                                    <label class="text-[10px] text-slate-400">Độ trong suốt (Opacity)</label>
+                                    <span id="inspStyleOpacityVal" class="text-[10px] text-cyan-400 font-mono">100%</span>
+                                </div>
+                                <input type="range" id="inspStyleOpacity" min="0" max="100" value="100" oninput="onInspectorOpacitySlide(this.value)" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-0.5">Đổ bóng (Box Shadow)</label>
+                                <select id="inspStyleBoxShadow" onchange="onInspectorStyleChange('box-shadow', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <option value="">Không có bóng</option>
+                                    <option value="0 1px 3px rgba(0,0,0,0.3)">Bóng nhẹ (Small)</option>
+                                    <option value="0 4px 6px -1px rgba(0,0,0,0.4)">Bóng vừa (Medium)</option>
+                                    <option value="0 10px 15px -3px rgba(0,0,0,0.5)">Bóng lớn (Large)</option>
+                                    <option value="0 25px 50px -12px rgba(0,0,0,0.6)">Bóng cực đại (2X-Large)</option>
+                                    <option value="0 0 25px rgba(6,182,212,0.5)">Glow Xanh Cyan</option>
+                                    <option value="0 0 25px rgba(99,102,241,0.5)">Glow Tím Indigo</option>
+                                    <option value="0 0 25px rgba(245,158,11,0.5)">Glow Vàng Amber</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 6. VIỀN & BO GÓC (BORDER & RADIUS) -->
+                        <div class="space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
+                                <i class="fa-solid fa-square-full text-[9px]"></i> Viền &amp; Bo Góc (Border &amp; Radius)
+                            </span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Bo góc (radius)</label>
+                                    <input type="text" id="inspStyleBorderRadius" onchange="onInspectorStyleChange('border-radius', this.value)" placeholder="8px / 16px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Độ dày viền</label>
+                                    <input type="text" id="inspStyleBorderWidth" onchange="onInspectorStyleChange('border-width', this.value)" placeholder="1px" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 flex-wrap">
+                                <span class="text-[9px] text-slate-500">Bo nhanh:</span>
+                                <button type="button" onclick="setQuickRadius('0px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">0</button>
+                                <button type="button" onclick="setQuickRadius('4px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">4px</button>
+                                <button type="button" onclick="setQuickRadius('8px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">8px</button>
+                                <button type="button" onclick="setQuickRadius('12px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">12px</button>
+                                <button type="button" onclick="setQuickRadius('16px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-slate-300 px-1.5 py-0.5 rounded">16px</button>
+                                <button type="button" onclick="setQuickRadius('9999px')" class="text-[9px] bg-slate-850 hover:bg-slate-750 text-cyan-400 px-1.5 py-0.5 rounded font-bold">Tròn</button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Kiểu viền (style)</label>
+                                    <select id="inspStyleBorderStyle" onchange="onInspectorStyleChange('border-style', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="">Mặc định</option>
+                                        <option value="solid">Nét liền (Solid)</option>
+                                        <option value="dashed">Nét đứt (Dashed)</option>
+                                        <option value="dotted">Chấm chấm (Dotted)</option>
+                                        <option value="none">Không có viền</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Màu viền</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="color" id="inspStyleBorderColorPicker" onchange="onInspectorColorPick('border-color', this.value)" class="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer">
+                                        <input type="text" id="inspStyleBorderColor" onchange="onInspectorStyleChange('border-color', this.value)" placeholder="#334155" class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 4: CÂY CẤU TRÚC LAYER (DOM TREE & STACKING CONTEXT) -->
+                    <div id="inspSectionLayers" class="hidden space-y-2.5">
+                        <!-- Header & Control Bar -->
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-layer-group text-amber-400"></i>
+                                <span>Cây Layer &amp; Stacking</span>
+                            </span>
+                            <div class="flex items-center gap-1">
+                                <button type="button" onclick="toggleAllLayers(true)" class="text-[9px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition" title="Mở rộng tất cả các lớp">
+                                    <i class="fa-solid fa-plus text-[8px]"></i> Mở
+                                </button>
+                                <button type="button" onclick="toggleAllLayers(false)" class="text-[9px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition" title="Thu gọn tất cả">
+                                    <i class="fa-solid fa-minus text-[8px]"></i> Gọn
+                                </button>
+                                <button type="button" onclick="renderAstLayerTree()" class="text-[9px] text-cyan-400 hover:text-cyan-300 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition" title="Làm mới danh sách layer">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Search Filter Input -->
+                        <div class="relative">
+                            <input type="text" id="layerSearchInput" oninput="onLayerSearchInput()" placeholder="Tìm tag, class, id, text..."
+                                class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500"></i>
+                            <button type="button" id="btnClearLayerSearch" onclick="clearLayerSearch()" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">
+                                <i class="fa-solid fa-circle-xmark"></i>
+                            </button>
+                        </div>
+
+                        <!-- Category Filter Chips -->
+                        <div class="flex items-center gap-1 overflow-x-auto whitespace-nowrap text-[9px] font-mono pb-1">
+                            <button type="button" onclick="setLayerFilter('all')" id="btnLayerFilter_all" class="px-2 py-0.5 rounded-full bg-cyan-600 text-white font-bold transition">Tất cả</button>
+                            <button type="button" onclick="setLayerFilter('text')" id="btnLayerFilter_text" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-cyan-300 transition flex items-center gap-1"><i class="fa-solid fa-font text-cyan-400"></i> Text</button>
+                            <button type="button" onclick="setLayerFilter('image')" id="btnLayerFilter_image" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-purple-300 transition flex items-center gap-1"><i class="fa-solid fa-image text-purple-400"></i> Ảnh</button>
+                            <button type="button" onclick="setLayerFilter('button')" id="btnLayerFilter_button" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-sky-300 transition flex items-center gap-1"><i class="fa-solid fa-arrow-pointer text-sky-400"></i> Nút</button>
+                            <button type="button" onclick="setLayerFilter('form')" id="btnLayerFilter_form" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-emerald-300 transition flex items-center gap-1"><i class="fa-solid fa-keyboard text-emerald-400"></i> Form</button>
+                            <button type="button" onclick="setLayerFilter('container')" id="btnLayerFilter_container" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:text-amber-300 transition flex items-center gap-1"><i class="fa-solid fa-layer-group text-amber-400"></i> Khung</button>
+                        </div>
+
+                        <!-- Stats Badge Bar -->
+                        <div class="flex items-center justify-between text-[10px] text-slate-500 font-mono px-1">
+                            <span id="layerTreeStats">0 layers</span>
+                            <span id="layerTreeHiddenStats" class="text-amber-500/80"></span>
+                        </div>
+
+                        <!-- Tree Container -->
+                        <div id="inspLayerTreeContainer" class="bg-slate-950 p-1.5 rounded-xl border border-slate-800 max-h-[460px] overflow-y-auto font-mono text-[11px] space-y-0.5 inspector-scroll">
+                            <!-- Render via JS Layer Tree -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ============================================================== -->
+    <!-- MODALS: SETTINGS & FILE MANAGEMENT                             -->
+    <!-- ============================================================== -->
+    <div id="landingSettingsModal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                        <i class="fa-solid fa-sliders"></i>
+                    </span>
+                    <div>
+                        <h3 class="font-bold text-base text-white">Cài Đặt Cấu Hình Landing Page</h3>
+                        <p class="text-xs text-slate-400">Điều khiển Domain động, Form action, Pixel QC, SEO Meta &amp; Thông tin sự kiện</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeLandingSettingsModal()" class="text-slate-400 hover:text-white p-2">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Tab Switcher inside Settings -->
+            <div class="px-6 pt-3 bg-slate-900 border-b border-slate-800 flex space-x-2 text-xs overflow-x-auto">
+                <button type="button" id="cfgTabBtnDomain" onclick="switchSettingsTab('domain')" class="px-3 py-2 font-bold rounded-t-lg transition border-b-2 border-cyan-400 text-white">
+                    1. Tên Miền &amp; Chung
+                </button>
+                <button type="button" id="cfgTabBtnForm" onclick="switchSettingsTab('form')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
+                    2. Form, Quét Input &amp; Hotline
+                </button>
+                <button type="button" id="cfgTabBtnPixel" onclick="switchSettingsTab('pixel')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition">
+                    3. Pixel &amp; Mã QC Các Bên
+                </button>
+                <button type="button" id="cfgTabBtnEvent" onclick="switchSettingsTab('event')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
+                    4. Giao Diện &amp; Nội Dung Hero
+                </button>
+                <button type="button" id="cfgTabBtnSEO" onclick="switchSettingsTab('seo')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
+                    5. SEO &amp; Mạng Xã Hội
+                </button>
+                <button type="button" id="cfgTabBtnSheets" onclick="switchSettingsTab('sheets')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition flex items-center gap-1.5 whitespace-nowrap">
+                    <span>6. Google Sheets</span>
+                    <span id="cfgSheetBadgeCount" class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
+                </button>
+            </div>
+
+            <!-- Modal Body (Tabs content) -->
+            <div class="p-6 overflow-y-auto space-y-5 flex-1">
+                <!-- TAB 1: TÊN MIỀN & CHUNG -->
+                <div id="cfgTabSecDomain" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Mã Định Danh (Page ID / Slug) *</label>
+                            <input type="text" id="cfgPageId" placeholder="ví dụ: mxv_080_online hoặc landing_vip" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            <span class="text-[10px] text-slate-500">URL truy cập công khai: <code>/p/&lt;page_id&gt;</code></span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Tên Gợi Nhớ Landing Page *</label>
+                            <input type="text" id="cfgPageName" placeholder="ví dụ: Hội Thảo Đầu Tư Hàng Hóa MXV 080" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-globe text-indigo-400"></i>
+                                <span>Gắn Tên Miền &amp; Triển Khai Lên Thư Mục (Multi-Domain Routing)</span>
+                            </span>
+                            <span class="text-[10px] text-indigo-400 font-mono">Edge Router 0-Downtime</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Chọn Tên Miền Đã Trỏ Về</label>
+                                <select id="cfgDomainSelect" onchange="onCfgDomainSelectChange()" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
+                                    <option value="">-- Chọn tên miền trong hệ thống --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Hoặc Nhập Tên Miền Tùy Chỉnh</label>
+                                <input type="text" id="cfgDomain" placeholder="ví dụ: hoithao.apex.vn (để trống nếu dùng chung domain)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Thư Mục / Tiền Tố Đường Dẫn (Path Prefix)</label>
+                                <input type="text" id="cfgPathPrefix" value="/" placeholder="ví dụ: / hoặc /khoa-hoc-dau-tu hoặc /ads" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                <span class="text-[10px] text-slate-500 mt-0.5 block">Nhập <code>/</code> cho trang chủ domain, hoặc <code>/khoa-hoc-dau-tu</code> cho thư mục con</span>
+                            </div>
+                            <div>
+                                <button type="button" onclick="deployFromLandingSettings()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
+                                    <i class="fa-solid fa-rocket"></i>
+                                    <span>🚀 Triển Khai Lên Tên Miền Này (Deploy)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Nguồn Lead Mặc Định (nguon)</label>
+                        <input type="text" id="cfgNguonDefault" placeholder="landing_chinh, google_ads, tiktok_ads..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                    </div>
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="text-xs font-bold text-slate-200">Trạng Thái Kích Hoạt (Feature Flag / Kill-Switch)</label>
+                                <p class="text-[11px] text-slate-400">Nếu tắt, khách truy cập sẽ được chuyển hướng hoặc nhận thông báo bảo trì</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="cfgIsActive" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">URL Chuyển Hướng Khi Tạm Dừng (Redirect URL)</label>
+                            <input type="text" id="cfgRedirectUrl" placeholder="ví dụ: /chucmung.html hoặc https://apex.vn/bao-tri" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: FORM, QUÉT INPUT & HOTLINE -->
+                <div id="cfgTabSecForm" class="hidden space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Hotline Tư Vấn Hiển Thị</label>
+                            <input type="text" id="cfgHotline" placeholder="ví dụ: 0984.386.538" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            <span class="text-[10px] text-slate-500">Tự động cập nhật toàn bộ link <code>tel:</code> trên landing</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Đường Link Zalo Tư Vấn / Nhóm</label>
+                            <input type="text" id="cfgZaloLink" placeholder="ví dụ: https://zalo.me/0984386538" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Trang Chuyển Hướng Sau Đăng Ký Thành Công</label>
+                        <input type="text" id="cfgSuccessRedirect" placeholder="chucmung.html" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                    </div>
+
+                    <!-- KHỐI QUÉT FORM TỰ ĐỘNG & ÁNH XẠ TRƯỜNG DỮ LIỆU -->
+                    <div class="bg-slate-950/80 border border-indigo-900/60 rounded-xl p-4 space-y-3.5 shadow-sm">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                            <div>
+                                <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                                    <span>Bộ Quét Form Tự Động &amp; Ánh Xạ Dữ Liệu (Form Auto-Scanner &amp; Mapping Engine)</span>
+                                </h4>
+                                <p class="text-[11px] text-slate-400 mt-0.5">
+                                    Tự động phân tích cây DOM của Landing Page (kể cả Ladipage, HTML xuất khẩu), phát hiện mọi thẻ Input và gợi ý ánh xạ trường vào CSDL Lead Server
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button type="button" onclick="scanLandingFormFields()" id="btnScanForm" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <span>Quét Form Từ HTML</span>
+                                </button>
+                                <button type="button" onclick="autoInjectTrackingScript()" id="btnInjectScript" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow" title="Tự động nhúng script tracker.js vào mã HTML">
+                                    <i class="fa-solid fa-code"></i>
+                                    <span>Tự Động Nhúng Mã Tracking &amp; API</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Trạng thái quét & selector Form -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <label class="block text-slate-300 font-bold mb-1">CSS Selector của Thẻ Form</label>
+                                <input type="text" id="cfgFormSelector" placeholder="ví dụ: form#leadForm hoặc form.ladi-form hoặc để trống cho tất cả" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                <span class="text-[10px] text-slate-500">Mặc định tự động chặn bắt mọi form trên trang nếu để trống</span>
+                            </div>
+                            <div>
+                                <label class="block text-slate-300 font-bold mb-1">Trạng Thái Quét Form</label>
+                                <div id="scanFormStatus" class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between">
+                                    <span>Chưa thực hiện quét</span>
+                                    <span class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Sẵn sàng</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bảng danh sách các trường input đã quét được -->
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-list-check text-cyan-400"></i>
+                                    <span>Danh Sách Trường Nhập Liệu Phát Hiện &amp; Ánh Xạ Server:</span>
+                                </span>
+                                <button type="button" onclick="addManualMappingRow()" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1">
+                                    <i class="fa-solid fa-plus text-[10px]"></i> Thêm trường thủ công
+                                </button>
+                            </div>
+
+                            <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/60 max-h-64 overflow-y-auto">
+                                <table class="w-full text-left text-xs whitespace-nowrap" id="tableScannedInputs">
+                                    <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800 sticky top-0">
+                                        <tr>
+                                            <th class="py-2 px-3">Thẻ / Kiểu</th>
+                                            <th class="py-2 px-3">Tên / ID Selector</th>
+                                            <th class="py-2 px-3">Placeholder / Nhãn</th>
+                                            <th class="py-2 px-3">Ánh Xạ Vào Trường Lead Server</th>
+                                            <th class="py-2 px-3 text-center">Bắt Buộc</th>
+                                            <th class="py-2 px-3 text-center">Xóa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbodyScannedInputs" class="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                        <tr>
+                                            <td colspan="6" class="py-6 text-center text-slate-500 font-sans">
+                                                Bấm nút <b class="text-indigo-400">"Quét Form Từ HTML"</b> bên trên để tự động nhận diện tất cả các trường nhập liệu trên landing page.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Tùy chọn bảo mật & tính năng client-side tự động -->
+                        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
+                            <span class="font-bold text-slate-300 block mb-1">Các cơ chế bảo mật &amp; tracking tự động tích hợp:</span>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="cfgOptValidatePhone" checked class="rounded text-emerald-500 focus:ring-0">
+                                    <span>Validate số điện thoại Việt Nam chuẩn 10 số (03x, 05x, 07x, 08x, 09x)</span>
+                                </label>
+                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="cfgOptHoneypot" checked class="rounded text-emerald-500 focus:ring-0">
+                                    <span>Tự động nhúng Honeypot trap &amp; Proof-of-Work chống Bot Spam</span>
+                                </label>
+                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="cfgOptUtmCapture" checked class="rounded text-emerald-500 focus:ring-0">
+                                    <span>Thu thập toàn bộ UTM Tags &amp; Fingerprint Visitor ID</span>
+                                </label>
+                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="cfgOptCookie180d" checked class="rounded text-emerald-500 focus:ring-0">
+                                    <span>Lưu Cookie 180 ngày &amp; tự chuyển hướng Chúc Mừng nếu đã gửi</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: PIXEL & MÃ QC CÁC BÊN -->
+                <div id="cfgTabSecPixel" class="hidden space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                                <i class="fa-brands fa-facebook text-blue-400"></i>
+                                <span>Facebook Pixel ID</span>
+                            </label>
+                            <input type="text" id="cfgFacebookPixel" placeholder="ví dụ: 1558828029597854" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                                <i class="fa-brands fa-google text-amber-400"></i>
+                                <span>Google Analytics / GTM ID</span>
+                            </label>
+                            <input type="text" id="cfgGoogleAnalytics" placeholder="ví dụ: G-XXXXX hoặc GTM-XXXX" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                                <i class="fa-brands fa-tiktok text-rose-400"></i>
+                                <span>TikTok Pixel ID</span>
+                            </label>
+                            <input type="text" id="cfgTikTokPixel" placeholder="ví dụ: CXXXXXXXXX" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Mã Chèn Vào Thẻ &lt;head&gt; (Custom Head Scripts)</label>
+                        <textarea id="cfgCustomHead" rows="3" placeholder="<!-- Dán mã Google Ads, Hotjar, Facebook Pixel phụ... tại đây -->" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500"></textarea>
+                        <span class="text-[10px] text-slate-500">Mã sẽ được tự động chèn trước thẻ đóng <code>&lt;/head&gt;</code></span>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Mã Chèn Trước &lt;/body&gt; (Custom Body Scripts)</label>
+                        <textarea id="cfgCustomBody" rows="3" placeholder="<!-- Dán mã Chat widget (Subiz, Tawk.to, Zalo chat)... tại đây -->" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500"></textarea>
+                    </div>
+                </div>
+
+                <!-- TAB 4: GIAO DIỆN & NỘI DUNG HERO (THƯƠNG HIỆU, TIÊU ĐỀ, 3 Ô THÔNG TIN) -->
+                <div id="cfgTabSecEvent" class="hidden space-y-5">
+                    <!-- 1. Nhận Diện Thương Hiệu -->
+                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-shield-halved text-rose-400"></i>
+                                <span>1. Nhận Diện Cơ Quan Quản Lý &amp; Logo Thương Hiệu</span>
+                            </span>
+                            <span class="text-[10px] text-slate-400">Góc trên cùng Landing Page</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Cơ Quan Cấp Phép 1 (Căn trái dòng 1)</label>
+                                <input type="text" id="cfgBrandHeader1" placeholder="Bộ Công Thương" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Cơ Quan / Sở Giao Dịch (Căn trái dòng 2)</label>
+                                <input type="text" id="cfgBrandHeader2" placeholder="Sở giao dịch hàng hóa Việt Nam MXV" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Đường Dẫn Logo Thương Hiệu (Đối diện góc phải)</label>
+                                <input type="text" id="cfgBrandLogo" placeholder="assets/img/logo_APEX_K_NEN.webp" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                <span class="text-[10px] text-slate-500 mt-0.5 block">Logo trong suốt (không nền) hiển thị nổi bật</span>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Dòng Chữ Phụ Dưới Logo Apex</label>
+                                <input type="text" id="cfgBrandMemberText" placeholder="Thành viên 080 MXV" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                <span class="text-[10px] text-slate-500 mt-0.5 block">Ví dụ: Thành viên 080 MXV</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Khối Tiêu Đề Hero (Căn giữa) -->
+                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-heading text-amber-400"></i>
+                                <span>2. Tiêu Đề Chính &amp; Huy Hiệu (Hero Titles)</span>
+                            </span>
+                            <span class="text-[10px] text-amber-400">Hiển thị nổi bật phía trên Form</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Huy Hiệu Cam Trên Cùng</label>
+                                <input type="text" id="cfgBadgeText" placeholder="LỚP HỌC ONLINE MIỄN PHÍ" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Tiêu Đề Dòng 1 (Xanh Navy)</label>
+                                <input type="text" id="cfgTitleLine1" placeholder="GIẢI MÃ ĐẦU TƯ" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Tiêu Đề Dòng 2 (Cam Đậm)</label>
+                                <input type="text" id="cfgTitleLine2" placeholder="HÀNG HÓA" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Mô Tả Phụ (Căn Giữa Dưới Tiêu Đề)</label>
+                            <input type="text" id="cfgSubtitle" placeholder="Hiểu thị trường – Nắm cơ hội – Quản trị rủi ro" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+
+                    <!-- 3. Ba Ô Thông Tin Dưới Form -->
+                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-table-columns text-cyan-400"></i>
+                                <span>3. Ba Khối Thông Tin Dưới Form Đăng Ký (Metric Boxes)</span>
+                            </span>
+                            <span class="text-[10px] text-cyan-400">3 cột song song</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <!-- Ô 1 -->
+                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[11px] font-bold text-amber-400 block flex items-center gap-1">
+                                    <i class="fa-regular fa-calendar-days"></i> Ô 1: Lịch Khóa Học
+                                </span>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu cam)</label>
+                                    <input type="text" id="cfgBox1Top" placeholder="03/11/2026" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu tối)</label>
+                                    <input type="text" id="cfgBox1Bottom" placeholder="20:00 Online" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+
+                            <!-- Ô 2 -->
+                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[11px] font-bold text-cyan-400 block flex items-center gap-1">
+                                    <i class="fa-solid fa-desktop"></i> Ô 2: Hình Thức
+                                </span>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu tối)</label>
+                                    <input type="text" id="cfgBox2Top" placeholder="Học Online" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu cam)</label>
+                                    <input type="text" id="cfgBox2Bottom" placeholder="Qua Zoom" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+
+                            <!-- Ô 3 -->
+                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[11px] font-bold text-emerald-400 block flex items-center gap-1">
+                                    <i class="fa-solid fa-user-group"></i> Ô 3: Thời Lượng
+                                </span>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu tối)</label>
+                                    <input type="text" id="cfgBox3Top" placeholder="2 Giờ" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu cam)</label>
+                                    <input type="text" id="cfgBox3Bottom" placeholder="Thực chiến" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Đếm Ngược & Giới Hạn -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Ngày Giờ Countdown (ISO)</label>
+                            <input type="text" id="cfgTargetDate" placeholder="2026-11-03T20:00:00" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Số Lượng Suất Đăng Ký</label>
+                            <input type="text" id="cfgEventQuota" placeholder="Chỉ dành cho 100 suất" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">Tên Khóa Học / Chủ Đề</label>
+                            <input type="text" id="cfgEventTitle" placeholder="Giải Mã Đầu Tư Hàng Hóa" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 5: SEO & MXH -->
+                <div id="cfgTabSecSEO" class="hidden space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Tiêu Đề Trang (Meta Title)</label>
+                        <input type="text" id="cfgMetaTitle" placeholder="Hội Thảo Giao Dịch Hàng Hóa - Apex Investing" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Mô Tả Tìm Kiếm (Meta Description)</label>
+                        <textarea id="cfgMetaDesc" rows="3" placeholder="Mô tả tóm tắt nội dung hội thảo cho Google Tìm Kiếm..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">Ảnh Đại Diện Chia Sẻ (OG:Image URL)</label>
+                        <input type="text" id="cfgOgImage" placeholder="https://domain.com/banner-share.jpg" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                    </div>
+                </div>
+
+                <!-- TAB 6: GOOGLE SHEETS (ĐỒNG BỘ RIÊNG TỪNG LANDING) -->
+                <div id="cfgTabSecSheets" class="hidden space-y-4">
+                    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-table-cells text-emerald-400"></i>
+                                    <span>Cấu Hình Bảng Tính Google Sheets Nhận Lead</span>
+                                </h4>
+                                <p class="text-[11px] text-slate-400 mt-0.5">
+                                    Chỉ định cụ thể 1 hoặc nhiều Google Sheet nhận Lead cho riêng Landing Page này. Tránh gửi tất cả lead lên chung 1 bảng tính.
+                                </p>
+                            </div>
+                            <button type="button" onclick="loadSheetsForLandingSettings()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                                <i class="fa-solid fa-arrows-rotate"></i> Làm mới
+                            </button>
+                        </div>
+
+                        <!-- Chế độ đồng bộ -->
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <span class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">Chế độ phân phối Lead vào Sheet:</span>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <label class="flex items-start gap-2 p-2.5 bg-slate-900 rounded-lg border border-slate-800 hover:border-emerald-500/50 cursor-pointer text-xs transition">
+                                    <input type="radio" name="cfgSheetSyncMode" id="cfgSyncModeSelected" value="selected" checked onchange="toggleSheetSelectionUI()" class="mt-0.5 text-emerald-500 focus:ring-0">
+                                    <div>
+                                        <span class="font-bold text-emerald-400 block">Theo Sheet Đã Chọn</span>
+                                        <span class="text-[10px] text-slate-400">Chỉ gửi riêng tới các sheet được tích bên dưới</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2 p-2.5 bg-slate-900 rounded-lg border border-slate-800 hover:border-cyan-500/50 cursor-pointer text-xs transition">
+                                    <input type="radio" name="cfgSheetSyncMode" id="cfgSyncModeAll" value="all" onchange="toggleSheetSelectionUI()" class="mt-0.5 text-cyan-500 focus:ring-0">
+                                    <div>
+                                        <span class="font-bold text-cyan-400 block">Tất Cả Sheet Hợp Lệ</span>
+                                        <span class="text-[10px] text-slate-400">Gửi đến mọi bảng tính đang bật trong CRM</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2 p-2.5 bg-slate-900 rounded-lg border border-slate-800 hover:border-rose-500/50 cursor-pointer text-xs transition">
+                                    <input type="radio" name="cfgSheetSyncMode" id="cfgSyncModeDisabled" value="disabled" onchange="toggleSheetSelectionUI()" class="mt-0.5 text-rose-500 focus:ring-0">
+                                    <div>
+                                        <span class="font-bold text-rose-400 block">Tắt Đồng Bộ Sheet</span>
+                                        <span class="text-[10px] text-slate-400">Không gửi lead landing này vào bất kỳ sheet nào</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Danh sách Google Sheets -->
+                        <div id="cfgSheetSelectionContainer" class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                                    <span>Tích chọn 1 hoặc nhiều bảng tính nhận Lead:</span>
+                                </span>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" onclick="selectAllSheets(true)" class="text-[11px] text-cyan-400 hover:underline">Chọn tất cả</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="selectAllSheets(false)" class="text-[11px] text-slate-400 hover:underline">Bỏ chọn</button>
+                                    <span id="cfgSelectedSheetsCounter" class="text-[11px] text-emerald-400 font-semibold font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800 ml-2">Đã chọn: 0 sheet</span>
+                                </div>
+                            </div>
+                            <div id="cfgSheetCheckboxesList" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                <!-- Render danh sách sheet động từ API -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 bg-slate-850 border-t border-slate-800 flex items-center justify-between">
+                <button type="button" onclick="closeLandingSettingsModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2 rounded-xl font-semibold transition">
+                    Đóng / Hủy
+                </button>
+                <button type="button" onclick="saveLandingSettings()" id="btnSaveLandingSettings" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs px-5 py-2 rounded-xl transition shadow flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Lưu Cài Đặt Landing Page</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="newFileModal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-file-circle-plus text-cyan-400"></i>
+                    <span>Thêm Tệp Mới Vào Landing</span>
+                </h4>
+                <button onclick="closeNewFileModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Thư Mục Chứa (Folder)</label>
+                <select id="newFileParent" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                    <option value="">(Thư mục gốc /)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Tên Tệp Tin (File Name / Path)</label>
+                <input type="text" id="newFileName" placeholder="ví dụ: custom.css hoặc main.js" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                <span class="text-[10px] text-slate-500 mt-1 block">Hỗ trợ các đuôi file: .html, .css, .js, .json</span>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeNewFileModal()" class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-700">Hủy</button>
+                <button onclick="createNewFileConfirm()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg transition">Tạo Tệp</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="newFolderModal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-folder-plus text-amber-400"></i>
+                    <span>Tạo Thư Mục Mới</span>
+                </h4>
+                <button onclick="closeNewFolderModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Thư Mục Cha (Parent Folder)</label>
+                <select id="newFolderParent" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                    <option value="">(Thư mục gốc /)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Tên Thư Mục (Folder Path)</label>
+                <input type="text" id="newFolderName" placeholder="ví dụ: assets hoặc components" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                <span class="text-[10px] text-slate-500 mt-1 block">Có thể nhập phân cấp dạng: <code>assets/css</code></span>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeNewFolderModal()" class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-700">Hủy</button>
+                <button onclick="createNewFolderConfirm()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg transition">Tạo Thư Mục</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="renameItemModal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i id="renameModalIcon" class="fa-solid fa-pen-to-square text-sky-400"></i>
+                    <span id="renameModalTitle">Đổi Tên</span>
+                </h4>
+                <button onclick="closeRenameModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Đường Dẫn Hiện Tại</label>
+                <input type="text" id="renameOldPath" readonly class="w-full bg-slate-950/60 border border-slate-800/60 rounded-xl px-3 py-2 text-xs text-slate-400 font-mono cursor-not-allowed">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Đường Dẫn Mới (New Path)</label>
+                <input type="text" id="renameNewPath" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                <span id="renameHint" class="text-[10px] text-slate-500 mt-1 block">Toàn bộ tệp và thư mục con sẽ được tự động cập nhật</span>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeRenameModal()" class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-700">Hủy</button>
+                <button onclick="renameItemConfirm()" class="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg transition">Đổi Tên</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Toast Notification Container -->
+    <div id="toastNotification" class="fixed bottom-6 right-6 z-[100] hidden flex items-center space-x-3 px-5 py-3.5 bg-slate-900/95 border border-emerald-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+        <span id="toastMessage"></span>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- APEX STUDIO SCRIPTS                                            -->
+    <!-- ============================================================== -->
+    <script src="config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/domains.js"></script>
+    <script src="js/landings.js"></script>
+    <script src="js/studio/ast-mapper.js"></script>
+    <script src="js/studio/history.js"></script>
+    <script src="js/studio/gizmo.js"></script>
+    <script src="js/studio/inspector.js"></script>
+    <script src="js/studio/form-scanner.js"></script>
+    <script src="js/studio/context-menu.js"></script>
+    <script src="js/studio/layers.js"></script>
+    <script src="js/studio/file-manager.js"></script>
+
+    <!-- Studio Standalone Lifecycle Runner -->
+    <script>
+        // Global Toast Notification Helper for Studio
+        function showToastNotification(message, type = 'success') {
+            let toast = document.getElementById('toastNotification');
+            if (!toast) return;
+            const msgEl = document.getElementById('toastMessage');
+            const iconEl = document.getElementById('toastIcon');
+            if (msgEl) msgEl.innerText = message;
+            if (iconEl) {
+                if (type === 'error') {
+                    iconEl.className = 'fa-solid fa-triangle-exclamation text-rose-400 text-lg';
+                    toast.className = 'fixed bottom-6 right-6 z-[100] flex items-center space-x-3 px-5 py-3.5 bg-rose-950/95 border border-rose-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300';
+                } else {
+                    iconEl.className = 'fa-solid fa-circle-check text-emerald-400 text-lg';
+                    toast.className = 'fixed bottom-6 right-6 z-[100] flex items-center space-x-3 px-5 py-3.5 bg-slate-900/95 border border-emerald-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300';
+                }
+            }
+            toast.classList.remove('hidden');
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3200);
+        }
+
+        // Standalone Close handler: returns to CRM
+        const origCloseCodeStudio = window.closeCodeStudio;
+        window.closeCodeStudio = function() {
+            if (typeof studioEditorDirty !== 'undefined' && studioEditorDirty) {
+                if (!confirm('Bạn có thay đổi chưa lưu mã nguồn. Bạn có chắc chắn muốn rời khỏi Studio không?')) return;
+            }
+            window.location.href = '/ads';
+        };
+
+        // Bootstrap on DOM ready
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 1. Authenticate session
+                if (typeof checkAdminAuth === 'function') {
+                    const authed = await checkAdminAuth();
+                    if (!authed) {
+                        console.warn('[Apex Studio] Session not authenticated, redirecting to login...');
+                        return;
+                    }
+                }
+
+                // 2. Read query params
+                const params = new URLSearchParams(window.location.search);
+                const pageId = params.get('page_id') || 'mxv_080_online';
+                const domain = params.get('domain') || '';
+
+                console.log(`[Apex Studio] Workspace launched for page_id: "${pageId}", domain: "${domain}"`);
+
+                // 3. Open Studio Workspace
+                if (typeof openCodeStudio === 'function') {
+                    await openCodeStudio(domain, pageId);
+                } else {
+                    console.error('[Apex Studio] openCodeStudio is not defined.');
+                }
+            } catch (e) {
+                console.error('[Apex Studio] Init failed:', e);
+            }
+        });
+    </script>
+</body>
+</html>

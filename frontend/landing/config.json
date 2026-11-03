@@ -1,0 +1,18 @@
+{
+  "landing_id": "mxv_080_online",
+  "nguon": "landing_chinh",
+  "thoi_gian_chia_se": {
+    "target_date": "2026-11-03T20:00:00",
+    "ngay": "03/11/2026",
+    "gio": "20:00",
+    "thoi_luong": "2 giờ",
+    "hien_thi": "20:00 - Thứ Ba, ngày 03/11/2026",
+    "hinh_thuc": "Học Online qua Zoom"
+  },
+  "khoa_hoc": {
+    "ten": "Giải Mã Đầu Tư Hàng Hóa",
+    "suat_hoc": "Chỉ dành cho 100 suất",
+    "da_dang_ky": "Đã có 79 suất đăng ký"
+  },
+  "backend_url": "/api/leads"
+}

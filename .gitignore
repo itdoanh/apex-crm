@@ -1,0 +1,52 @@
+# Compiled Binaries & Packages
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+apex-server
+apex-backend
+apex-test-build
+backend/apex-server
+backend/apex-server-linux
+backend/apex-backend.exe
+backend/apex-test-build.exe
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*service-account*.json
+rinva-*.json
+service-account.json
+
+# Database & Persistent storage
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python test artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+backend/logs/

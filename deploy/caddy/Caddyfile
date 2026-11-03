@@ -1,0 +1,45 @@
+# ==============================================================
+# CADDY REVERSE PROXY VỚI ON-DEMAND TLS CHO APEX FINTECH
+# Tự động cấp và gia hạn SSL (Let's Encrypt / ZeroSSL) miễn phí
+# cho MỌI TÊN MIỀN trỏ về IP / NameServer
+# ==============================================================
+
+{
+    # Cấu hình On-Demand TLS
+    on_demand_tls {
+        # Endpoint kiểm tra domain: chỉ cấp SSL nếu domain đã được thêm vào CRM
+        # Điều này bảo vệ máy chủ 100% chống lại các cuộc tấn công spam domain làm cạn rate limit
+        ask http://127.0.0.1:8080/api/internal/check-domain
+        interval 2m
+        burst 5
+    }
+
+    # Email nhận thông báo chứng chỉ (thay bằng email của bạn)
+    email admin@hanghoaphaisinh.net
+}
+
+# 1. Tên miền Admin CRM chính
+crm.hanghoaphaisinh.net {
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+    }
+}
+
+# 2. Toàn bộ tên miền Landing Page khác trỏ về IP/NS (On-Demand TLS tự động)
+# Bất kỳ domain nào (dautuhanghoa.vn, sub.hanghoaphaisinh.net, domain-khach.com,...)
+# trỏ về IP/NS sẽ được cấp SSL HTTPS ngay trong lần truy cập đầu tiên!
+:443 {
+    tls {
+        on_demand
+    }
+
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+    }
+}

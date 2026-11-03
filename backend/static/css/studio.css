@@ -1,0 +1,48 @@
+/* ============================================================== */
+/* APEX VISUAL WEB BUILDER - STUDIO STYLESHEET                    */
+/* (GIZMO OVERLAY, 8 RESIZE HANDLES, INSPECTOR SCROLLBAR)         */
+/* ============================================================== */
+
+.cs-gizmo-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #ffffff;
+    border: 2px solid #6366f1;
+    border-radius: 2px;
+    pointer-events: auto !important;
+    z-index: 50;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s ease;
+    touch-action: none;
+    user-select: none;
+}
+.cs-gizmo-handle:hover {
+    transform: scale(1.3);
+    background-color: #818cf8;
+}
+.cs-gizmo-handle:active {
+    transform: scale(1.4);
+    background-color: #4f46e5;
+    border-color: #ffffff;
+}
+.cs-handle-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.cs-handle-n  { top: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.cs-handle-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.cs-handle-e  { top: calc(50% - 5px); right: -5px; cursor: ew-resize; }
+.cs-handle-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.cs-handle-s  { bottom: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.cs-handle-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.cs-handle-w  { top: calc(50% - 5px); left: -5px; cursor: ew-resize; }
+
+/* Custom Scrollbar for Inspector */
+.inspector-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+.inspector-scroll::-webkit-scrollbar-track {
+    background: #0b0f19;
+}
+.inspector-scroll::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}

@@ -1,0 +1,20 @@
+/* ============================================================== */
+/* APEX ADMIN - LAYOUT STYLESHEET (NAVIGATION, TABS, DRAWERS)     */
+/* ============================================================== */
+
+.tab-btn.active {
+    background-color: #ea580c;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.4);
+}
+
+/* Customer 360 Drawer Slide Transition */
+#leadDrawer {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#leadDrawer.translate-x-full {
+    transform: translateX(100%);
+}
+#leadDrawer.translate-x-0 {
+    transform: translateX(0);
+}

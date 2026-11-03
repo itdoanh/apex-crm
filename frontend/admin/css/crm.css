@@ -1,0 +1,22 @@
+/* ============================================================== */
+/* APEX ADMIN - CRM STYLESHEET (KANBAN, VIEWS, PRESET BUTTONS)    */
+/* ============================================================== */
+
+.view-btn.active {
+    background-color: #334155;
+    color: #ffffff;
+    border-color: #64748b;
+}
+
+.time-preset-btn.active {
+    background-color: #ea580c;
+    color: #ffffff;
+    border-color: #ea580c;
+    font-weight: 700;
+}
+
+/* Kanban Column Smooth Scrolling */
+.kanban-col-scroll {
+    max-height: calc(100vh - 360px);
+    overflow-y: auto;
+}

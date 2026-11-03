@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng Ký Thành Công - Tham Gia Nhóm Zalo Lớp Học (MXV 080)</title>
+
+    <!-- Favicon Icon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23EF5222'/><path d='M50 20 L75 32 V52 C75 68 50 80 50 80 C50 80 25 68 25 52 V32 Z' fill='%23ffffff'/><path d='M44 48 L48 52 L57 42' stroke='%23EF5222' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
+
+    <!-- Anti-LadiPage Loading & Logo Script -->
+    <script>
+        (function() {
+            var killSelectors = [
+                '.ladi-loading', '.ladipage-loading', '.ladipage_logo',
+                '.ladipage-watermark', '.ladi-watermark', '#ladipage-logo',
+                '[class*="ladipage-watermark"]', '[class*="ladi-watermark"]',
+                '[id*="ladipage-watermark"]', '[id*="ladi-watermark"]',
+                'a[href*="ladipage.vn"]', 'a[href*="ladipage.me"]'
+            ];
+            function killLadiElements() {
+                killSelectors.forEach(function(s) {
+                    var list = document.querySelectorAll(s);
+                    for (var i = 0; i < list.length; i++) {
+                        list[i].style.setProperty('display', 'none', 'important');
+                        if (list[i].parentNode) list[i].parentNode.removeChild(list[i]);
+                    }
+                });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', killLadiElements);
+            } else {
+                killLadiElements();
+            }
+            var obs = new MutationObserver(function(muts) {
+                for (var i = 0; i < muts.length; i++) {
+                    var m = muts[i];
+                    for (var j = 0; j < m.addedNodes.length; j++) {
+                        var node = m.addedNodes[j];
+                        if (node.nodeType === 1) {
+                            var cls = node.className || '';
+                            var id = node.id || '';
+                            if (typeof cls === 'string' && (cls.indexOf('ladi-loading') !== -1 || cls.indexOf('watermark') !== -1 || cls.indexOf('ladipage_logo') !== -1)) {
+                                node.style.setProperty('display', 'none', 'important');
+                                if (node.parentNode) node.parentNode.removeChild(node);
+                            } else if (typeof id === 'string' && (id.indexOf('ladi-loading') !== -1 || id.indexOf('watermark') !== -1 || id.indexOf('ladipage-logo') !== -1)) {
+                                node.style.setProperty('display', 'none', 'important');
+                                if (node.parentNode) node.parentNode.removeChild(node);
+                            }
+                        }
+                    }
+                }
+            });
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
+
+    <!-- Apex Full Browser Tracker & Backend Transmitter -->
+    <script src="tracker.js"></script>
+    <script>
+        // Đảm bảo lưu Cookie 180 ngày cho khách đã tới trang chúc mừng (không cần đăng ký lại)
+        if (window.ApexTracker && typeof window.ApexTracker.setRegistered === 'function') {
+            window.ApexTracker.setRegistered();
+        } else {
+            document.cookie = 'apex_lead_registered=1; max-age=15552000; path=/; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+            try {
+                localStorage.setItem('apex_lead_registered', '1');
+                localStorage.setItem('apex_registered_at', Date.now().toString());
+            } catch (_) {}
+        }
+    </script>
+
+    <!-- Google Fonts: Montserrat & Be Vietnam Pro -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&amp;family=Montserrat:wght@700;800;900&amp;display=swap"
+        rel="stylesheet">
+
+    <!-- Font Awesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- QRCode.js library for high-speed, sharp client-side QR generation -->
+
+
+
+
+    <!-- Tailwind CSS CDN -->
+
+
+
+
+    <!--LDP_HEAD_CODE:start-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Be Vietnam Pro', 'sans-serif'],
+                        heading: ['Montserrat', 'Be Vietnam Pro', 'sans-serif'],
+                    },
+                    colors: {
+                        brandNavy: {
+                            900: '#061120',
+                            800: '#0A1C33',
+                            700: '#0E2342',
+                            cardHeader: '#08172B'
+                        },
+                        brandOrange: {
+                            500: '#FF5B00',
+                            600: '#EF5222',
+                            700: '#D94315',
+                            light: '#FFF4EB',
+                            border: '#FED7AA'
+                        },
+                        zaloBlue: {
+                            500: '#0068FF',
+                            600: '#0052cc',
+                            light: '#EBF4FF'
+                        }
+                    },
+                    boxShadow: {
+                        'pill': '0 4px 15px rgba(0, 0, 0, 0.04)',
+                        'card': '0 25px 50px -12px rgba(10, 28, 51, 0.15)',
+                        'btn': '0 10px 25px -3px rgba(239, 82, 34, 0.45)',
+                        'zalo': '0 12px 30px -4px rgba(0, 104, 255, 0.4)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ẩn triệt để logo, watermark và màn hình loading của LadiPage */
+        .ladi-loading,
+        .ladipage-loading,
+        [class*="ladi-loading"],
+        #ladi-loading,
+        .ladipage_logo,
+        .ladipage-watermark,
+        .ladi-watermark,
+        #ladipage-logo,
+        [class*="ladipage-watermark"],
+        [class*="ladi-watermark"],
+        [id*="ladipage-watermark"],
+        [id*="ladi-watermark"],
+        a[href*="ladipage.vn"],
+        a[href*="ladipage.me"],
+        .ladipage-message-logo,
+        .ladipage-transition {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+            max-height: 0 !important;
+            max-width: 0 !important;
+            overflow: hidden !important;
+        }
+
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAF5EF;
+            color: #1E293B;
+            min-height: 100vh;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Gov badge đồng bộ chuẩn từ Landing Page */
+        .gov-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px 6px 6px;
+            background: linear-gradient(135deg, #ffffff 0%, #fff7ed 100%);
+            border: 1.5px solid transparent;
+            background-clip: padding-box;
+            border-radius: 9999px;
+            box-shadow:
+                0 4px 14px -4px rgba(239, 82, 34, 0.22),
+                0 1px 0 rgba(255, 255, 255, 0.8) inset;
+            position: relative;
+        }
+
+        .gov-badge::before {
+            content: '';
+            position: absolute;
+            inset: -1.5px;
+            border-radius: 9999px;
+            background: linear-gradient(135deg, rgba(239, 82, 34, 0.55) 0%, rgba(251, 191, 36, 0.55) 100%);
+            z-index: -1;
+        }
+
+        .gov-badge .gov-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 9999px;
+            background: radial-gradient(circle at 30% 30%, #ef4444 0%, #b91c1c 70%, #7f1d1d 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(185, 28, 28, 0.35), 0 0 0 3px rgba(239, 68, 68, 0.10);
+            flex-shrink: 0;
+        }
+
+        .gov-badge .gov-text-1 {
+            font-size: 11px;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: 0.01em;
+            line-height: 1.1;
+        }
+
+        .gov-badge .gov-text-2 {
+            font-size: 10px;
+            font-weight: 800;
+            color: #EF5222;
+            letter-spacing: 0.01em;
+            line-height: 1.1;
+            margin-top: 2px;
+        }
+
+        /* Pulse glow cho Zalo CTA button */
+        @keyframes pulseZalo {
+
+            0%,
+            100% {
+                box-shadow: 0 10px 25px -3px rgba(0, 104, 255, 0.45);
+                transform: scale(1);
+            }
+
+            50% {
+                box-shadow: 0 16px 35px 2px rgba(0, 104, 255, 0.65);
+                transform: scale(1.015);
+            }
+        }
+
+        .cta-zalo-animated {
+            animation: pulseZalo 2.2s infinite ease-in-out;
+        }
+
+        /* Radar ripple effect for success checkmark */
+        @keyframes ripple {
+            0% {
+                transform: scale(0.95);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1.4);
+                opacity: 0;
+            }
+        }
+
+        .ripple-ring {
+            animation: ripple 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+        }
+
+        /* QR Frame Glow */
+        .qr-card-glow {
+            position: relative;
+        }
+
+        .qr-card-glow::before {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 24px;
+            background: linear-gradient(135deg, #0068FF, #00C6FF, #FF5B00);
+            z-index: -1;
+            opacity: 0.4;
+            filter: blur(8px);
+        }
+
+        /* Ensure QR code fits responsive container */
+        #qrcode-canvas img,
+        #qrcode-canvas canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+        }
+    </style>
+    <!-- Meta Pixel Code -->
+    <script>
+        !function (f, b, e, v, n, t, s) {
+            if (f.fbq) return; n = f.fbq = function () {
+                n.callMethod ?
+                    n.callMethod.apply(n, arguments) : n.queue.push(arguments)
+            };
+            if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0';
+            n.queue = []; t = b.createElement(e); t.async = !0;
+            t.src = v; s = b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t, s)
+        }(window, document, 'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '1558828029597854');
+        fbq('track', 'PageView');
+    </script>
+    <script
+        data-ldp-identity="">window.LadiPageScript = window.LadiPageScript || {}; window.LadiPageScript.runtime = Object.assign({}, window.LadiPageScript.runtime || {}, { "ladipage_id": "6adc99f23115ac001247de00", "store_id": "6aabc31504590c0012f5b5fa", "time_zone": 7, "publish_platform": "LADIPAGE" });</script>
+    <!--LDP_HEAD_CODE:end-->
+    <script
+        data-ldp-identity>window.LadiPageScript = window.LadiPageScript || {}; window.LadiPageScript.runtime = Object.assign({}, window.LadiPageScript.runtime || {}, { "ladipage_id": "6adc99f23115ac001247de00", "store_id": "6aabc31504590c0012f5b5fa", "time_zone": 7, "publish_platform": "LADIPAGE" });</script>
+</head>
+
+<body class="antialiased py-6 px-3 sm:px-4 lg:py-10">
+
+    <!-- Header: Bộ Công Thương · MXV Thành Viên 080 -->
+    <header class="flex justify-center mb-5 sm:mb-6">
+        <div class="gov-badge">
+            <div class="gov-icon">
+                <i class="fa-solid fa-shield-halved text-[12px]"></i>
+            </div>
+            <div class="text-left leading-none">
+                <div class="gov-text-1">Bộ Công Thương · MXV</div>
+                <div class="gov-text-2">Thành viên Kinh doanh Số 080</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container: Mobile: max-w-[480px], PC: max-w-[960px] -->
+    <main class="max-w-[480px] lg:max-w-[920px] mx-auto">
+
+        <!-- Top Success Celebration Card -->
+        <div
+            class="bg-white rounded-[26px] shadow-card border border-orange-100/80 p-5 sm:p-7 text-center relative overflow-hidden mb-5">
+
+            <!-- Background subtle pattern/glow -->
+            <div
+                class="absolute -top-16 -right-16 w-48 h-48 bg-orange-100/60 rounded-full blur-2xl pointer-events-none">
+            </div>
+            <div
+                class="absolute -bottom-16 -left-16 w-48 h-48 bg-blue-100/40 rounded-full blur-2xl pointer-events-none">
+            </div>
+
+            <!-- Animated Success Icon with double ring -->
+            <div class="relative w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 flex items-center justify-center">
+                <div class="absolute inset-0 rounded-full bg-emerald-400/20 ripple-ring"></div>
+                <div
+                    class="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-md relative z-10">
+                    <i class="fa-solid fa-check text-2xl sm:text-3xl"></i>
+                </div>
+            </div>
+
+            <!-- Success Heading -->
+            <div class="inline-block mb-1.5">
+                <span
+                    class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] sm:text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider inline-flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-circle-check text-emerald-500 text-xs"></i>
+                    ĐÃ TIẾP NHẬN ĐĂNG KÝ
+                </span>
+            </div>
+
+            <h1
+                class="text-2xl sm:text-3xl lg:text-4xl font-heading font-black text-brandNavy-800 tracking-tight uppercase leading-tight mb-2">
+                CHÚC MỪNG BẠN ĐÃ ĐĂNG KÝ THÀNH CÔNG!
+            </h1>
+
+            <p class="text-xs sm:text-sm text-slate-600 max-w-xl mx-auto leading-relaxed">
+                Thông tin của bạn đã được ghi nhận vào hệ thống lớp học trực tuyến <br class="hidden sm:inline">
+                <strong class="text-brandNavy-800">"Giải Mã Đầu Tư Hàng Hóa"</strong> cùng
+                <strong class="text-brandOrange-600">Chuyên gia Nguyễn Tuấn Anh</strong>.
+            </p>
+
+            <!-- Alert Highlight: BƯỚC BẮT BUỘC -->
+            <div
+                class="mt-4 p-3.5 bg-gradient-to-r from-red-50 via-orange-50 to-amber-50 border border-brandOrange-border rounded-2xl text-left sm:text-center flex items-center sm:justify-center gap-3 shadow-sm">
+                <div
+                    class="w-9 h-9 rounded-full bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-bell text-sm fa-shake"></i>
+                </div>
+                <div class="text-xs sm:text-sm text-slate-800 leading-snug">
+                    <span class="font-extrabold text-red-600 uppercase">Lưu ý quan trọng:</span>
+                    Link Zoom, ID &amp; Mật khẩu phòng học được bảo mật và <strong>chỉ gửi trực tiếp trên Zalo</strong>.
+                    Vui lòng tham gia nhóm ngay bên dưới!
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 2-COLUMN SECTION ON PC / 1-COLUMN ON MOBILE: QR + ZALO CTA & INSTRUCTIONS -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+
+            <!-- LEFT/MAIN COLUMN (Col 7): QR CODE & DIRECT JOIN CTA -->
+            <div
+                class="lg:col-span-7 bg-white rounded-[26px] shadow-card border border-blue-100 p-5 sm:p-7 flex flex-col justify-between text-center relative">
+
+                <!-- Badge Zalo Official -->
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                    <div class="flex items-center gap-2">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/9/91/Icon_of_Zalo.svg" alt="Zalo Icon"
+                            class="w-7 h-7 sm:w-8 sm:h-8 object-contain" onerror="this.style.display='none'">
+                        <div class="text-left">
+                            <span class="text-xs sm:text-sm font-bold text-slate-900 block leading-tight">Nhóm Zalo Lớp
+                                Học Chính Thức</span>
+                            <span class="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                                Đang hoạt động · Miễn phí
+                            </span>
+                        </div>
+                    </div>
+                    <span
+                        class="bg-blue-50 text-zaloBlue-600 text-[10px] sm:text-[11px] font-extrabold px-2.5 py-1 rounded-full uppercase border border-blue-100">
+                        BƯỚC 1/1
+                    </span>
+                </div>
+
+                <!-- QR CODE DISPLAY CARD -->
+                <div class="my-auto py-2">
+                    <div
+                        class="inline-block p-4 sm:p-5 bg-white rounded-2xl border-2 border-dashed border-blue-200 shadow-md qr-card-glow max-w-[260px] sm:max-w-[280px] mx-auto">
+
+                        <!-- QRCode Container with Canvas & Fallback Img -->
+                        <div id="qrcode-canvas"
+                            class="flex justify-center items-center w-[200px] h-[200px] sm:w-[220px] sm:h-[220px] mx-auto bg-white"
+                            title="https://zalo.me/g/errwypptzaphpjilbdpo"></div>
+
+                        <!-- Scan instruction caption -->
+                        <div
+                            class="mt-3 text-[11px] sm:text-xs text-slate-500 font-medium flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-qrcode text-zaloBlue-500"></i>
+                            Dùng app Zalo quét mã để vào nhóm
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] sm:text-xs text-slate-500 mt-3 font-medium">
+                        (Dành cho người đang dùng máy tính: mở Zalo trên điện thoại rồi quét mã phía trên)
+                    </p>
+                </div>
+
+                <!-- BIG CTA BUTTON: CLICK TO JOIN ZALO -->
+                <div class="mt-5 space-y-3">
+                    <a href="https://zalo.me/g/errwypptzaphpjilbdpo" target="_blank" rel="noopener noreferrer"
+                        class="cta-zalo-animated w-full bg-gradient-to-r from-[#0068FF] via-[#0052cc] to-[#0040a8] hover:from-[#0052cc] hover:to-[#00368a] text-white font-heading font-black text-sm sm:text-base py-3.5 px-5 rounded-full flex items-center justify-between transition-all duration-300 active:scale-[0.98] shadow-zalo group">
+                        <div class="flex items-center gap-2.5">
+                            <div
+                                class="w-7 h-7 rounded-full bg-white text-zaloBlue-500 flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-users text-xs"></i>
+                            </div>
+                            <span class="tracking-wide uppercase text-left leading-tight">
+                                THAM GIA NHÓM ZALO NGAY
+                            </span>
+                        </div>
+                        <div
+                            class="w-7 h-7 rounded-full bg-white/20 group-hover:bg-white text-white group-hover:text-zaloBlue-600 flex items-center justify-center transition-all">
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </div>
+                    </a>
+
+                    <!-- Copy Link Action -->
+                    <!-- <div class="flex items-center justify-center gap-2 pt-1">
+                        <span class="text-xs text-slate-500">Hoặc sao chép link nhóm:</span>
+                        <button type="button" onclick="copyZaloLink()"
+                            class="inline-flex items-center gap-1.5 text-xs font-bold text-zaloBlue-600 hover:text-zaloBlue-500 hover:underline bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 transition-all active:scale-95">
+                            <i class="fa-regular fa-copy"></i>
+                            <span id="copyBtnText">Copy link</span>
+                        </button>
+                    </div> -->
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN (Col 5): 3 STEPS TO PREPARE & CLASS DETAILS -->
+
+
+        </div>
+
+        <!-- FOOTER & SUPPORT -->
+        <footer class="mt-8 text-center text-xs text-slate-500 space-y-2">
+            <div class="flex items-center justify-center space-x-1.5 text-slate-700 text-[11px]">
+                <i class="fa-solid fa-lock text-emerald-600"></i>
+                <span>Cam kết bảo mật thông tin theo quy định pháp luật · MXV Thành Viên Kinh Doanh 080</span>
+            </div>
+            <p class="text-[11px] text-slate-400">
+                Nếu gặp bất kỳ khó khăn nào khi tham gia nhóm Zalo, vui lòng liên hệ trực tiếp hỗ trợ kỹ thuật qua Zalo
+                nhóm.
+            </p>
+        </footer>
+
+    </main>
+
+    <!-- TOAST NOTIFICATION FOR COPY LINK -->
+    <div id="toast"
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none translate-y-3 z-50">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span>Đã sao chép link nhóm Zalo thành công!</span>
+    </div>
+
+
+
+
+
+    <!--LDP_BODY_CODE:start-->
+    <script>
+        const zaloGroupUrl = "https://zalo.me/g/errwypptzaphpjilbdpo";
+
+        // Generate QR Code with qrcodejs
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                if (typeof QRCode !== 'undefined') {
+                    const qrContainer = document.getElementById('qrcode-canvas');
+                    qrContainer.innerHTML = ''; // clear fallback img if lib loaded
+                    new QRCode(qrContainer, {
+                        text: zaloGroupUrl,
+                        width: 220,
+                        height: 220,
+                        colorDark: "#0A1C33",
+                        colorLight: "#FFFFFF",
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                }
+            } catch (err) {
+                console.log("Using fallback QR image API:", err);
+            }
+        });
+
+        // Copy Zalo Link function
+        function copyZaloLink() {
+            navigator.clipboard.writeText(zaloGroupUrl).then(function () {
+                showToast("Đã sao chép link nhóm Zalo!");
+                const btnText = document.getElementById('copyBtnText');
+                if (btnText) {
+                    btnText.innerText = "Đã copy!";
+                    setTimeout(() => { btnText.innerText = "Copy link"; }, 2000);
+                }
+            }).catch(function () {
+                // Fallback for older browsers
+                const tempInput = document.createElement("input");
+                tempInput.value = zaloGroupUrl;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(tempInput);
+                showToast("Đã sao chép link nhóm Zalo!");
+            });
+        }
+
+        // Show toast helper
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            if (msg) toast.querySelector('span').innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-3');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'pointer-events-none', 'translate-y-3');
+            }, 2500);
+        }
+    </script>
+    <script src="/ladihtml.sdk.min.js" data-ldp-runtime=""></script>
+    <!--LDP_BODY_CODE:end-->
+</body>
+
+</html>
