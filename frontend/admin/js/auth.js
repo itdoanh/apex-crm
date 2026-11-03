@@ -128,7 +128,7 @@
 
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Đang xác thực Argon2id...</span>';
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Đang xác thực...</span>';
             }
             if (errBox) errBox.classList.add('hidden');
 
@@ -231,7 +231,7 @@
             const origHTML = btn ? btn.innerHTML : '';
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Đang băm Argon2id...</span>';
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Đang xử lý...</span>';
             }
             alertBox.classList.add('hidden');
 
@@ -246,7 +246,7 @@
                     throw new Error(data.error || 'Đổi mật khẩu thất bại.');
                 }
 
-                alert('✅ ' + (data.message || 'Đổi mật khẩu Argon2id thành công! Vui lòng ghi nhớ mật khẩu mới.'));
+                alert('✅ ' + (data.message || 'Đổi mật khẩu thành công! Vui lòng ghi nhớ mật khẩu mới.'));
                 closeChangePasswordModal();
             } catch (err) {
                 alertBox.className = 'p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300';
