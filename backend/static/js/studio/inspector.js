@@ -420,6 +420,9 @@
             if (studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles && data.nodeId) {
                 const mobStyles = astMapper.getMobileStyles(data.nodeId);
                 style = Object.assign(style, mobStyles);
+            } else if (studioDeviceMode === 'pc' && typeof astMapper !== 'undefined' && astMapper.getPCStyles && data.nodeId) {
+                const pcStyles = astMapper.getPCStyles(data.nodeId);
+                style = Object.assign(style, pcStyles);
             }
 
             // 1. Bố cục & Flexbox
@@ -675,27 +678,21 @@
         }
 
         function applyAstStyleChange(nodeId, styleObj, actionTitle = 'Đổi kiểu Style') {
-            if (studioDeviceMode === 'mobile') {
-                const res = astMapper.setMobileStyles(nodeId, styleObj);
-                syncCodeEditorFromAst(res.html);
-                pushStudioHistory(`[Mobile] ${actionTitle}`, res.html, nodeId);
+            const isMobile = (studioDeviceMode === 'mobile');
+            const res = isMobile
+                ? astMapper.setMobileStyles(nodeId, styleObj)
+                : astMapper.setPCStyles(nodeId, styleObj);
 
-                const iframe = document.getElementById('csPreviewIframe');
-                if (iframe && iframe.contentWindow) {
-                    iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_RESPONSIVE_CSS', cssText: res.css }, '*');
-                    iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_STYLE_TEMP', nodeId: nodeId, styles: styleObj }, '*');
-                }
-                requestNodeRect(nodeId);
-                return;
-            }
-
-            const updated = astMapper.spliceStyle(nodeId, styleObj);
-            syncCodeEditorFromAst(updated);
-            pushStudioHistory(actionTitle, updated, nodeId);
+            const prefix = isMobile ? '[Mobile] ' : '[PC] ';
+            syncCodeEditorFromAst(res.html);
+            pushStudioHistory(`${prefix}${actionTitle}`, res.html, nodeId);
 
             const iframe = document.getElementById('csPreviewIframe');
             if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_RESPONSIVE_CSS', cssText: res.css }, '*');
                 iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_STYLE_TEMP', nodeId: nodeId, styles: styleObj }, '*');
+                // Xóa inline styles tạm thời khỏi DOM iframe ngay lập tức để CSS responsive media query làm chủ 100%
+                iframe.contentWindow.postMessage({ type: 'APEX_CMD_CLEAR_TEMP_STYLES', nodeId: nodeId, props: Object.keys(styleObj) }, '*');
             }
             requestNodeRect(nodeId);
         }

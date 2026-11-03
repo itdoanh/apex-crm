@@ -274,11 +274,11 @@
                 </div>
 
                 <!-- Iframe & Overlay Canvas Viewport Wrapper -->
-                <div id="csCanvasViewport" class="flex-1 bg-slate-950 overflow-hidden p-6 flex items-center justify-center relative select-none cs-design-canvas">
+                <div id="csCanvasViewport" class="flex-1 bg-slate-950 overflow-auto p-6 flex items-center justify-center relative select-none cs-design-canvas">
                     <!-- Pan Mode Shield (Active when Spacebar / Middle-click is pressed to enable smooth drag without iframe swallowing events) -->
                     <div id="csCanvasPanShield" class="absolute inset-0 z-40 hidden bg-transparent select-none"></div>
 
-                    <div id="csIframeWrapper" class="flex-shrink-0 w-full h-full bg-white rounded-xl shadow-2xl transition-transform duration-75 border border-slate-800 relative select-none">
+                    <div id="csIframeWrapper" style="width: 1440px; height: 100%; flex-shrink: 0;" class="flex-shrink-0 w-[1440px] h-full bg-white rounded-xl shadow-2xl border border-slate-800 relative select-none">
                         <!-- 2 Resizable Side Handles: Kéo 2 bên điều chỉnh kích thước trực quan -->
                         <div id="csCanvasResizeHandleLeft" class="cs-canvas-side-handle cs-canvas-handle-left" title="Kéo để điều chỉnh chiều rộng bên trái">
                             <i class="fa-solid fa-grip-lines-vertical text-[10px] text-slate-400"></i>
@@ -1722,6 +1722,7 @@
         <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
         <span id="toastMessage"></span>
     </div>
+    <div id="csStudioToast" class="hidden"></div>
 
     <!-- ============================================================== -->
     <!-- APEX STUDIO SCRIPTS                                            -->
@@ -1744,6 +1745,11 @@
         // Global Toast Notification Helper for Studio
         function showToastNotification(message, type = 'success') {
             let toast = document.getElementById('toastNotification');
+            let csToast = document.getElementById('csStudioToast');
+            if (csToast) {
+                csToast.innerText = message;
+                csToast.classList.remove('hidden');
+            }
             if (!toast) return;
             const msgEl = document.getElementById('toastMessage');
             const iconEl = document.getElementById('toastIcon');
@@ -1752,6 +1758,9 @@
                 if (type === 'error') {
                     iconEl.className = 'fa-solid fa-triangle-exclamation text-rose-400 text-lg';
                     toast.className = 'fixed bottom-6 right-6 z-[100] flex items-center space-x-3 px-5 py-3.5 bg-rose-950/95 border border-rose-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300';
+                } else if (type === 'info') {
+                    iconEl.className = 'fa-solid fa-circle-info text-cyan-400 text-lg';
+                    toast.className = 'fixed bottom-6 right-6 z-[100] flex items-center space-x-3 px-5 py-3.5 bg-slate-900/95 border border-cyan-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300';
                 } else {
                     iconEl.className = 'fa-solid fa-circle-check text-emerald-400 text-lg';
                     toast.className = 'fixed bottom-6 right-6 z-[100] flex items-center space-x-3 px-5 py-3.5 bg-slate-900/95 border border-emerald-500/60 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md transition-all duration-300';
@@ -1761,6 +1770,7 @@
             clearTimeout(window.__toastTimer);
             window.__toastTimer = setTimeout(() => {
                 toast.classList.add('hidden');
+                if (csToast) csToast.classList.add('hidden');
             }, 3200);
         }
 

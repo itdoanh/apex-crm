@@ -440,6 +440,9 @@
                     `            document.body.style.zoom = z;\n` +
                     `            window.__APEX_CONTENT_ZOOM__ = z;\n` +
                     `        }\n` +
+                    `        if (m.type === 'APEX_CMD_SCROLL_PAN') {\n` +
+                    `            try { window.scrollBy({ left: m.dx, top: m.dy, behavior: 'instant' }); } catch(e) {}\n` +
+                    `        }\n` +
                     `        if (m.type === 'APEX_CMD_CLEAR_TEMP_STYLES') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
                     `            if (el) {\n` +
@@ -567,19 +570,32 @@
                 return this.spliceAttribute(nodeId, 'style', newStyleStr || null);
             }
 
-            // --- PHÂN HỆ QUẢN LÝ RESPONSIVE STYLES ĐỘC LẬP (MOBILE VS PC) ---
+            // --- PHÂN HỆ QUẢN LÝ RESPONSIVE STYLES ĐỘC LẬP (PC VS MOBILE CHUẨN THIẾT KẾ) ---
             parseResponsiveStyles() {
+                this.pcStylesMap = {};
                 this.mobileStylesMap = {};
                 if (!this.rawHTML) return;
                 const styleMatch = this.rawHTML.match(/<style\s+id=["']__apex_responsive_styles__["'][^>]*>([\s\S]*?)<\/style>/i);
                 if (!styleMatch) return;
                 const content = styleMatch[1];
-                const mediaMatch = content.match(/@media[^{]*\{([\s\S]*)\}\s*$/i);
-                const mediaBody = mediaMatch ? mediaMatch[1] : content;
 
+                // 1. Phân tích quy tắc PC Desktop: @media (min-width: 769px) { ... }
+                const pcMatch = content.match(/@media[^{]*min-width[^{]*\{([\s\S]*?)\}\s*(?=@media|$)/i);
+                if (pcMatch) {
+                    this.parseCssRulesIntoMap(pcMatch[1], this.pcStylesMap);
+                }
+
+                // 2. Phân tích quy tắc Mobile: @media (max-width: 768px) { ... }
+                const mobMatch = content.match(/@media[^{]*max-width[^{]*\{([\s\S]*?)\}\s*(?=@media|$)/i);
+                if (mobMatch) {
+                    this.parseCssRulesIntoMap(mobMatch[1], this.mobileStylesMap);
+                }
+            }
+
+            parseCssRulesIntoMap(cssBody, targetMap) {
                 const ruleRegex = /\[data-ve-id=["']?([a-zA-Z0-9_-]+)["']?\]\s*\{([^}]+)\}/gi;
                 let rMatch;
-                while ((rMatch = ruleRegex.exec(mediaBody)) !== null) {
+                while ((rMatch = ruleRegex.exec(cssBody)) !== null) {
                     const nodeId = rMatch[1];
                     const declarations = rMatch[2];
                     const styles = {};
@@ -592,9 +608,33 @@
                         }
                     });
                     if (Object.keys(styles).length > 0) {
-                        this.mobileStylesMap[nodeId] = styles;
+                        targetMap[nodeId] = styles;
                     }
                 }
+            }
+
+            getPCStyles(nodeId) {
+                return (this.pcStylesMap && this.pcStylesMap[nodeId]) ? { ...this.pcStylesMap[nodeId] } : {};
+            }
+
+            setPCStyles(nodeId, styleObj) {
+                if (!this.pcStylesMap) this.pcStylesMap = {};
+                if (!this.pcStylesMap[nodeId]) this.pcStylesMap[nodeId] = {};
+
+                for (const prop in styleObj) {
+                    const val = styleObj[prop];
+                    if (val === null || val === '') {
+                        delete this.pcStylesMap[nodeId][prop];
+                    } else {
+                        this.pcStylesMap[nodeId][prop] = String(val).trim();
+                    }
+                }
+
+                if (Object.keys(this.pcStylesMap[nodeId]).length === 0) {
+                    delete this.pcStylesMap[nodeId];
+                }
+
+                return this.generateAndInjectResponsiveStyles();
             }
 
             getMobileStyles(nodeId) {
@@ -621,21 +661,44 @@
                 return this.generateAndInjectResponsiveStyles();
             }
 
+            getDeviceStyles(nodeId, mode = 'pc') {
+                return mode === 'mobile' ? this.getMobileStyles(nodeId) : this.getPCStyles(nodeId);
+            }
+
+            setDeviceStyles(nodeId, styleObj, mode = 'pc') {
+                return mode === 'mobile' ? this.setMobileStyles(nodeId, styleObj) : this.setPCStyles(nodeId, styleObj);
+            }
+
             generateAndInjectResponsiveStyles() {
-                const rules = [];
+                // 1. Tạo quy tắc cho PC Desktop (> 768px)
+                const pcRules = [];
+                for (const nId in this.pcStylesMap) {
+                    const s = this.pcStylesMap[nId];
+                    const decls = Object.keys(s).map(p => `        ${p}: ${s[p]} !important;`).join('\n');
+                    if (decls) {
+                        pcRules.push(`    [data-ve-id="${nId}"] {\n${decls}\n    }`);
+                    }
+                }
+
+                // 2. Tạo quy tắc cho Mobile (<= 768px)
+                const mobRules = [];
                 for (const nId in this.mobileStylesMap) {
                     const s = this.mobileStylesMap[nId];
                     const decls = Object.keys(s).map(p => `        ${p}: ${s[p]} !important;`).join('\n');
                     if (decls) {
-                        rules.push(`    [data-ve-id="${nId}"] {\n${decls}\n    }`);
+                        mobRules.push(`    [data-ve-id="${nId}"] {\n${decls}\n    }`);
                     }
                 }
 
-                let cssBody = '';
-                if (rules.length > 0) {
-                    cssBody = `@media (max-width: 768px) {\n    /* Apex Studio Mobile Responsive Styles (Chỉ áp dụng Mobile) */\n${rules.join('\n')}\n}`;
+                const cssBlocks = [];
+                if (pcRules.length > 0) {
+                    cssBlocks.push(`@media (min-width: 769px) {\n    /* Apex Studio PC Desktop Styles (Chỉ áp dụng PC > 768px) */\n${pcRules.join('\n')}\n}`);
+                }
+                if (mobRules.length > 0) {
+                    cssBlocks.push(`@media (max-width: 768px) {\n    /* Apex Studio Mobile Responsive Styles (Chỉ áp dụng Mobile <= 768px) */\n${mobRules.join('\n')}\n}`);
                 }
 
+                const cssBody = cssBlocks.join('\n\n');
                 const tagStart = '<style id="__apex_responsive_styles__">';
                 const tagEnd = '</style>';
                 const fullBlock = cssBody ? `${tagStart}\n${cssBody}\n${tagEnd}` : '';

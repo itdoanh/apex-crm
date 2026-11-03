@@ -175,7 +175,7 @@ def run_tests():
         page.wait_for_timeout(500)
         assert "PC Mode" in badge.inner_text(), "Badge phải trở lại PC Mode"
         wrapper_w_pc = page.evaluate("() => document.getElementById('csIframeWrapper').style.width")
-        assert wrapper_w_pc == "100%", f"Khung PC phải trở lại 100%, nhận được {wrapper_w_pc}"
+        assert wrapper_w_pc == "1440px", f"Khung PC phải là 1440px (Desktop Resolution chuẩn), nhận được {wrapper_w_pc}"
 
         # Kiểm tra thẻ h1 trong PC: Style inline gốc của PC không bị dính mã màu mobile!
         pc_check = page.evaluate("""(h1Id) => {
@@ -188,6 +188,31 @@ def run_tests():
         }""", mob_edit_res["h1Id"])
         assert pc_check["notOverriddenInPC"], "Bố cục PC gốc không bị biến đổi bởi cấu hình mobile!"
         print("  [OK] Bố cục PC gốc được bảo toàn nguyên vẹn 100% (Responsive Isolation hoàn hảo)!")
+
+        # 1.2. Thử nghiệm đổi vị trí trên PC: Thay đổi chỉ ghi vào @media (min-width: 769px), không làm đổi Mobile
+        pc_edit_res = page.evaluate("""(h1Id) => {
+            selectedAstNodeId = h1Id;
+            applyAstStyleChange(h1Id, { 'position': 'relative', 'left': '120px', 'top': '30px' }, 'Chỉnh vị trí PC');
+
+            const raw = astMapper.rawHTML;
+            const hasPCMedia = raw.includes('@media (min-width: 769px)');
+            const hasMobileMedia = raw.includes('@media (max-width: 768px)');
+            const pcStyles = astMapper.getPCStyles(h1Id);
+            const mobStyles = astMapper.getMobileStyles(h1Id);
+
+            return {
+                hasPCMedia,
+                hasMobileMedia,
+                pcStyles,
+                mobStyles,
+                mobileLeftUnchanged: mobStyles.left === undefined
+            };
+        }""", mob_edit_res["h1Id"])
+        assert pc_edit_res["hasPCMedia"], "Chỉnh sửa trên PC phải tạo @media (min-width: 769px)"
+        assert pc_edit_res["hasMobileMedia"], "Khối @media (max-width: 768px) của Mobile phải được giữ nguyên"
+        assert pc_edit_res["pcStyles"]["left"] == "120px", "PC phải nhận left: 120px"
+        assert pc_edit_res["mobileLeftUnchanged"], "Mobile không bị ảnh hưởng vị trí left từ PC!"
+        print("  [OK] Đổi vị trí trên PC được cách ly 100% vào @media (min-width: 769px), Mobile giữ nguyên 100%!")
 
         # =========================================================================
         # TEST 2: THANH KÉO ĐIỀU CHỈNH KÍCH THƯỚC 2 BÊN (SIDE RESIZE HANDLES)
@@ -235,20 +260,46 @@ def run_tests():
         assert not shield_hidden, "Tấm chắn #csCanvasPanShield phải hiển thị khi giữ phím Space để bắt tương tác chuột kéo pan"
         print("  [OK] Khi nhấn giữ phím Space: Con trỏ biến thành bàn tay mở (.cs-pan-grab) và lá chắn #csCanvasPanShield kích hoạt chuẩn Figma!")
 
-        # 3.2. Nhấp chuột kéo trong khi giữ Space -> Đổi sang bàn tay nắm (.cs-pan-grabbing)
+        # 3.2. Khi nội dung trang vừa vặn (không có phần khuất): Thông báo trọn vẹn và không cuộn
         shield = page.locator("#csCanvasPanShield")
         s_box = shield.bounding_box()
         if s_box:
             page.mouse.move(s_box['x'] + 200, s_box['y'] + 200)
             page.mouse.down()
-            page.wait_for_timeout(200)
-            vp_cls_grabbing = viewport.get_attribute("class")
-            assert "cs-pan-grabbing" in vp_cls_grabbing, f"Canvas phải chuyển sang .cs-pan-grabbing khi kéo chuột, nhận được: {vp_cls_grabbing}"
-            print("  [OK] Khi nhấn giữ Space + kéo chuột: Con trỏ chuyển thành bàn tay nắm (.cs-pan-grabbing)")
+            page.wait_for_timeout(300)
+            toast_text = page.evaluate("() => { const t = document.getElementById('csStudioToast') || document.getElementById('toastMessage') || document.getElementById('toastNotification'); return t ? (t.innerText || t.textContent || '') : ''; }")
+            print(f"  [OK] Khi nội dung vừa vặn: Thông báo thông minh '{toast_text}'")
+            assert "Nội dung đang hiển thị trọn vẹn" in toast_text, f"Phải hiển thị thông báo nội dung trọn vẹn, nhận được: '{toast_text}'"
             page.mouse.up()
             page.wait_for_timeout(200)
 
-        # 3.3. Thả phím Space -> Trở về con trỏ thiết kế và ẩn lá chắn
+        # 3.3. Khi trang có phần bị khuất (cuộn được): Kéo chuột chuyển sang bàn tay nắm (.cs-pan-grabbing) và cuộn tài liệu
+        page.evaluate("""() => {
+            const iframe = document.getElementById('csPreviewIframe');
+            if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
+                iframe.contentDocument.body.style.minHeight = '2500px';
+            }
+        }""")
+        page.wait_for_timeout(200)
+
+        if s_box:
+            page.mouse.move(s_box['x'] + 200, s_box['y'] + 200)
+            page.mouse.down()
+            page.mouse.move(s_box['x'] + 200, s_box['y'] + 100) # Kéo chuột lên
+            page.wait_for_timeout(200)
+            vp_cls_grabbing = viewport.get_attribute("class")
+            assert "cs-pan-grabbing" in vp_cls_grabbing, f"Canvas phải chuyển sang .cs-pan-grabbing khi kéo chuột, nhận được: {vp_cls_grabbing}"
+            print("  [OK] Khi nhấn giữ Space + kéo chuột trên trang có phần khuất: Con trỏ chuyển thành bàn tay nắm (.cs-pan-grabbing)")
+
+            # Kiểm tra khung ngoài GIỮ NGUYÊN cố định (transform: none)
+            wrapper_tf = page.evaluate("() => document.getElementById('csIframeWrapper').style.transform")
+            assert wrapper_tf in ["none", ""], f"Khung ngoài phải giữ nguyên cố định (transform: none), nhận được: '{wrapper_tf}'"
+            print("  [OK] Khung ngoài #csIframeWrapper giữ nguyên cố định 100% (transform: none)!")
+
+            page.mouse.up()
+            page.wait_for_timeout(200)
+
+        # 3.4. Thả phím Space -> Trở về con trỏ thiết kế và ẩn lá chắn
         page.keyboard.up("Space")
         page.wait_for_timeout(300)
         vp_cls_normal = viewport.get_attribute("class")
@@ -267,10 +318,10 @@ def run_tests():
         zoom_after_in = page.locator("#lblZoomLevel").inner_text()
         assert zoom_after_in == "110%", f"Zoom sau khi click '+' phải là 110%, nhận được: {zoom_after_in}"
 
-        # Kiểm tra khung Wrapper ngoài KHÔNG bị áp dụng scale() gây co quắp méo khung
+        # Kiểm tra khung Wrapper ngoài CỐ ĐỊNH, KHÔNG bị di chuyển hay áp dụng scale() gây co quắp méo khung
         wrapper_transform = page.evaluate("() => document.getElementById('csIframeWrapper').style.transform")
-        assert "scale" not in wrapper_transform, f"Khung wrapper ngoài không được dùng scale(), nhận được: {wrapper_transform}"
-        print(f"  [OK] Khung wrapper bên ngoài giữ nguyên kích thước: transform = '{wrapper_transform}'")
+        assert wrapper_transform in ["none", ""], f"Khung wrapper ngoài phải giữ nguyên cố định (transform: none), nhận được: {wrapper_transform}"
+        print(f"  [OK] Khung wrapper bên ngoài giữ nguyên cố định: transform = '{wrapper_transform}'")
 
         # Kiểm tra nội dung bên trong iframe được phóng to bằng document.body.style.zoom
         iframe_zoom_val = page.evaluate("""() => {

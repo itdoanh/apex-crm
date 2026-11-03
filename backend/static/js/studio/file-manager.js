@@ -636,7 +636,7 @@
 
             if (wrapper) {
                 if (studioDeviceMode === 'pc') {
-                    wrapper.style.width = '100%';
+                    wrapper.style.width = '1440px'; // Kích thước màn hình PC thật (Real Desktop Resolution)
                     wrapper.style.height = '100%';
                     wrapper.style.maxWidth = 'none';
                     wrapper.style.flexShrink = '0';
@@ -644,7 +644,7 @@
                     wrapper.style.border = '1px solid #1e293b';
                     wrapper.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5)';
                 } else if (studioDeviceMode === 'mobile') {
-                    wrapper.style.width = '390px';
+                    wrapper.style.width = '390px'; // Kích thước màn hình Mobile chuẩn (iPhone 14/15/16 Pro)
                     wrapper.style.height = '844px';
                     wrapper.style.maxWidth = 'none';
                     wrapper.style.flexShrink = '0';

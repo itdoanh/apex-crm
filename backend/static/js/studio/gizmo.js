@@ -104,11 +104,17 @@
                     if (matchT) initT = parseFloat(matchT[1]) || 0;
                 }
             } else {
-                if (node && node.attrs && node.attrs['style']) {
+                const pc = astMapper.getPCStyles(selectedAstNodeId);
+                if (pc.left !== undefined) initL = parseFloat(pc.left) || 0;
+                else if (node && node.attrs && node.attrs['style']) {
                     const sVal = node.attrs['style'].value || '';
                     const matchL = sVal.match(/left:\s*(-?[\d.]+)px/i);
-                    const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
                     if (matchL) initL = parseFloat(matchL[1]) || 0;
+                }
+                if (pc.top !== undefined) initT = parseFloat(pc.top) || 0;
+                else if (node && node.attrs && node.attrs['style']) {
+                    const sVal = node.attrs['style'].value || '';
+                    const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
                     if (matchT) initT = parseFloat(matchT[1]) || 0;
                 }
             }
@@ -284,16 +290,16 @@
                     }, 'Kéo di chuyển');
                 }
 
-                // Nếu đang ở Mobile mode: Xóa sạch inline styles tạm thời để đảm bảo vị trí chỉ áp dụng cho Mobile (không rò rỉ sang PC)
-                if (studioDeviceMode === 'mobile') {
-                    const iframe = document.getElementById('csPreviewIframe');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({
-                            type: 'APEX_CMD_CLEAR_TEMP_STYLES',
-                            nodeId: selectedAstNodeId,
-                            props: ['left', 'top', 'position', 'width', 'height']
-                        }, '*');
-                    }
+                // Xóa sạch inline styles tạm thời khỏi DOM iframe trên cả PC và Mobile
+                // để phần tử hoàn toàn tuân theo Media Query tương ứng (@media min-width 769px / max-width 768px),
+                // triệt tiêu 100% hiện tượng inline styles rò rỉ làm ảnh hưởng thiết bị còn lại.
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({
+                        type: 'APEX_CMD_CLEAR_TEMP_STYLES',
+                        nodeId: selectedAstNodeId,
+                        props: ['left', 'top', 'position', 'width', 'height']
+                    }, '*');
                 }
 
                 // Cập nhật lại khung gizmo chuẩn xác theo vị trí mới
@@ -412,14 +418,8 @@
             const iframe = document.getElementById('csPreviewIframe');
             if (!wrapper) return;
 
-            const clamped = clampCanvasPan(canvasPanX, canvasPanY, canvasZoom);
-            canvasPanX = clamped.x;
-            canvasPanY = clamped.y;
-
-            // Khung preview giữ nguyên kích thước bên ngoài, chỉ dịch chuyển tọa độ pan translate(x, y)
-            // Tuyệt đối không dùng scale(canvasZoom) làm co giật / méo khung ngoài và thanh kéo
-            wrapper.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px)`;
-            wrapper.style.transformOrigin = 'center center';
+            // Khung ngoài luôn giữ nguyên vị trí cố định, tuyệt đối không di chuyển hay làm méo khung
+            wrapper.style.transform = 'none';
 
             // Phóng to / nhỏ nội dung TRONG khung preview (Inner Content Zoom inside Iframe)
             if (iframe && iframe.contentWindow) {
@@ -485,15 +485,36 @@
         window.setSpacePanState = setSpacePanState;
         window.setCtrlPanState = setCtrlPanState;
 
-        // Bắt đầu kéo Canvas Pan (Nhấn giữ Space + kéo chuột, hoặc chuột giữa)
+        // Bắt đầu kéo cuộn nội dung trong iframe bằng phím Space + kéo chuột (Inner Content Pan)
         function startCanvasPan(e) {
             if (isResizingCanvasWidth || isDraggingGizmo || isMovingGizmo) return;
             const isPanTrigger = isSpaceKeyPressed || e.code === 'Space' || e.button === 1 || isCtrlKeyPressed;
             if (!isPanTrigger) return;
 
-            const limits = getCanvasPanLimits();
-            if (!limits.canPanX && !limits.canPanY) {
-                showToastNotification('Khung web đang hiển thị trọn vẹn, không có phần khuất để kéo.', 'info');
+            const iframe = document.getElementById('csPreviewIframe');
+            let canScrollX = false;
+            let canScrollY = false;
+            if (iframe && iframe.contentWindow) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    if (doc) {
+                        const docEl = doc.documentElement;
+                        const body = doc.body;
+                        const scrollW = Math.max(docEl.scrollWidth || 0, body ? body.scrollWidth : 0);
+                        const scrollH = Math.max(docEl.scrollHeight || 0, body ? body.scrollHeight : 0);
+                        const clientW = docEl.clientWidth || iframe.clientWidth;
+                        const clientH = docEl.clientHeight || iframe.clientHeight;
+                        canScrollX = scrollW > clientW + 2;
+                        canScrollY = scrollH > clientH + 2;
+                    }
+                } catch(err) {
+                    canScrollX = true;
+                    canScrollY = true;
+                }
+            }
+
+            if (!canScrollX && !canScrollY) {
+                showToastNotification('Nội dung đang hiển thị trọn vẹn, không có phần khuất để cuộn', 'info');
                 return;
             }
 
@@ -503,8 +524,6 @@
             isCanvasPanning = true;
             panStartX = e.clientX;
             panStartY = e.clientY;
-            panStartPanX = canvasPanX;
-            panStartPanY = canvasPanY;
 
             const viewport = document.getElementById('csCanvasViewport');
             const shield = document.getElementById('csCanvasPanShield');
@@ -529,21 +548,21 @@
 
             const dx = e.clientX - panStartX;
             const dy = e.clientY - panStartY;
-            const limits = getCanvasPanLimits();
+            panStartX = e.clientX;
+            panStartY = e.clientY;
 
-            if (limits.canPanX) {
-                canvasPanX = Math.max(-limits.maxPanX, Math.min(limits.maxPanX, panStartPanX + dx));
-            } else {
-                canvasPanX = 0;
+            const iframe = document.getElementById('csPreviewIframe');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    iframe.contentWindow.scrollBy({ left: -dx, top: -dy, behavior: 'instant' });
+                } catch(err) {
+                    iframe.contentWindow.postMessage({ type: 'APEX_CMD_SCROLL_PAN', dx: -dx, dy: -dy }, '*');
+                }
             }
 
-            if (limits.canPanY) {
-                canvasPanY = Math.max(-limits.maxPanY, Math.min(limits.maxPanY, panStartPanY + dy));
-            } else {
-                canvasPanY = 0;
+            if (selectedAstNodeId) {
+                requestNodeRect(selectedAstNodeId);
             }
-
-            applyCanvasTransform();
         }
 
         function endCanvasPan() {
