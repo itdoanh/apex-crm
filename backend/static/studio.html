@@ -248,7 +248,7 @@
                     <!-- Right Toolbar Items: Zoom & Utilities -->
                     <div class="flex items-center space-x-1.5">
                         <!-- Zoom Controller (Ctrl + Scroll / Nút bấm) -->
-                        <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs" title="Thu phóng Canvas (Ctrl + Lăn chuột)">
+                        <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs" title="Thu phóng nội dung trong khung (Ctrl + Lăn chuột)">
                             <button type="button" id="btnZoomOut" onclick="stepCanvasZoom(-0.1)" class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-800 transition">
                                 <i class="fa-solid fa-minus text-[9px]"></i>
                             </button>
@@ -275,10 +275,10 @@
 
                 <!-- Iframe & Overlay Canvas Viewport Wrapper -->
                 <div id="csCanvasViewport" class="flex-1 bg-slate-950 overflow-hidden p-6 flex items-center justify-center relative select-none cs-design-canvas">
-                    <!-- Pan Mode Shield (Active when Ctrl is pressed to enable smooth drag without iframe swallowing events) -->
+                    <!-- Pan Mode Shield (Active when Spacebar / Middle-click is pressed to enable smooth drag without iframe swallowing events) -->
                     <div id="csCanvasPanShield" class="absolute inset-0 z-40 hidden bg-transparent select-none"></div>
 
-                    <div id="csIframeWrapper" class="w-full h-full bg-white rounded-xl shadow-2xl transition-transform duration-75 border border-slate-800 relative select-none">
+                    <div id="csIframeWrapper" class="flex-shrink-0 w-full h-full bg-white rounded-xl shadow-2xl transition-transform duration-75 border border-slate-800 relative select-none">
                         <!-- 2 Resizable Side Handles: Kéo 2 bên điều chỉnh kích thước trực quan -->
                         <div id="csCanvasResizeHandleLeft" class="cs-canvas-side-handle cs-canvas-handle-left" title="Kéo để điều chỉnh chiều rộng bên trái">
                             <i class="fa-solid fa-grip-lines-vertical text-[10px] text-slate-400"></i>
@@ -808,6 +808,10 @@
                                             <option value="flex-start">Trên (Start)</option>
                                             <option value="flex-end">Dưới (End)</option>
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Thứ tự hiển thị (Order)</label>
+                                        <input type="text" id="inspStyleOrder" onchange="onInspectorStyleChange('order', this.value)" placeholder="auto / 1 / 2" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500" title="Đổi thứ tự hiển thị trên Mobile/PC mà không cần đổi mã HTML">
                                     </div>
                                 </div>
                             </div>

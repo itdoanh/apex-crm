@@ -88,15 +88,29 @@
             moveStartLeft = parseFloat(gizmoBox.style.left) || 0;
             moveStartTop = parseFloat(gizmoBox.style.top) || 0;
 
-            // Đọc vị trí top/left ban đầu của node từ AST mapper
+            // Đọc vị trí top/left ban đầu của node từ AST mapper (Phân biệt độc lập PC vs Mobile)
             const node = astMapper.astMap[selectedAstNodeId];
             let initL = 0, initT = 0;
-            if (node && node.attrs && node.attrs['style']) {
-                const sVal = node.attrs['style'].value || '';
-                const matchL = sVal.match(/left:\s*(-?[\d.]+)px/i);
-                const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
-                if (matchL) initL = parseFloat(matchL[1]) || 0;
-                if (matchT) initT = parseFloat(matchT[1]) || 0;
+            if (studioDeviceMode === 'mobile') {
+                const mob = astMapper.getMobileStyles(selectedAstNodeId);
+                if (mob.left !== undefined) initL = parseFloat(mob.left) || 0;
+                else if (node && node.attrs && node.attrs['style']) {
+                    const matchL = (node.attrs['style'].value || '').match(/left:\s*(-?[\d.]+)px/i);
+                    if (matchL) initL = parseFloat(matchL[1]) || 0;
+                }
+                if (mob.top !== undefined) initT = parseFloat(mob.top) || 0;
+                else if (node && node.attrs && node.attrs['style']) {
+                    const matchT = (node.attrs['style'].value || '').match(/top:\s*(-?[\d.]+)px/i);
+                    if (matchT) initT = parseFloat(matchT[1]) || 0;
+                }
+            } else {
+                if (node && node.attrs && node.attrs['style']) {
+                    const sVal = node.attrs['style'].value || '';
+                    const matchL = sVal.match(/left:\s*(-?[\d.]+)px/i);
+                    const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
+                    if (matchL) initL = parseFloat(matchL[1]) || 0;
+                    if (matchT) initT = parseFloat(matchT[1]) || 0;
+                }
             }
             moveInitialStyleLeft = initL;
             moveInitialStyleTop = initT;
@@ -270,6 +284,18 @@
                     }, 'Kéo di chuyển');
                 }
 
+                // Nếu đang ở Mobile mode: Xóa sạch inline styles tạm thời để đảm bảo vị trí chỉ áp dụng cho Mobile (không rò rỉ sang PC)
+                if (studioDeviceMode === 'mobile') {
+                    const iframe = document.getElementById('csPreviewIframe');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            type: 'APEX_CMD_CLEAR_TEMP_STYLES',
+                            nodeId: selectedAstNodeId,
+                            props: ['left', 'top', 'position', 'width', 'height']
+                        }, '*');
+                    }
+                }
+
                 // Cập nhật lại khung gizmo chuẩn xác theo vị trí mới
                 setTimeout(() => {
                     if (selectedAstNodeId) requestNodeRect(selectedAstNodeId);
@@ -319,13 +345,14 @@
 
         /* ==============================================================
            CANVAS INTERACTION CONTROLLER: 2-SIDE RESIZING, ZOOM & PAN
-           Boundary Clamped Panning, Ctrl Grab/Grabbing Hand, 60fps Transforms
+           Boundary Clamped Panning, Space Grab/Grabbing Hand, 60fps Transforms
            ============================================================== */
 
         let canvasZoom = 1.0;
         let canvasPanX = 0;
         let canvasPanY = 0;
         let isCanvasPanning = false;
+        let isSpaceKeyPressed = false;
         let isCtrlKeyPressed = false;
         let panStartX = 0, panStartY = 0;
         let panStartPanX = 0, panStartPanY = 0;
@@ -346,22 +373,19 @@
             const ww = wrapper.offsetWidth;
             const wh = wrapper.offsetHeight;
 
-            const scaledW = ww * canvasZoom;
-            const scaledH = wh * canvasZoom;
-
             // Chiều ngang: Chỉ cho phép kéo khi khung hiển thị vượt ra ngoài khung nhìn
             let maxPanX = 0;
             let canPanX = false;
-            if (scaledW > vw) {
-                maxPanX = (scaledW - vw) / 2;
+            if (ww > vw) {
+                maxPanX = (ww - vw) / 2 + 100;
                 canPanX = true;
             }
 
             // Chiều dọc: Chỉ cho phép kéo khi chiều cao vượt quá khung nhìn
             let maxPanY = 0;
             let canPanY = false;
-            if (scaledH > vh) {
-                maxPanY = (scaledH - vh) / 2;
+            if (wh > vh) {
+                maxPanY = (wh - vh) / 2 + 100;
                 canPanY = true;
             }
 
@@ -385,14 +409,22 @@
         function applyCanvasTransform() {
             const wrapper = document.getElementById('csIframeWrapper');
             const lbl = document.getElementById('lblZoomLevel');
+            const iframe = document.getElementById('csPreviewIframe');
             if (!wrapper) return;
 
             const clamped = clampCanvasPan(canvasPanX, canvasPanY, canvasZoom);
             canvasPanX = clamped.x;
             canvasPanY = clamped.y;
 
-            wrapper.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px) scale(${canvasZoom})`;
+            // Khung preview giữ nguyên kích thước bên ngoài, chỉ dịch chuyển tọa độ pan translate(x, y)
+            // Tuyệt đối không dùng scale(canvasZoom) làm co giật / méo khung ngoài và thanh kéo
+            wrapper.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px)`;
             wrapper.style.transformOrigin = 'center center';
+
+            // Phóng to / nhỏ nội dung TRONG khung preview (Inner Content Zoom inside Iframe)
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'APEX_CMD_SET_CONTENT_ZOOM', zoom: canvasZoom }, '*');
+            }
 
             if (lbl) {
                 lbl.innerText = `${Math.round(canvasZoom * 100)}%`;
@@ -422,9 +454,9 @@
             showToastNotification('Đã đặt lại kích thước xem 100%');
         }
 
-        // Điều khiển trạng thái phím Ctrl (Chuyển con trỏ sang bàn tay grab & bật lá chắn Pan Shield)
-        function setCtrlPanState(active) {
-            isCtrlKeyPressed = active;
+        // Điều khiển trạng thái phím Space (Phím cách) - Chuyển con trỏ sang bàn tay grab & bật lá chắn Pan Shield
+        function setSpacePanState(active) {
+            isSpaceKeyPressed = active;
             const viewport = document.getElementById('csCanvasViewport');
             const shield = document.getElementById('csCanvasPanShield');
 
@@ -445,12 +477,19 @@
             }
         }
 
-        // Bắt đầu kéo Canvas Pan
+        function setCtrlPanState(active) {
+            isCtrlKeyPressed = active;
+            setSpacePanState(active || isSpaceKeyPressed);
+        }
+
+        window.setSpacePanState = setSpacePanState;
+        window.setCtrlPanState = setCtrlPanState;
+
+        // Bắt đầu kéo Canvas Pan (Nhấn giữ Space + kéo chuột, hoặc chuột giữa)
         function startCanvasPan(e) {
             if (isResizingCanvasWidth || isDraggingGizmo || isMovingGizmo) return;
-            // Bắt đầu khi nhấn chuột giữa hoặc khi giữ Ctrl/Meta
-            const isCtrlPan = e.ctrlKey || e.metaKey || isCtrlKeyPressed || e.button === 1;
-            if (!isCtrlPan) return;
+            const isPanTrigger = isSpaceKeyPressed || e.code === 'Space' || e.button === 1 || isCtrlKeyPressed;
+            if (!isPanTrigger) return;
 
             const limits = getCanvasPanLimits();
             if (!limits.canPanX && !limits.canPanY) {
@@ -518,7 +557,7 @@
             if (shield) shield.classList.remove('cs-pan-grabbing');
             document.body.style.cursor = '';
 
-            if (isCtrlKeyPressed) {
+            if (isSpaceKeyPressed || isCtrlKeyPressed) {
                 if (viewport) viewport.classList.add('cs-pan-grab');
                 if (shield) shield.classList.add('cs-pan-grab');
             } else {
@@ -561,19 +600,23 @@
         function handleCanvasWidthResize(e) {
             if (!isResizingCanvasWidth) return;
             const wrapper = document.getElementById('csIframeWrapper');
-            const viewport = document.getElementById('csCanvasViewport');
             const badge = document.getElementById('csCanvasWidthBadge');
-            if (!wrapper || !viewport) return;
+            if (!wrapper) return;
 
-            const vpRect = viewport.getBoundingClientRect();
-            const centerX = vpRect.left + vpRect.width / 2 + canvasPanX;
-            const dist = Math.abs(e.clientX - centerX);
-            let newWidth = (dist * 2) / canvasZoom;
+            // Delta kéo đối xứng 2 bên không phụ thuộc flexbox hay vị trí tâm viewport
+            const dx = e.clientX - canvasResizeStartX;
+            let newWidth = canvasResizeStartWidth;
+            if (canvasResizeHandleDir === 'right') {
+                newWidth = canvasResizeStartWidth + dx * 2;
+            } else if (canvasResizeHandleDir === 'left') {
+                newWidth = canvasResizeStartWidth - dx * 2;
+            }
 
-            // Giới hạn trong khoảng 320px đến 2560px
-            newWidth = Math.max(320, Math.min(2560, Math.round(newWidth)));
+            // Giới hạn trong khoảng 320px đến 3840px (Màn hình 4K siêu rộng, tự do co dãn)
+            newWidth = Math.max(320, Math.min(3840, Math.round(newWidth)));
             wrapper.style.width = newWidth + 'px';
             wrapper.style.maxWidth = 'none';
+            wrapper.style.flexShrink = '0';
 
             if (badge) {
                 badge.innerText = `${newWidth}px`;
@@ -603,7 +646,7 @@
             }
         }
 
-        // Khởi tạo các sự kiện Canvas Interaction (Zoom, Pan, Resize Handles, Ctrl Grab)
+        // Khởi tạo các sự kiện Canvas Interaction (Zoom, Pan, Resize Handles, Space Grab)
         function initCanvasInteractions() {
             const viewport = document.getElementById('csCanvasViewport');
             const shield = document.getElementById('csCanvasPanShield');
@@ -624,7 +667,7 @@
             }
             if (viewport) {
                 viewport.addEventListener('pointerdown', startCanvasPan);
-                // Ctrl + Wheel Zoom trên Canvas Viewport
+                // Ctrl + Wheel Zoom trên Canvas Viewport (Inner Content Zoom)
                 viewport.addEventListener('wheel', (e) => {
                     if (e.ctrlKey || e.metaKey) {
                         e.preventDefault();
@@ -635,8 +678,16 @@
                 }, { passive: false });
             }
 
-            // 3. Lắng nghe nhấn giữ / thả phím Ctrl trên toàn cửa sổ Studio
+            // 3. Lắng nghe nhấn giữ / thả phím Space (Phím cách) & Ctrl trên toàn cửa sổ Studio
             window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' || e.key === ' ') {
+                    const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+                    const isEd = document.activeElement && document.activeElement.isContentEditable;
+                    if (activeTag !== 'input' && activeTag !== 'textarea' && !isEd) {
+                        e.preventDefault();
+                        setSpacePanState(true);
+                    }
+                }
                 if (e.key === 'Control' || e.key === 'Meta') {
                     const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
                     if (activeTag !== 'input' && activeTag !== 'textarea') {
@@ -646,12 +697,16 @@
             });
 
             window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' || e.key === ' ') {
+                    setSpacePanState(false);
+                }
                 if (e.key === 'Control' || e.key === 'Meta') {
                     setCtrlPanState(false);
                 }
             });
 
             window.addEventListener('blur', () => {
+                setSpacePanState(false);
                 setCtrlPanState(false);
                 endCanvasPan();
                 endCanvasWidthResize();

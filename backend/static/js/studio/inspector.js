@@ -128,6 +128,12 @@
                 }
             }
 
+            if (msg.type === 'APEX_BUILDER_KEY_SPACE') {
+                if (typeof setSpacePanState === 'function') {
+                    setSpacePanState(!!msg.pressed);
+                }
+            }
+
             if (msg.type === 'APEX_BUILDER_KEY_CTRL') {
                 if (typeof setCtrlPanState === 'function') {
                     setCtrlPanState(!!msg.pressed);
@@ -425,6 +431,7 @@
             if (document.getElementById('inspStyleGap')) document.getElementById('inspStyleGap').value = style.gap || '';
             if (document.getElementById('inspStyleJustifyContent')) document.getElementById('inspStyleJustifyContent').value = style.justifyContent || '';
             if (document.getElementById('inspStyleAlignItems')) document.getElementById('inspStyleAlignItems').value = style.alignItems || '';
+            if (document.getElementById('inspStyleOrder')) document.getElementById('inspStyleOrder').value = style.order || '';
 
             // 2. Khoảng cách (Box Model)
             if (document.getElementById('inspStyleMarginTop')) document.getElementById('inspStyleMarginTop').value = style.marginTop || '';

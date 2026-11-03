@@ -105,3 +105,11 @@
     box-shadow: 0 0 10px rgba(6, 182, 212, 0.25) !important;
 }
 
+/* Canvas Preview Wrapper: Chống Flexbox co ép khung ngoài, cho phép kéo co dãn tự do */
+#csIframeWrapper {
+    flex-shrink: 0 !important;
+    box-sizing: border-box;
+    max-width: none !important;
+}
+
+

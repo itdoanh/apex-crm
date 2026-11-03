@@ -639,13 +639,15 @@
                     wrapper.style.width = '100%';
                     wrapper.style.height = '100%';
                     wrapper.style.maxWidth = 'none';
+                    wrapper.style.flexShrink = '0';
                     wrapper.style.borderRadius = '12px';
                     wrapper.style.border = '1px solid #1e293b';
                     wrapper.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5)';
                 } else if (studioDeviceMode === 'mobile') {
                     wrapper.style.width = '390px';
                     wrapper.style.height = '844px';
-                    wrapper.style.maxWidth = '100%';
+                    wrapper.style.maxWidth = 'none';
+                    wrapper.style.flexShrink = '0';
                     wrapper.style.borderRadius = '32px';
                     wrapper.style.border = '4px solid #475569';
                     wrapper.style.boxShadow = '0 25px 50px -12px rgba(0, 0, 0, 0.7)';

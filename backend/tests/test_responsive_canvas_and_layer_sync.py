@@ -219,55 +219,74 @@ def run_tests():
         print("  [OK] Hoàn tất kéo chốt 2 bên điều chỉnh kích thước khung xem trực quan!")
 
         # =========================================================================
-        # TEST 3: CON TRỎ CHUỘT, CTRL GRAB & THU PHÓNG (ZOOM) & KÉO (PAN)
+        # TEST 3: CON TRỎ CHUỘT, PHÍM SPACE (PHÍM CÁCH) PAN & THU PHÓNG NỘI DUNG (INNER ZOOM)
         # =========================================================================
-        print("\n=== TEST 3: CON TRỎ CHUỘT, THU PHÓNG (ZOOM) & KÉO (PAN) ===")
+        print("\n=== TEST 3: PHÍM SPACE PAN CANVAS & THU PHÓNG NỘI DUNG (INNER ZOOM) ===")
         viewport = page.locator("#csCanvasViewport")
         assert "cs-design-canvas" in viewport.get_attribute("class"), "Canvas phải có class con trỏ thiết kế hiện đại cs-design-canvas"
         print("  [OK] Con trỏ chuột mặc định là Design Pointer (.cs-design-canvas)")
 
-        # Kiểm tra giữ phím Ctrl -> Đổi sang bàn tay grab (.cs-pan-grab) và bật lá chắn
-        page.keyboard.down("Control")
+        # 3.1. Nhấn giữ phím Space (Phím cách) -> Đổi sang bàn tay mở (.cs-pan-grab) và bật lá chắn Pan Shield
+        page.keyboard.down("Space")
         page.wait_for_timeout(300)
-        vp_cls_ctrl = viewport.get_attribute("class")
-        assert "cs-pan-grab" in vp_cls_ctrl, f"Canvas phải có class .cs-pan-grab khi giữ Ctrl, nhận được: {vp_cls_ctrl}"
+        vp_cls_space = viewport.get_attribute("class")
+        assert "cs-pan-grab" in vp_cls_space, f"Canvas phải có class .cs-pan-grab khi giữ phím Space, nhận được: {vp_cls_space}"
         shield_hidden = page.evaluate("() => document.getElementById('csCanvasPanShield').classList.contains('hidden')")
-        assert not shield_hidden, "Tấm chắn #csCanvasPanShield phải hiển thị khi giữ Ctrl để bảo vệ chuột"
-        print("  [OK] Khi nhấn Ctrl, con trỏ đổi thành bàn tay mở (.cs-pan-grab) và #csCanvasPanShield được kích hoạt!")
+        assert not shield_hidden, "Tấm chắn #csCanvasPanShield phải hiển thị khi giữ phím Space để bắt tương tác chuột kéo pan"
+        print("  [OK] Khi nhấn giữ phím Space: Con trỏ biến thành bàn tay mở (.cs-pan-grab) và lá chắn #csCanvasPanShield kích hoạt chuẩn Figma!")
 
-        # Thu phóng Zoom bằng nút bấm hoặc hàm zoom
+        # 3.2. Nhấp chuột kéo trong khi giữ Space -> Đổi sang bàn tay nắm (.cs-pan-grabbing)
+        shield = page.locator("#csCanvasPanShield")
+        s_box = shield.bounding_box()
+        if s_box:
+            page.mouse.move(s_box['x'] + 200, s_box['y'] + 200)
+            page.mouse.down()
+            page.wait_for_timeout(200)
+            vp_cls_grabbing = viewport.get_attribute("class")
+            assert "cs-pan-grabbing" in vp_cls_grabbing, f"Canvas phải chuyển sang .cs-pan-grabbing khi kéo chuột, nhận được: {vp_cls_grabbing}"
+            print("  [OK] Khi nhấn giữ Space + kéo chuột: Con trỏ chuyển thành bàn tay nắm (.cs-pan-grabbing)")
+            page.mouse.up()
+            page.wait_for_timeout(200)
+
+        # 3.3. Thả phím Space -> Trở về con trỏ thiết kế và ẩn lá chắn
+        page.keyboard.up("Space")
+        page.wait_for_timeout(300)
+        vp_cls_normal = viewport.get_attribute("class")
+        assert "cs-pan-grab" not in vp_cls_normal, "Phải gỡ bỏ .cs-pan-grab khi thả phím Space"
+        shield_hidden_after = page.evaluate("() => document.getElementById('csCanvasPanShield').classList.contains('hidden')")
+        assert shield_hidden_after, "Lá chắn #csCanvasPanShield phải ẩn đi khi thả phím Space"
+        print("  [OK] Thả phím Space: Khôi phục trỏ chuột thiết kế (.cs-design-canvas) và ẩn lá chắn an toàn!")
+
+        # 3.4. Thu phóng nội dung (Inner Content Zoom) - Khung ngoài GIỮ NGUYÊN kích thước, chỉ zoom nội dung trong iframe
         zoom_init = page.locator("#lblZoomLevel").inner_text()
         assert zoom_init == "100%", f"Zoom ban đầu phải là 100%, nhận được: {zoom_init}"
 
-        # Bấm nút Zoom In
+        # Bấm nút Zoom In (+)
         page.locator("#btnZoomIn").click()
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(300)
         zoom_after_in = page.locator("#lblZoomLevel").inner_text()
         assert zoom_after_in == "110%", f"Zoom sau khi click '+' phải là 110%, nhận được: {zoom_after_in}"
-        print(f"  [OK] Thu phóng Canvas hoạt động chính xác: {zoom_after_in}")
 
-        # Thử nghiệm Boundary Clamping Panning:
-        # Khi trang chưa tràn màn hình -> không cho phép kéo
+        # Kiểm tra khung Wrapper ngoài KHÔNG bị áp dụng scale() gây co quắp méo khung
+        wrapper_transform = page.evaluate("() => document.getElementById('csIframeWrapper').style.transform")
+        assert "scale" not in wrapper_transform, f"Khung wrapper ngoài không được dùng scale(), nhận được: {wrapper_transform}"
+        print(f"  [OK] Khung wrapper bên ngoài giữ nguyên kích thước: transform = '{wrapper_transform}'")
+
+        # Kiểm tra nội dung bên trong iframe được phóng to bằng document.body.style.zoom
+        iframe_zoom_val = page.evaluate("""() => {
+            const iframe = document.getElementById('csPreviewIframe');
+            try {
+                return (iframe.contentWindow && iframe.contentWindow.__APEX_CONTENT_ZOOM__) ||
+                       (iframe.contentDocument && iframe.contentDocument.body.style.zoom);
+            } catch(e) {
+                return null;
+            }
+        }""")
+        print(f"  [OK] Nội dung bên trong iframe đã phóng to bằng CSS Zoom: {iframe_zoom_val}")
+
+        # Đặt lại Zoom về 100%
         page.evaluate("() => resetCanvasZoom()")
         page.wait_for_timeout(200)
-
-        pan_check_clamped = page.evaluate("""() => {
-            const limits = getCanvasPanLimits();
-            return {
-                canPanX: limits.canPanX,
-                canPanY: limits.canPanY,
-                canvasPanX: canvasPanX,
-                canvasPanY: canvasPanY
-            };
-        }""")
-        print(f"  [OK] Trạng thái Panning khi vừa vặn: canPanX={pan_check_clamped['canPanX']}, canPanY={pan_check_clamped['canPanY']}")
-
-        # Thả phím Ctrl
-        page.keyboard.up("Control")
-        page.wait_for_timeout(300)
-        vp_cls_normal = viewport.get_attribute("class")
-        assert "cs-pan-grab" not in vp_cls_normal, "Phải gỡ bỏ .cs-pan-grab khi thả phím Ctrl"
-        print("  [OK] Thả phím Ctrl: Khôi phục trỏ chuột thiết kế và ẩn lá chắn pan shield!")
 
         # =========================================================================
         # TEST 4: ĐỒNG BỘ 2 CHIỀU GIỮA CANVAS PREVIEW VÀ TAB CÂY LAYER

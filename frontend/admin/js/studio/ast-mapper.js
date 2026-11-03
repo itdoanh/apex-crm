@@ -111,6 +111,13 @@
                     }
                     const tagName = tagMatch[1].toLowerCase();
 
+                    // Bỏ qua thẻ style responsive đặc biệt của Studio để không làm lệch Node ID của các phần tử DOM
+                    if (tagName === 'style' && openTagRaw.includes('__apex_responsive_styles__')) {
+                        const closeStyleIdx = this.rawHTML.toLowerCase().indexOf('</style>', openTagEnd);
+                        i = (closeStyleIdx !== -1) ? closeStyleIdx + 8 : openTagEnd;
+                        continue;
+                    }
+
                     this.nodeCounter++;
                     const nodeId = 'node-' + this.nodeCounter;
 
@@ -367,10 +374,21 @@
                     `        if (e.key === 'Control' || e.key === 'Meta') {\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: true }, '*');\n` +
                     `        }\n` +
+                    `        if (e.code === 'Space' || e.key === ' ') {\n` +
+                    `            var t = (document.activeElement ? document.activeElement.tagName : '').toLowerCase();\n` +
+                    `            var isEd = document.activeElement && document.activeElement.isContentEditable;\n` +
+                    `            if (t !== 'input' && t !== 'textarea' && !isEd) {\n` +
+                    `                e.preventDefault();\n` +
+                    `                window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: true }, '*');\n` +
+                    `            }\n` +
+                    `        }\n` +
                     `    }, true);\n` +
                     `    window.addEventListener('keyup', function(e) {\n` +
                     `        if (e.key === 'Control' || e.key === 'Meta') {\n` +
                     `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: false }, '*');\n` +
+                    `        }\n` +
+                    `        if (e.code === 'Space' || e.key === ' ') {\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_SPACE', pressed: false }, '*');\n` +
                     `        }\n` +
                     `    }, true);\n` +
                     `    window.addEventListener('wheel', function(e) {\n` +
@@ -415,6 +433,18 @@
                     `                    try { el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch(e) {}\n` +
                     `                }\n` +
                     `                window.parent.postMessage({ type: 'APEX_BUILDER_RECT_RESPONSE', data: getNodeData(el) }, '*');\n` +
+                    `            }\n` +
+                    `        }\n` +
+                    `        if (m.type === 'APEX_CMD_SET_CONTENT_ZOOM') {\n` +
+                    `            var z = parseFloat(m.zoom) || 1.0;\n` +
+                    `            document.body.style.zoom = z;\n` +
+                    `            window.__APEX_CONTENT_ZOOM__ = z;\n` +
+                    `        }\n` +
+                    `        if (m.type === 'APEX_CMD_CLEAR_TEMP_STYLES') {\n` +
+                    `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
+                    `            if (el) {\n` +
+                    `                var props = m.props || ['left', 'top', 'position', 'width', 'height'];\n` +
+                    `                for (var p = 0; p < props.length; p++) el.style[props[p]] = '';\n` +
                     `            }\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_RESPONSIVE_CSS') {\n` +
