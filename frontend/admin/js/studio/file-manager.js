@@ -451,25 +451,43 @@
             }, 250);
         }
 
-        function updateEditorStats(isUserTyping) {
+        var activeCodeHighlightRange = null;
+        function updateEditorStats(isUserTyping, highlightRange = undefined) {
             const editor = document.getElementById('csCodeEditor');
+            if (!editor) return;
             const lines = (editor.value.match(/\n/g) || []).length + 1;
 
-            const lineNumEl = document.getElementById('csLineNumbers');
-            let numHtml = '';
-            for (let i = 1; i <= lines; i++) {
-                numHtml += i + '<br>';
+            if (highlightRange !== undefined) {
+                activeCodeHighlightRange = highlightRange;
             }
-            lineNumEl.innerHTML = numHtml;
+
+            const lineNumEl = document.getElementById('csLineNumbers');
+            if (lineNumEl) {
+                let numHtml = '';
+                const hStart = activeCodeHighlightRange ? activeCodeHighlightRange.startLine : -1;
+                const hEnd = activeCodeHighlightRange ? activeCodeHighlightRange.endLine : -1;
+                for (let i = 1; i <= lines; i++) {
+                    if (i >= hStart && i <= hEnd) {
+                        numHtml += `<span class="block bg-cyan-500/25 text-cyan-300 font-bold px-1 rounded-sm border-r-2 border-cyan-400 leading-6">${i}</span>`;
+                    } else {
+                        numHtml += `<span class="block leading-6 text-slate-600">${i}</span>`;
+                    }
+                }
+                lineNumEl.innerHTML = numHtml;
+            }
 
             document.getElementById('csTotalLines').innerText = `Tổng: ${lines} dòng`;
             const pos = editor.selectionStart || 0;
             const textBefore = editor.value.substring(0, pos);
             const curLine = (textBefore.match(/\n/g) || []).length + 1;
             const curCol = pos - textBefore.lastIndexOf('\n');
-            document.getElementById('csLineCol').innerText = `Dòng: ${curLine}, Cột: ${curCol}`;
+            const lineColEl = document.getElementById('csLineCol');
+            if (lineColEl && (!activeCodeHighlightRange || isUserTyping)) {
+                lineColEl.innerText = `Dòng: ${curLine}, Cột: ${curCol}`;
+            }
 
             if (isUserTyping) {
+                activeCodeHighlightRange = null;
                 studioEditorDirty = true;
                 document.getElementById('csSaveStatus').innerText = 'Chưa lưu thay đổi';
                 document.getElementById('csSaveStatus').className = 'text-[11px] text-amber-400 font-mono ml-2';

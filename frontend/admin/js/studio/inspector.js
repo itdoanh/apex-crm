@@ -223,12 +223,11 @@
                 repositionGizmoBox(data.rect);
             }
 
-            // Cập nhật bảng thuộc tính Visual Inspector
+            // Cập nhật bảng thuộc tính Visual Inspector theo loại thẻ
             populateInspectorWithNode(data);
 
-            // Tự động chọn đúng tab Layer và highlight node trên cây DOM (Đồng bộ 2 chiều Canvas <-> Layer Tree)
+            // Đồng bộ cây Layer DOM
             expandAncestorsInLayerTree(data.nodeId);
-            switchInspectorTab('layers');
             renderAstLayerTree();
             setTimeout(() => {
                 const row = document.getElementById('layer-row-' + data.nodeId);
@@ -237,16 +236,20 @@
                 }
             }, 50);
 
+            // Tự động chuyển sang tab 'content' phù hợp với loại thẻ (nếu đang ở tab 'css' thì giữ nguyên và cập nhật)
+            if (currentInspTab === 'css') {
+                if (typeof renderCssInspectorTab === 'function') renderCssInspectorTab();
+            } else {
+                switchInspectorTab('content');
+            }
+
             // Mở tự động Inspector nếu đang ở Visual Builder
             if (studioViewMode === 'visual' && !studioInspectorOpen) {
                 toggleInspectorPanel();
             }
 
-            // Highlight dòng code tương ứng trong Code Editor
-            const node = astMapper.astMap[data.nodeId];
-            if (node && node.startOffset !== undefined) {
-                highlightCodeAtOffset(node.startOffset);
-            }
+            // Highlight dòng code và nhảy mượt đến thẻ trong Code Editor
+            syncAndHighlightCodeForNode(data.nodeId);
         }
 
         function repositionGizmoBox(rect) {
@@ -289,6 +292,55 @@
             const lineHeight = 24; // 24px line-height
             editor.scrollTop = Math.max(0, line * lineHeight - 100);
             updateEditorStats(false);
+        }
+
+        // Tự động nhảy và highlight vùng code chính xác của thẻ trong Code Editor
+        function syncAndHighlightCodeForNode(nodeId) {
+            const editor = document.getElementById('csCodeEditor');
+            if (!editor) return;
+            const node = (typeof astMapper !== 'undefined' && astMapper.astMap) ? astMapper.astMap[nodeId] : null;
+            if (!node || node.startOffset === undefined) return;
+
+            const code = editor.value;
+            const startOffset = Math.min(node.startOffset, code.length);
+            const endOffset = Math.min(node.endOffset !== undefined ? node.endOffset : (node.openTagEnd || (node.startOffset + 10)), code.length);
+
+            // Tính số dòng bắt đầu và kết thúc
+            const textBefore = code.substring(0, startOffset);
+            const startLine = (textBefore.match(/\n/g) || []).length + 1;
+            const textToNodeEnd = code.substring(0, endOffset);
+            const endLine = (textToNodeEnd.match(/\n/g) || []).length + 1;
+
+            // Highlight vùng code trong textarea (selection range)
+            try {
+                editor.focus({ preventScroll: true });
+                editor.setSelectionRange(startOffset, endOffset);
+            } catch(e) {}
+
+            // Cuộn mượt code editor đến đúng dòng của thẻ
+            const lineHeight = 24; // 24px line-height
+            const targetScrollTop = Math.max(0, (startLine - 4) * lineHeight);
+            editor.scrollTop = targetScrollTop;
+
+            // Đồng bộ thanh số dòng với dải màu cyan nổi bật
+            if (typeof updateEditorStats === 'function') {
+                updateEditorStats(false, { startLine, endLine, startOffset, endOffset });
+            }
+
+            // Cập nhật thông tin dòng trên status bar
+            const lineColEl = document.getElementById('csLineCol');
+            if (lineColEl) {
+                lineColEl.innerHTML = `<span class="text-cyan-300 font-bold">Dòng ${startLine}${endLine > startLine ? ' - ' + endLine : ''}</span> | <span class="text-amber-300 font-mono">&lt;${node.tag || ''}&gt;</span>`;
+            }
+
+            // Nháy sáng nhẹ viền editor container để báo hiệu đã nhảy đến code thẻ
+            const editorContainer = document.getElementById('csEditorContainer');
+            if (editorContainer) {
+                editorContainer.classList.add('ring-1', 'ring-cyan-400');
+                setTimeout(() => {
+                    editorContainer.classList.remove('ring-1', 'ring-cyan-400');
+                }, 800);
+            }
         }
 
         // Chuyển đổi 3 chế độ xem Studio: Code Only | Split 2-Way | Visual Builder
@@ -385,40 +437,71 @@
             panel.classList.toggle('hidden', !studioInspectorOpen);
         }
 
-        // Chuyển đổi Tab trong Visual Inspector
+        // Chuyển đổi Tab trong Visual Inspector (Hỗ trợ 5 Tab: Content, CSS, Styles, Classes, Layers)
         function switchInspectorTab(tab) {
             currentInspTab = tab;
             window.currentInspTab = tab;
             window.currentInspectorTab = tab;
-            const tabs = ['content', 'classes', 'styles', 'layers'];
-            tabs.forEach(t => {
-                const btn = document.getElementById('btnInspTab' + t.charAt(0).toUpperCase() + t.slice(1));
-                const sec = document.getElementById('inspSection' + t.charAt(0).toUpperCase() + t.slice(1));
+            const tabDefs = [
+                { id: 'content', btn: 'btnInspTabContent', sec: 'inspSectionContent' },
+                { id: 'css', btn: 'btnInspTabCss', sec: 'inspSectionCss' },
+                { id: 'styles', btn: 'btnInspTabStyles', sec: 'inspSectionStyles' },
+                { id: 'classes', btn: 'btnInspTabClasses', sec: 'inspSectionClasses' },
+                { id: 'layers', btn: 'btnInspTabLayers', sec: 'inspSectionLayers' }
+            ];
+            tabDefs.forEach(t => {
+                const btn = document.getElementById(t.btn);
+                const sec = document.getElementById(t.sec);
                 if (btn) {
-                    if (t === tab) {
+                    if (t.id === tab) {
                         btn.className = 'flex-1 py-2 font-bold text-center border-b-2 border-cyan-400 text-white transition flex items-center justify-center gap-1';
                     } else {
                         btn.className = 'flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1';
                     }
                 }
-                if (sec) sec.classList.toggle('hidden', t !== tab);
+                if (sec) sec.classList.toggle('hidden', t.id !== tab);
             });
 
             if (tab === 'layers') {
                 renderAstLayerTree();
+            } else if (tab === 'css') {
+                renderCssInspectorTab();
             }
         }
         const openVisualInspectorTab = switchInspectorTab;
 
-        // Điền dữ liệu node vào Visual Inspector
+        // Nhận diện kiểu loại thẻ HTML để hiển thị giao diện tùy chỉnh phù hợp
+        function detectElementType(tagName, attrs, className) {
+            const tag = (tagName || '').toLowerCase().trim();
+            const cls = (className || '').toLowerCase();
+            const role = (attrs && attrs.role ? attrs.role : '').toLowerCase();
+
+            if (tag === 'img') return 'image';
+            if (tag === 'button' || role === 'button' || (tag === 'a' && /\bbtn\b|\bbutton\b/.test(cls))) return 'button';
+            if (tag === 'a') return 'link';
+            if (['input', 'textarea', 'select', 'form'].includes(tag)) return 'input';
+            if (['video', 'iframe'].includes(tag)) return 'video';
+            if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'strong', 'em', 'b', 'i', 'blockquote', 'li', 'label'].includes(tag)) return 'typography';
+            if (['div', 'section', 'header', 'footer', 'main', 'article', 'aside', 'nav', 'ul', 'ol', 'figure', 'body'].includes(tag)) return 'container';
+            return 'typography';
+        }
+
+        // Điền dữ liệu node vào Visual Inspector và hiển thị đúng subpanel theo loại thẻ
         function populateInspectorWithNode(data) {
-            document.getElementById('inspTagBadge').innerText = data.tagName || 'element';
-            document.getElementById('inspIdBadge').innerText = '#' + (data.nodeId || '');
+            const tag = (data.tagName || 'element').toLowerCase();
+            const attrs = data.attributes || {};
+            const className = data.className || '';
+            const nodeId = data.nodeId || '';
+
+            const badgeTag = document.getElementById('inspTagBadge');
+            if (badgeTag) badgeTag.innerText = tag;
+            const badgeId = document.getElementById('inspIdBadge');
+            if (badgeId) badgeId.innerText = '#' + nodeId;
 
             // Breadcrumb navigation
             const breadcrumbEl = document.getElementById('inspBreadcrumb');
-            if (breadcrumbEl && data.nodeId) {
-                const path = astMapper.getNodePath(data.nodeId);
+            if (breadcrumbEl && nodeId) {
+                const path = astMapper.getNodePath(nodeId);
                 let bHtml = '';
                 path.forEach((p, idx) => {
                     const isLast = idx === path.length - 1;
@@ -429,34 +512,121 @@
                 breadcrumbEl.innerHTML = bHtml || '<span>body</span>';
             }
 
-            // Tab Content
-            const textInput = document.getElementById('inspTextContent');
-            if (textInput) textInput.value = data.text || '';
+            // 1. Phân loại phần tử và kích hoạt đúng subpanel trong Tab Nội Dung
+            const elType = detectElementType(tag, attrs, className);
+            const panels = [
+                { id: 'typography', el: document.getElementById('inspPanelTypography') },
+                { id: 'button', el: document.getElementById('inspPanelButton') },
+                { id: 'link', el: document.getElementById('inspPanelLink') },
+                { id: 'image', el: document.getElementById('inspPanelImage') },
+                { id: 'input', el: document.getElementById('inspPanelInput') },
+                { id: 'video', el: document.getElementById('inspPanelVideo') },
+                { id: 'container', el: document.getElementById('inspPanelContainer') }
+            ];
 
-            // Attributes
-            const attrs = data.attributes || {};
-            const linkGroup = document.getElementById('inspAttrLinkGroup');
-            const imgGroup = document.getElementById('inspAttrImgGroup');
-            if (linkGroup) linkGroup.classList.toggle('hidden', data.tagName !== 'a');
-            if (imgGroup) imgGroup.classList.toggle('hidden', data.tagName !== 'img');
+            panels.forEach(p => {
+                if (p.el) p.el.classList.toggle('hidden', p.id !== elType);
+            });
 
-            if (document.getElementById('inspAttrHref')) document.getElementById('inspAttrHref').value = attrs['href'] || '';
-            if (document.getElementById('inspAttrTarget')) document.getElementById('inspAttrTarget').value = attrs['target'] || '';
-            if (document.getElementById('inspAttrSrc')) document.getElementById('inspAttrSrc').value = attrs['src'] || '';
-            if (document.getElementById('inspAttrAlt')) document.getElementById('inspAttrAlt').value = attrs['alt'] || '';
+            // Tiêu đề, Subtitle và Badge của loại phần tử
+            const typeTitleEl = document.getElementById('inspTypeTitle');
+            const typeSubEl = document.getElementById('inspTypeSubtitle');
+            const typeBadgeEl = document.getElementById('inspTypeTagBadge');
+            if (typeSubEl) typeSubEl.innerText = `<${tag}> • #${nodeId}`;
+            if (typeBadgeEl) typeBadgeEl.innerText = tag.toUpperCase();
+
+            // Điền dữ liệu chi tiết cho từng loại subpanel
+            if (elType === 'typography') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Văn Bản & Tiêu Đề';
+                const textInput = document.getElementById('inspTextContent');
+                if (textInput) textInput.value = data.text || '';
+                const tagSelect = document.getElementById('inspTypographyTag');
+                if (tagSelect) {
+                    tagSelect.value = ['h1','h2','h3','h4','p','span','blockquote'].includes(tag) ? tag : 'p';
+                }
+            } else if (elType === 'button') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Nút Bấm & Kêu Gọi Hành Động';
+                const btnTextInput = document.getElementById('inspBtnText');
+                if (btnTextInput) btnTextInput.value = data.text || '';
+
+                const actionTypeSelect = document.getElementById('inspBtnActionType');
+                const targetInput = document.getElementById('inspBtnTargetValue');
+                const targetWindowSelect = document.getElementById('inspBtnTargetWindow');
+
+                let actType = 'url';
+                const href = attrs['href'] || '';
+                if (attrs['type'] === 'submit') {
+                    actType = 'submit';
+                } else if (href.startsWith('tel:')) {
+                    actType = 'tel';
+                } else if (href.includes('zalo.me')) {
+                    actType = 'zalo';
+                } else if (href.startsWith('#')) {
+                    actType = 'anchor';
+                }
+
+                if (actionTypeSelect) actionTypeSelect.value = actType;
+                if (targetInput) targetInput.value = href;
+                if (targetWindowSelect) targetWindowSelect.value = attrs['target'] || '_self';
+            } else if (elType === 'link') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Đường Dẫn & Liên Kết';
+                const linkTextInput = document.getElementById('inspLinkText');
+                if (linkTextInput) linkTextInput.value = data.text || '';
+                if (document.getElementById('inspAttrHref')) document.getElementById('inspAttrHref').value = attrs['href'] || '';
+                if (document.getElementById('inspAttrTarget')) document.getElementById('inspAttrTarget').value = attrs['target'] || '';
+            } else if (elType === 'image') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Hình Ảnh (Media)';
+                const imgSrc = attrs['src'] || '';
+                if (document.getElementById('inspAttrSrc')) document.getElementById('inspAttrSrc').value = imgSrc;
+                if (document.getElementById('inspAttrAlt')) document.getElementById('inspAttrAlt').value = attrs['alt'] || '';
+                updateImagePreviewThumbnail(imgSrc);
+            } else if (elType === 'input') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Ô Nhập Liệu & Form';
+                if (document.getElementById('inspInputType')) document.getElementById('inspInputType').value = attrs['type'] || (tag === 'textarea' ? 'textarea' : 'text');
+                if (document.getElementById('inspInputName')) document.getElementById('inspInputName').value = attrs['name'] || '';
+                if (document.getElementById('inspInputPlaceholder')) document.getElementById('inspInputPlaceholder').value = attrs['placeholder'] || '';
+                if (document.getElementById('inspInputRequired')) document.getElementById('inspInputRequired').checked = (attrs['required'] !== undefined && attrs['required'] !== 'false');
+            } else if (elType === 'video') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Video & Nhúng';
+                if (document.getElementById('inspVideoSrc')) document.getElementById('inspVideoSrc').value = attrs['src'] || '';
+            } else if (elType === 'container') {
+                if (typeTitleEl) typeTitleEl.innerText = 'Khối Khung & Bố Cục';
+                const node = astMapper.astMap[nodeId];
+                const childIds = (node && node.children) ? node.children : [];
+                const childCountEl = document.getElementById('inspContainerChildCount');
+                if (childCountEl) childCountEl.innerText = `${childIds.length} thẻ con`;
+
+                const childPillsEl = document.getElementById('inspContainerChildPills');
+                if (childPillsEl) {
+                    if (childIds.length === 0) {
+                        childPillsEl.innerHTML = '<span class="text-[10px] text-slate-500 italic">Không có thẻ con</span>';
+                    } else {
+                        let pillsHtml = '';
+                        childIds.forEach(cId => {
+                            const cNode = astMapper.astMap[cId];
+                            if (cNode) {
+                                pillsHtml += `<button type="button" onclick="selectAstNode('${cId}', true)" class="px-2 py-0.5 rounded bg-slate-900 hover:bg-cyan-600 border border-slate-800 text-[10px] text-slate-300 hover:text-white font-mono transition flex items-center gap-1"><span>&lt;${cNode.tag}&gt;</span><span class="text-slate-500">#${cId}</span></button>`;
+                            }
+                        });
+                        childPillsEl.innerHTML = pillsHtml;
+                    }
+                }
+            }
+
+            // Điền thuộc tính chung (ID, Title)
             if (document.getElementById('inspAttrId')) document.getElementById('inspAttrId').value = attrs['id'] || '';
             if (document.getElementById('inspAttrTitle')) document.getElementById('inspAttrTitle').value = attrs['title'] || '';
 
-            // Tab Classes
-            renderInspectorClasses(data.className);
+            // Cập nhật Tab Classes
+            renderInspectorClasses(className);
 
-            // Tab Styles (6 Phân Hệ Chi Tiết - Hỗ Trợ Scope Riêng Mobile vs PC)
+            // Cập nhật Tab Styles (Bố cục, Kích thước, Màu sắc)
             let style = Object.assign({}, data.style || {});
-            if (studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles && data.nodeId) {
-                const mobStyles = astMapper.getMobileStyles(data.nodeId);
+            if (studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles && nodeId) {
+                const mobStyles = astMapper.getMobileStyles(nodeId);
                 style = Object.assign(style, mobStyles);
-            } else if (studioDeviceMode === 'pc' && typeof astMapper !== 'undefined' && astMapper.getPCStyles && data.nodeId) {
-                const pcStyles = astMapper.getPCStyles(data.nodeId);
+            } else if (studioDeviceMode === 'pc' && typeof astMapper !== 'undefined' && astMapper.getPCStyles && nodeId) {
+                const pcStyles = astMapper.getPCStyles(nodeId);
                 style = Object.assign(style, pcStyles);
             }
 
@@ -527,6 +697,11 @@
             const hexBorder = rgbToHex(style.borderColor);
             if (hexBorder && document.getElementById('inspStyleBorderColorPicker')) {
                 document.getElementById('inspStyleBorderColorPicker').value = hexBorder;
+            }
+
+            // Cập nhật tab CSS nếu đang mở
+            if (currentInspTab === 'css') {
+                renderCssInspectorTab();
             }
         }
 
@@ -782,4 +957,573 @@
             requestNodeRect(selectedAstNodeId);
             renderAstLayerTree();
         }
+
+        // ============================================================
+        // CÁC HÀM XỬ LÝ NỘI DUNG THEO LOẠI THẺ (TAB NỘI DUNG NÂNG CAO)
+        // ============================================================
+
+        // 1. Chuyển đổi Tag không làm hỏng AST (H1 <-> H2 <-> P...)
+        function convertSelectedTag(newTagName) {
+            if (!selectedAstNodeId || !newTagName) return;
+            const updated = astMapper.spliceTagName(selectedAstNodeId, newTagName);
+            syncCodeEditorFromAst(updated);
+            pushStudioHistory(`Đổi thẻ thành <${newTagName}>`, updated, selectedAstNodeId);
+            refreshStudioPreview();
+            setTimeout(() => {
+                selectAstNode(selectedAstNodeId, true);
+            }, 100);
+        }
+
+        // 2. Căn lề, cỡ chữ, định dạng nhanh cho Typography & Container
+        function applyQuickTypographyClass(className) {
+            if (!selectedAstNodeId || !className) return;
+
+            // Nếu là căn lề
+            if (['text-left', 'text-center', 'text-right', 'text-justify'].includes(className)) {
+                ['text-left', 'text-center', 'text-right', 'text-justify'].forEach(c => {
+                    astMapper.removeClass(selectedAstNodeId, c);
+                });
+                astMapper.addClass(selectedAstNodeId, className);
+            }
+            // Nếu là cỡ chữ
+            else if (/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl)$/.test(className)) {
+                ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl'].forEach(s => {
+                    astMapper.removeClass(selectedAstNodeId, s);
+                });
+                astMapper.addClass(selectedAstNodeId, className);
+            }
+            // Nếu là định dạng toggle (bold, italic, underline, uppercase)
+            else if (['font-bold', 'italic', 'underline', 'uppercase'].includes(className)) {
+                const node = astMapper.astMap[selectedAstNodeId];
+                const hasCls = (node && node.classes) ? node.classes.includes(className) : false;
+                if (hasCls) {
+                    astMapper.removeClass(selectedAstNodeId, className);
+                } else {
+                    astMapper.addClass(selectedAstNodeId, className);
+                }
+            }
+            // Nếu là bo góc nhanh cho ảnh
+            else if (['rounded-xl', 'rounded-2xl', 'rounded-full'].includes(className)) {
+                ['rounded-xl', 'rounded-2xl', 'rounded-full'].forEach(r => astMapper.removeClass(selectedAstNodeId, r));
+                astMapper.addClass(selectedAstNodeId, className);
+            }
+            // Nếu là nhóm class (như layout flex col...)
+            else {
+                className.split(/\s+/).filter(Boolean).forEach(c => {
+                    astMapper.addClass(selectedAstNodeId, c);
+                });
+            }
+
+            const updated = astMapper.rawHTML;
+            syncCodeEditorFromAst(updated);
+            pushStudioHistory(`Áp dụng class ${className}`, updated, selectedAstNodeId);
+            refreshStudioPreview();
+            const node = astMapper.astMap[selectedAstNodeId];
+            renderInspectorClasses((node && node.attrs['class'] ? node.attrs['class'].value : '') || '');
+        }
+
+        // 3. Xử lý Nút Bấm (Button CTA)
+        function onInspectorButtonTextInput(newText) {
+            if (!selectedAstNodeId) return;
+            applyAstTextChange(selectedAstNodeId, newText);
+        }
+
+        function onInspectorButtonActionTypeChange(actionType) {
+            if (!selectedAstNodeId) return;
+            const targetLabel = document.getElementById('inspBtnTargetLabel');
+            const targetInput = document.getElementById('inspBtnTargetValue');
+            const targetWindow = document.getElementById('inspBtnTargetWindowContainer');
+
+            if (actionType === 'submit') {
+                onInspectorAttrChange('type', 'submit');
+                if (targetLabel) targetLabel.innerText = 'Hành động Form';
+                if (targetInput) targetInput.placeholder = 'Gửi toàn bộ dữ liệu form';
+                if (targetWindow) targetWindow.classList.add('hidden');
+            } else if (actionType === 'anchor') {
+                if (targetLabel) targetLabel.innerText = 'Mã phần tử cuộn tới (#id)';
+                if (targetInput) {
+                    targetInput.placeholder = '#form-dang-ky';
+                    if (targetInput.value && !targetInput.value.startsWith('#')) targetInput.value = '#' + targetInput.value;
+                }
+                if (targetWindow) targetWindow.classList.add('hidden');
+                onInspectorAttrChange('href', targetInput ? targetInput.value : '#');
+            } else if (actionType === 'tel') {
+                if (targetLabel) targetLabel.innerText = 'Số điện thoại gọi (tel:...)';
+                if (targetInput) {
+                    targetInput.placeholder = 'tel:0900000000';
+                    if (targetInput.value && !targetInput.value.startsWith('tel:')) targetInput.value = 'tel:' + targetInput.value;
+                }
+                if (targetWindow) targetWindow.classList.add('hidden');
+                onInspectorAttrChange('href', targetInput ? targetInput.value : 'tel:');
+            } else if (actionType === 'zalo') {
+                if (targetLabel) targetLabel.innerText = 'Đường dẫn Zalo';
+                if (targetInput) {
+                    targetInput.placeholder = 'https://zalo.me/0900000000';
+                    if (targetInput.value && !targetInput.value.includes('zalo.me')) targetInput.value = 'https://zalo.me/' + targetInput.value.replace(/[^0-9]/g, '');
+                }
+                if (targetWindow) targetWindow.classList.remove('hidden');
+                onInspectorAttrChange('href', targetInput ? targetInput.value : 'https://zalo.me/');
+                onInspectorAttrChange('target', '_blank');
+            } else { // URL
+                if (targetLabel) targetLabel.innerText = 'Địa chỉ URL đích';
+                if (targetInput) targetInput.placeholder = 'https://...';
+                if (targetWindow) targetWindow.classList.remove('hidden');
+                if (targetInput && targetInput.value) onInspectorAttrChange('href', targetInput.value);
+            }
+        }
+
+        function onInspectorButtonTargetChange(val) {
+            if (!selectedAstNodeId) return;
+            onInspectorAttrChange('href', val);
+        }
+
+        function applyButtonVariant(variant) {
+            if (!selectedAstNodeId) return;
+            const colorClasses = [
+                'bg-cyan-500', 'hover:bg-cyan-400', 'text-slate-950',
+                'bg-amber-500', 'hover:bg-amber-400',
+                'bg-emerald-500', 'hover:bg-emerald-400',
+                'bg-slate-900/80', 'hover:bg-slate-800', 'border-slate-700', 'border', 'backdrop-blur-md'
+            ];
+            colorClasses.forEach(c => astMapper.removeClass(selectedAstNodeId, c));
+
+            let variantClass = '';
+            if (variant === 'cyan') {
+                variantClass = 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-lg shadow-cyan-500/30';
+            } else if (variant === 'gold') {
+                variantClass = 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/30';
+            } else if (variant === 'emerald') {
+                variantClass = 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-lg shadow-emerald-500/30';
+            } else if (variant === 'glass') {
+                variantClass = 'bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-white font-semibold backdrop-blur-md';
+            }
+
+            variantClass.split(/\s+/).filter(Boolean).forEach(c => astMapper.addClass(selectedAstNodeId, c));
+            const updated = astMapper.rawHTML;
+            syncCodeEditorFromAst(updated);
+            pushStudioHistory(`Đổi kiểu nút ${variant}`, updated, selectedAstNodeId);
+            refreshStudioPreview();
+            const node = astMapper.astMap[selectedAstNodeId];
+            renderInspectorClasses((node && node.attrs['class'] ? node.attrs['class'].value : '') || '');
+        }
+
+        // 4. Xử lý Link
+        function onInspectorLinkTextInput(newText) {
+            if (!selectedAstNodeId) return;
+            applyAstTextChange(selectedAstNodeId, newText);
+        }
+
+        // 5. Xử lý Ảnh (Image Preview & Dimensions)
+        function updateImagePreviewThumbnail(src) {
+            const preview = document.getElementById('inspImgPreview');
+            const dimLabel = document.getElementById('inspImgNaturalDim');
+            if (!preview) return;
+            if (!src) {
+                preview.src = '';
+                if (dimLabel) dimLabel.innerText = '-- × -- px';
+                return;
+            }
+            preview.src = src;
+            preview.onload = function() {
+                if (dimLabel) dimLabel.innerText = `${preview.naturalWidth} × ${preview.naturalHeight} px`;
+            };
+            preview.onerror = function() {
+                if (dimLabel) dimLabel.innerText = 'Lỗi tải ảnh';
+            };
+        }
+
+        // 6. Xử lý Form Input & Video
+        function onInspectorRequiredToggle(isChecked) {
+            if (!selectedAstNodeId) return;
+            if (isChecked) {
+                onInspectorAttrChange('required', '');
+            } else {
+                const updated = astMapper.removeAttribute(selectedAstNodeId, 'required');
+                syncCodeEditorFromAst(updated);
+                pushStudioHistory('Bỏ thuộc tính required', updated, selectedAstNodeId);
+                refreshStudioPreview();
+            }
+        }
+
+        function onInspectorVideoSrcChange(src) {
+            if (!selectedAstNodeId) return;
+            onInspectorAttrChange('src', src);
+        }
+
+        // ============================================================
+        // TAB CSS: TOÀN BỘ CSS ĐANG ÁP DỤNG & THƯ VIỆN HIỆU ỨNG (18+ PRESETS)
+        // ============================================================
+
+        var cssEffectCurrentCategory = 'all';
+        var cssEffectSearchKeyword = '';
+
+        var CSS_EFFECT_PRESETS = [
+            // Animation
+            {
+                id: 'anim-pulse',
+                name: 'Nhịp Đập Pulse',
+                category: 'animation',
+                description: 'Hiệu ứng nhịp đập phóng to nhẹ thu hút ánh nhìn',
+                styles: { 'animation': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
+            },
+            {
+                id: 'anim-bounce-soft',
+                name: 'Nhún Nhảy Bounce',
+                category: 'animation',
+                description: 'Nhún nhảy nhẹ nhàng cho nút CTA hoặc huy hiệu',
+                styles: { 'animation': 'bounce 1.5s infinite' }
+            },
+            {
+                id: 'anim-spin-slow',
+                name: 'Xoay Tròn 360°',
+                category: 'animation',
+                description: 'Xoay tròn liên tục vô tận 8 giây',
+                styles: { 'animation': 'spin 8s linear infinite' }
+            },
+            // Glow & Neon
+            {
+                id: 'glow-neon-cyan',
+                name: 'Neon Cyan Công Nghệ',
+                category: 'glow',
+                description: 'Phát sáng xanh Neon viền và bóng đổ hiện đại',
+                styles: {
+                    'box-shadow': '0 0 20px rgba(6, 182, 212, 0.55), inset 0 0 10px rgba(6, 182, 212, 0.25)',
+                    'border': '1px solid #06b6d4'
+                }
+            },
+            {
+                id: 'glow-gold-luxury',
+                name: 'Gold Hoàng Kim Sang Trọng',
+                category: 'glow',
+                description: 'Hào quang vàng gold tài chính cao cấp',
+                styles: {
+                    'box-shadow': '0 0 25px rgba(245, 158, 11, 0.6), inset 0 0 10px rgba(245, 158, 11, 0.25)',
+                    'border': '1px solid #f59e0b'
+                }
+            },
+            {
+                id: 'glow-emerald-active',
+                name: 'Emerald Xanh Thắng Lợi',
+                category: 'glow',
+                description: 'Phát sáng ngọc bích biểu thị thành công và bảo mật',
+                styles: {
+                    'box-shadow': '0 0 20px rgba(16, 185, 129, 0.55), inset 0 0 10px rgba(16, 185, 129, 0.25)',
+                    'border': '1px solid #10b981'
+                }
+            },
+            {
+                id: 'glow-text-cyan',
+                name: 'Chữ Phát Sáng Cyan',
+                category: 'glow',
+                description: 'Đổ bóng chữ neon cyan nổi bật trên nền tối',
+                styles: {
+                    'text-shadow': '0 0 12px rgba(6, 182, 212, 0.8), 0 0 24px rgba(6, 182, 212, 0.4)'
+                }
+            },
+            // Glassmorphism
+            {
+                id: 'glass-dark-card',
+                name: 'Kính Mờ Tối (Dark Glass)',
+                category: 'glass',
+                description: 'Kính mờ xuyên thấu blur 16px viền trắng tinh tế',
+                styles: {
+                    'background': 'rgba(15, 23, 42, 0.75)',
+                    'backdrop-filter': 'blur(16px)',
+                    '-webkit-backdrop-filter': 'blur(16px)',
+                    'border': '1px solid rgba(255, 255, 255, 0.12)'
+                }
+            },
+            {
+                id: 'glass-frosted-ultra',
+                name: 'Kính Băng (Frosted Ice)',
+                category: 'glass',
+                description: 'Độ mờ cao blur 24px sang trọng kiểu iOS / macOS',
+                styles: {
+                    'background': 'rgba(255, 255, 255, 0.06)',
+                    'backdrop-filter': 'blur(24px)',
+                    '-webkit-backdrop-filter': 'blur(24px)',
+                    'border': '1px solid rgba(255, 255, 255, 0.2)'
+                }
+            },
+            {
+                id: 'glass-tint-cyan',
+                name: 'Kính Ánh Xanh Cyan',
+                category: 'glass',
+                description: 'Nền kính phớt xanh cyan công nghệ nhẹ nhàng',
+                styles: {
+                    'background': 'rgba(6, 182, 212, 0.08)',
+                    'backdrop-filter': 'blur(14px)',
+                    '-webkit-backdrop-filter': 'blur(14px)',
+                    'border': '1px solid rgba(6, 182, 212, 0.3)'
+                }
+            },
+            // Gradient
+            {
+                id: 'gradient-cyan-to-blue',
+                name: 'Dải Màu Cyan Đậm Đà',
+                category: 'gradient',
+                description: 'Chuyển màu mượt mà từ cyan 500 sang blue 600',
+                styles: {
+                    'background': 'linear-gradient(135deg, #06b6d4 0%, #2563eb 100%)',
+                    'color': '#ffffff'
+                }
+            },
+            {
+                id: 'gradient-gold-sunset',
+                name: 'Hoàng Kim Gradient',
+                category: 'gradient',
+                description: 'Chuyển màu vàng cam rực rỡ thu hút khách tài chính',
+                styles: {
+                    'background': 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                    'color': '#ffffff'
+                }
+            },
+            {
+                id: 'gradient-text-clip',
+                name: 'Chữ Cầu Vồng (Gradient Text)',
+                category: 'gradient',
+                description: 'Dải màu phủ trực tiếp lên chữ xuyên thấu',
+                styles: {
+                    'background': 'linear-gradient(90deg, #38bdf8, #818cf8, #c084fc)',
+                    '-webkit-background-clip': 'text',
+                    '-webkit-text-fill-color': 'transparent'
+                }
+            },
+            // Shadow 3D
+            {
+                id: 'shadow-elevation-xl',
+                name: 'Đổ Bóng Nổi 3D Sâu',
+                category: 'shadow',
+                description: 'Nâng phần tử lên cao khỏi bề mặt trang web',
+                styles: {
+                    'box-shadow': '0 25px 50px -12px rgba(0, 0, 0, 0.65)'
+                }
+            },
+            {
+                id: 'shadow-cyan-glow',
+                name: 'Bóng Đổ Xanh Cyan',
+                category: 'shadow',
+                description: 'Bóng đổ mềm mại có màu xanh tạo chiều sâu',
+                styles: {
+                    'box-shadow': '0 12px 32px -4px rgba(6, 182, 212, 0.4)'
+                }
+            },
+            {
+                id: 'shadow-inset-carve',
+                name: 'Khắc Chìm (Inner Shadow)',
+                category: 'shadow',
+                description: 'Đổ bóng ngược vào bên trong tạo cảm giác lõm sâu',
+                styles: {
+                    'box-shadow': 'inset 0 3px 10px 0 rgba(0, 0, 0, 0.7)'
+                }
+            },
+            // Hover
+            {
+                id: 'hover-lift-soft',
+                name: 'Bay Lên Khi Hover (Lift)',
+                category: 'hover',
+                description: 'Nổi lên 4px mượt mà kèm bóng đổ sâu',
+                styles: {
+                    'transition': 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    'transform': 'translateY(-4px)',
+                    'box-shadow': '0 15px 30px -5px rgba(0, 0, 0, 0.4)'
+                }
+            },
+            {
+                id: 'hover-scale-zoom',
+                name: 'Phóng To Nhẹ (Scale Zoom)',
+                category: 'hover',
+                description: 'Phóng to 3% với transition êm dịu',
+                styles: {
+                    'transition': 'transform 0.25s ease-in-out',
+                    'transform': 'scale(1.03)'
+                }
+            }
+        ];
+
+        function setCssEffectFilter(cat) {
+            cssEffectCurrentCategory = cat || 'all';
+            const categories = ['all', 'animation', 'glow', 'glass', 'gradient', 'shadow', 'hover'];
+            categories.forEach(c => {
+                const btn = document.getElementById('btnEffCat_' + c);
+                if (btn) {
+                    if (c === cssEffectCurrentCategory) {
+                        btn.className = 'px-2 py-0.5 rounded-full bg-cyan-600 text-white font-bold transition';
+                    } else {
+                        btn.className = 'px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition';
+                    }
+                }
+            });
+            renderCssPresetsGrid();
+        }
+
+        function filterCssEffects(keyword) {
+            cssEffectSearchKeyword = (keyword || '').toLowerCase().trim();
+            renderCssPresetsGrid();
+        }
+
+        function renderCssPresetsGrid() {
+            const grid = document.getElementById('cssEffectPresetsGrid');
+            if (!grid) return;
+
+            const filtered = CSS_EFFECT_PRESETS.filter(p => {
+                const matchCat = (cssEffectCurrentCategory === 'all' || p.category === cssEffectCurrentCategory);
+                const matchSearch = (!cssEffectSearchKeyword ||
+                    p.name.toLowerCase().includes(cssEffectSearchKeyword) ||
+                    p.description.toLowerCase().includes(cssEffectSearchKeyword) ||
+                    p.category.toLowerCase().includes(cssEffectSearchKeyword));
+                return matchCat && matchSearch;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="col-span-2 text-center text-slate-500 text-[11px] py-4 italic">Không tìm thấy hiệu ứng phù hợp</div>';
+                return;
+            }
+
+            let html = '';
+            filtered.forEach(p => {
+                html += `
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-2 flex flex-col justify-between hover:border-slate-700 transition group">
+                        <div class="mb-1.5">
+                            <div class="text-[11px] font-bold text-white group-hover:text-cyan-300 transition truncate">${p.name}</div>
+                            <div class="text-[9px] text-slate-400 line-clamp-2 leading-tight">${p.description}</div>
+                        </div>
+                        <button type="button" onclick="applyCssEffectPreset('${p.id}')" class="w-full bg-slate-850 hover:bg-cyan-600 text-cyan-400 hover:text-white border border-cyan-800/50 hover:border-transparent text-[10px] font-bold py-1 rounded transition flex items-center justify-center gap-1 shadow-sm">
+                            <i class="fa-solid fa-wand-magic-sparkles text-[9px]"></i>
+                            <span>Áp dụng</span>
+                        </button>
+                    </div>
+                `;
+            });
+            grid.innerHTML = html;
+        }
+
+        function applyCssEffectPreset(presetId) {
+            if (!selectedAstNodeId) return;
+            const preset = CSS_EFFECT_PRESETS.find(p => p.id === presetId);
+            if (!preset) return;
+            applyAstStyleChange(selectedAstNodeId, preset.styles, 'Áp dụng hiệu ứng ' + preset.name);
+            renderCssInspectorTab();
+        }
+
+        function renderCssInspectorTab() {
+            renderCssPresetsGrid();
+            renderActiveCssProperties();
+        }
+
+        function renderActiveCssProperties() {
+            const listEl = document.getElementById('inspActiveCssList');
+            const countEl = document.getElementById('cssActivePropsCount');
+            if (!listEl) return;
+
+            if (!selectedAstNodeId) {
+                listEl.innerHTML = '<div class="text-[10px] text-slate-500 italic py-2 text-center">Chọn một phần tử để xem toàn bộ CSS</div>';
+                if (countEl) countEl.innerText = '0 thuộc tính';
+                return;
+            }
+
+            // Lấy toàn bộ CSS từ:
+            // 1. Responsive Styles (AST Mapper PC / Mobile)
+            let activeStyles = {};
+            if (studioDeviceMode === 'mobile' && astMapper.getMobileStyles) {
+                Object.assign(activeStyles, astMapper.getMobileStyles(selectedAstNodeId) || {});
+            } else if (astMapper.getPCStyles) {
+                Object.assign(activeStyles, astMapper.getPCStyles(selectedAstNodeId) || {});
+            }
+
+            // 2. Inline Style attribute trên thẻ
+            const node = astMapper.astMap[selectedAstNodeId];
+            if (node && node.attrs && node.attrs['style']) {
+                const inlineStr = node.attrs['style'].value || '';
+                inlineStr.split(';').forEach(pair => {
+                    const idx = pair.indexOf(':');
+                    if (idx > -1) {
+                        const prop = pair.substring(0, idx).trim();
+                        const val = pair.substring(idx + 1).trim();
+                        if (prop && val && !activeStyles[prop]) {
+                            activeStyles[prop] = val;
+                        }
+                    }
+                });
+            }
+
+            const propKeys = Object.keys(activeStyles);
+            if (countEl) countEl.innerText = `${propKeys.length} thuộc tính`;
+
+            if (propKeys.length === 0) {
+                listEl.innerHTML = '<div class="text-[10px] text-slate-500 italic py-2 text-center">Chưa có thuộc tính CSS riêng. Thêm thuộc tính hoặc chọn hiệu ứng phía trên.</div>';
+                return;
+            }
+
+            let html = '';
+            propKeys.forEach(prop => {
+                const val = activeStyles[prop];
+                html += `
+                    <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1.5 hover:border-slate-700 transition">
+                        <span class="text-[11px] font-mono text-cyan-400 font-semibold w-28 truncate" title="${prop}">${prop}</span>
+                        <input type="text" value="${escapeHTML(val)}" onchange="onCssPropertyEdit('${prop}', this.value)" class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
+                        <button type="button" onclick="removeCssProperty('${prop}')" class="text-slate-500 hover:text-rose-400 p-1 rounded transition" title="Xóa thuộc tính CSS">
+                            <i class="fa-solid fa-trash-can text-[10px]"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            listEl.innerHTML = html;
+        }
+
+        function onCssPropertyEdit(prop, newVal) {
+            if (!selectedAstNodeId || !prop) return;
+            onInspectorStyleChange(prop, newVal);
+        }
+
+        function removeCssProperty(prop) {
+            if (!selectedAstNodeId || !prop) return;
+            const styleObj = {};
+            styleObj[prop] = null;
+            applyAstStyleChange(selectedAstNodeId, styleObj, `Xóa CSS ${prop}`);
+            renderActiveCssProperties();
+        }
+
+        function addCustomCssPropertyFromInput() {
+            if (!selectedAstNodeId) return;
+            const nameInput = document.getElementById('cssCustomPropName');
+            const valInput = document.getElementById('cssCustomPropValue');
+            if (!nameInput || !valInput) return;
+
+            const prop = nameInput.value.trim().toLowerCase();
+            const val = valInput.value.trim();
+            if (!prop || !val) return;
+
+            onInspectorStyleChange(prop, val);
+            nameInput.value = '';
+            valInput.value = '';
+            renderActiveCssProperties();
+        }
+
+        function applyRawCssString() {
+            if (!selectedAstNodeId) return;
+            const rawEl = document.getElementById('cssRawTextarea');
+            if (!rawEl) return;
+            const rawStr = rawEl.value.trim();
+            if (!rawStr) return;
+
+            const parsed = {};
+            rawStr.split(';').forEach(statement => {
+                const idx = statement.indexOf(':');
+                if (idx > -1) {
+                    const key = statement.substring(0, idx).trim().toLowerCase();
+                    const val = statement.substring(idx + 1).trim();
+                    if (key && val) {
+                        parsed[key] = val;
+                    }
+                }
+            });
+
+            if (Object.keys(parsed).length > 0) {
+                applyAstStyleChange(selectedAstNodeId, parsed, 'Áp dụng mã CSS tùy chỉnh');
+                rawEl.value = '';
+                renderActiveCssProperties();
+            }
+        }
+
 

@@ -659,6 +659,31 @@
                 return this.spliceAttribute(nodeId, 'class', classStr.trim());
             }
 
+            spliceTagName(nodeId, newTagName) {
+                const node = this.astMap[nodeId];
+                if (!node || !newTagName) return this.rawHTML;
+                newTagName = newTagName.toLowerCase().trim();
+                const oldTag = (node.tag || '').toLowerCase();
+                if (oldTag === newTagName) return this.rawHTML;
+
+                let html = this.rawHTML;
+                // Thay thế thẻ đóng trước (từ sau ra trước để không lệch offset thẻ mở)
+                if (node.closeTagStart !== undefined && node.closeTagEnd !== undefined) {
+                    const closeBefore = html.substring(0, node.closeTagStart);
+                    const closeAfter = html.substring(node.closeTagEnd);
+                    html = closeBefore + `</${newTagName}>` + closeAfter;
+                }
+
+                // Thay thế thẻ mở: <oldTag -> <newTag
+                const openTagSlice = html.substring(node.openTagStart, node.openTagEnd);
+                const updatedOpenTag = openTagSlice.replace(new RegExp(`^<${oldTag}(\\s|>|/)`, 'i'), `<${newTagName}$1`);
+                html = html.substring(0, node.openTagStart) + updatedOpenTag + html.substring(node.openTagEnd);
+
+                this.rawHTML = html;
+                this.parse(this.rawHTML);
+                return this.rawHTML;
+            }
+
             spliceStyle(nodeId, styleObj) {
                 const node = this.astMap[nodeId];
                 if (!node) return this.rawHTML;

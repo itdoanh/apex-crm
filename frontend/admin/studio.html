@@ -608,19 +608,23 @@
                     <span>body</span>
                 </div>
 
-                <!-- Inspector Tab Bar: Content | Classes | Styles | Layers -->
+                <!-- Inspector Tab Bar: Content | CSS | Styles | Classes | Layers -->
                 <div class="flex border-b border-slate-800 bg-slate-900 text-xs">
-                    <button type="button" id="btnInspTabContent" onclick="switchInspectorTab('content')" class="flex-1 py-2 font-bold text-center border-b-2 border-cyan-400 text-white transition flex items-center justify-center gap-1" title="Nội dung & Thuộc tính">
+                    <button type="button" id="btnInspTabContent" onclick="switchInspectorTab('content')" class="flex-1 py-2 font-bold text-center border-b-2 border-cyan-400 text-white transition flex items-center justify-center gap-1" title="Nội dung theo loại thẻ">
                         <i class="fa-solid fa-pen-nib text-[10px]"></i>
                         <span>Nội Dung</span>
                     </button>
-                    <button type="button" id="btnInspTabClasses" onclick="switchInspectorTab('classes')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Class & Tailwind Utilities">
-                        <i class="fa-solid fa-tags text-[10px]"></i>
-                        <span>Class</span>
+                    <button type="button" id="btnInspTabCss" onclick="switchInspectorTab('css')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Toàn bộ CSS & Thư viện hiệu ứng">
+                        <i class="fa-brands fa-css3-alt text-cyan-400 text-xs"></i>
+                        <span>CSS</span>
                     </button>
                     <button type="button" id="btnInspTabStyles" onclick="switchInspectorTab('styles')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Bố cục, Kích thước, Màu sắc">
                         <i class="fa-solid fa-palette text-[10px]"></i>
                         <span>Style</span>
+                    </button>
+                    <button type="button" id="btnInspTabClasses" onclick="switchInspectorTab('classes')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Class & Tailwind Utilities">
+                        <i class="fa-solid fa-tags text-[10px]"></i>
+                        <span>Class</span>
                     </button>
                     <button type="button" id="btnInspTabLayers" onclick="switchInspectorTab('layers')" class="flex-1 py-2 font-semibold text-center text-slate-400 hover:text-white transition flex items-center justify-center gap-1" title="Cây cấu trúc DOM Layers">
                         <i class="fa-solid fa-layer-group text-[10px]"></i>
@@ -630,59 +634,424 @@
 
                 <!-- Inspector Tab Contents Container -->
                 <div class="flex-1 overflow-y-auto p-3 space-y-4 inspector-scroll text-xs">
-                    <!-- SECTION 1: NỘI DUNG & THUỘC TÍNH (CONTENT & ATTRS) -->
+                    <!-- SECTION 1: NỘI DUNG THEO LOẠI THẺ (CONTENT BY ELEMENT TYPE) -->
                     <div id="inspSectionContent" class="space-y-3.5">
-                        <div>
-                            <label class="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
-                                <span>Nội Dung Văn Bản (Text)</span>
-                                <span class="text-[9px] text-cyan-400 font-mono">AST Splice</span>
-                            </label>
-                            <textarea id="inspTextContent" rows="3" oninput="onInspectorTextInput()" placeholder="Nhập nội dung văn bản..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
+                        <!-- Dynamic Element Type Badge -->
+                        <div id="inspContentTypeBadge" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <div id="inspTypeIconBox" class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold text-xs flex-shrink-0">
+                                    <i class="fa-solid fa-font"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div id="inspTypeTitle" class="text-xs font-bold text-white truncate">Văn Bản & Tiêu Đề</div>
+                                    <div id="inspTypeSubtitle" class="text-[10px] text-slate-400 font-mono truncate">&lt;h1&gt; • #title-apex</div>
+                                </div>
+                            </div>
+                            <span id="inspTypeTagBadge" class="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[10px] font-mono text-cyan-400 font-bold uppercase">H1</span>
                         </div>
 
-                        <!-- Specific Attributes -->
-                        <div id="inspAttrLinkGroup" class="hidden space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-                            <span class="text-[10px] font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1">
-                                <i class="fa-solid fa-link text-[9px]"></i> Thuộc tính Thẻ &lt;a&gt;
-                            </span>
+                        <!-- PANEL 1: TYPOGRAPHY / TEXT (H1-H6, P, SPAN, BLOCKQUOTE...) -->
+                        <div id="inspPanelTypography" class="space-y-3">
                             <div>
-                                <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn đích (href)</label>
-                                <input type="text" id="inspAttrHref" onchange="onInspectorAttrChange('href', this.value)" placeholder="https://... hoặc #lien-he" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                <label class="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
+                                    <span>Nội Dung Văn Bản</span>
+                                    <span class="text-[9px] text-cyan-400 font-mono">AST Realtime</span>
+                                </label>
+                                <textarea id="inspTextContent" rows="3" oninput="onInspectorTextInput()" placeholder="Nhập nội dung văn bản..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 leading-relaxed"></textarea>
                             </div>
-                            <div>
-                                <label class="block text-[10px] text-slate-400 mb-0.5">Mở trang (target)</label>
-                                <select id="inspAttrTarget" onchange="onInspectorAttrChange('target', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                    <option value="">Mặc định (cùng tab)</option>
-                                    <option value="_blank">Tab mới (_blank)</option>
-                                </select>
-                            </div>
-                        </div>
 
-                        <div id="inspAttrImgGroup" class="hidden space-y-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-                            <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                                <i class="fa-solid fa-image text-[9px]"></i> Thuộc tính Thẻ &lt;img&gt;
-                            </span>
-                            <div>
-                                <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn ảnh (src)</label>
-                                <input type="text" id="inspAttrSrc" onchange="onInspectorAttrChange('src', this.value)" placeholder="/assets/img/... hoặc URL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] text-slate-400 mb-0.5">Mô tả thay thế (alt)</label>
-                                <input type="text" id="inspAttrAlt" onchange="onInspectorAttrChange('alt', this.value)" placeholder="Mô tả ảnh..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mã Định Danh Thẻ</span>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">id</label>
-                                    <input type="text" id="inspAttrId" onchange="onInspectorAttrChange('id', this.value)" placeholder="my-id" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    <label class="block text-[10px] text-slate-400 mb-1">Cấp thẻ (Tag)</label>
+                                    <select id="inspTypographyTag" onchange="convertSelectedTag(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+                                        <option value="h1">H1 - Tiêu đề chính</option>
+                                        <option value="h2">H2 - Tiêu đề mục</option>
+                                        <option value="h3">H3 - Tiêu đề nhỏ</option>
+                                        <option value="h4">H4 - Tiêu đề phụ</option>
+                                        <option value="p">P - Đoạn văn bản</option>
+                                        <option value="span">SPAN - Chữ nội dòng</option>
+                                        <option value="blockquote">BLOCKQUOTE - Trích dẫn</option>
+                                    </select>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">title</label>
-                                    <input type="text" id="inspAttrTitle" onchange="onInspectorAttrChange('title', this.value)" placeholder="Tooltip text" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <label class="block text-[10px] text-slate-400 mb-1">Cỡ chữ nhanh</label>
+                                    <select onchange="applyQuickTypographyClass(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+                                        <option value="">Giữ nguyên</option>
+                                        <option value="text-xs">Rất nhỏ (xs - 12px)</option>
+                                        <option value="text-sm">Nhỏ (sm - 14px)</option>
+                                        <option value="text-base">Chuẩn (base - 16px)</option>
+                                        <option value="text-lg">Lớn (lg - 18px)</option>
+                                        <option value="text-xl">Tiêu đề (xl - 20px)</option>
+                                        <option value="text-2xl">Lớn 2X (2xl - 24px)</option>
+                                        <option value="text-3xl">Lớn 3X (3xl - 30px)</option>
+                                        <option value="text-4xl">Khổng lồ (4xl - 36px)</option>
+                                    </select>
                                 </div>
+                            </div>
+
+                            <!-- Text Formatting Tools -->
+                            <div class="bg-slate-950/70 p-2 rounded-xl border border-slate-800 space-y-1.5">
+                                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">Căn lề &amp; Kiểu chữ:</span>
+                                <div class="flex items-center justify-between gap-1">
+                                    <div class="flex items-center gap-1">
+                                        <button type="button" onclick="applyQuickTypographyClass('text-left')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs flex items-center justify-center transition" title="Căn trái"><i class="fa-solid fa-align-left"></i></button>
+                                        <button type="button" onclick="applyQuickTypographyClass('text-center')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs flex items-center justify-center transition" title="Căn giữa"><i class="fa-solid fa-align-center"></i></button>
+                                        <button type="button" onclick="applyQuickTypographyClass('text-right')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs flex items-center justify-center transition" title="Căn phải"><i class="fa-solid fa-align-right"></i></button>
+                                        <button type="button" onclick="applyQuickTypographyClass('text-justify')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs flex items-center justify-center transition" title="Căn đều 2 bên"><i class="fa-solid fa-align-justify"></i></button>
+                                    </div>
+                                    <div class="h-4 w-px bg-slate-800"></div>
+                                    <div class="flex items-center gap-1">
+                                        <button type="button" onclick="applyQuickTypographyClass('font-bold')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center transition" title="Đậm (Bold)">B</button>
+                                        <button type="button" onclick="applyQuickTypographyClass('italic')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs italic flex items-center justify-center transition" title="Nghiêng (Italic)">I</button>
+                                        <button type="button" onclick="applyQuickTypographyClass('underline')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-xs underline flex items-center justify-center transition" title="Gạch chân">U</button>
+                                        <button type="button" onclick="applyQuickTypographyClass('uppercase')" class="w-7 h-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white text-[10px] font-bold flex items-center justify-center transition" title="In HOA">TT</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 2: BUTTON (BUTTON / CALL-TO-ACTION) -->
+                        <div id="inspPanelButton" class="hidden space-y-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-amber-300 mb-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-hand-pointer text-[10px]"></i>
+                                    <span>Chữ Trên Nút Bấm</span>
+                                </label>
+                                <input type="text" id="inspBtnText" oninput="onInspectorButtonTextInput(this.value)" placeholder="Ví dụ: Đăng Ký Ngay..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-amber-400">
+                            </div>
+
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Hành Động Khi Bấm (Action):</span>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Kiểu hành động</label>
+                                    <select id="inspBtnActionType" onchange="onInspectorButtonActionTypeChange(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="url">Mở đường dẫn URL</option>
+                                        <option value="anchor">Cuộn đến phần tử (Anchor #id)</option>
+                                        <option value="tel">Gọi điện thoại (tel:)</option>
+                                        <option value="zalo">Mở chat Zalo</option>
+                                        <option value="submit">Gửi Form Đăng Ký (Submit)</option>
+                                    </select>
+                                </div>
+                                <div id="inspBtnTargetContainer">
+                                    <label class="block text-[10px] text-slate-400 mb-0.5" id="inspBtnTargetLabel">Địa chỉ đích (URL hoặc #id)</label>
+                                    <input type="text" id="inspBtnTargetValue" onchange="onInspectorButtonTargetChange(this.value)" placeholder="https://... hoặc #form-dang-ky" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div id="inspBtnTargetWindowContainer">
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Mở trong</label>
+                                    <select id="inspBtnTargetWindow" onchange="onInspectorAttrChange('target', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="_self">Cùng trang web (_self)</option>
+                                        <option value="_blank">Mở tab mới (_blank)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Button Variants (Presets nhanh) -->
+                            <div class="space-y-1.5">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kiểu Dáng Nút Nhanh:</span>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button type="button" onclick="applyButtonVariant('cyan')" class="px-2 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] shadow transition">Cyan Nổi Bật</button>
+                                    <button type="button" onclick="applyButtonVariant('gold')" class="px-2 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] shadow transition">Gold Tài Chính</button>
+                                    <button type="button" onclick="applyButtonVariant('emerald')" class="px-2 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] shadow transition">Emerald Thành Công</button>
+                                    <button type="button" onclick="applyButtonVariant('glass')" class="px-2 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-white font-semibold text-[11px] transition">Glass Viền Mờ</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 3: LINK (THẺ <A>) -->
+                        <div id="inspPanelLink" class="hidden space-y-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-sky-300 mb-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-link text-[10px]"></i>
+                                    <span>Văn Bản Liên Kết</span>
+                                </label>
+                                <input type="text" id="inspLinkText" oninput="onInspectorLinkTextInput(this.value)" placeholder="Chữ hiển thị của liên kết..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-400">
+                            </div>
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn đích (href)</label>
+                                    <input type="text" id="inspAttrHref" onchange="onInspectorAttrChange('href', this.value)" placeholder="https://... hoặc #lien-he" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Mở trang (target)</label>
+                                        <select id="inspAttrTarget" onchange="onInspectorAttrChange('target', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                            <option value="">Cùng tab (Mặc định)</option>
+                                            <option value="_blank">Tab mới (_blank)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Gợi ý nhanh</label>
+                                        <select onchange="if(this.value){document.getElementById('inspAttrHref').value=this.value;onInspectorAttrChange('href', this.value);}" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500">
+                                            <option value="">Chọn mẫu...</option>
+                                            <option value="#form-dang-ky">Cuộn tới #form</option>
+                                            <option value="/chucmung.html">Trang /chucmung</option>
+                                            <option value="tel:0900000000">Số Hotline</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 4: IMAGE (THẺ <IMG>) -->
+                        <div id="inspPanelImage" class="hidden space-y-3">
+                            <!-- Image Preview Card -->
+                            <div class="bg-slate-950 p-2 rounded-xl border border-slate-800 flex items-center gap-3">
+                                <div class="w-16 h-16 rounded-lg bg-slate-900 border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                    <img id="inspImgPreview" src="" alt="" class="max-w-full max-h-full object-contain">
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider block">Xem Trước Ảnh</span>
+                                    <span id="inspImgNaturalDim" class="text-[10px] text-slate-400 font-mono block">-- × -- px</span>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn ảnh (src)</label>
+                                    <input type="text" id="inspAttrSrc" onchange="onInspectorAttrChange('src', this.value); updateImagePreviewThumbnail(this.value);" placeholder="/assets/img/... hoặc URL" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Mô tả thay thế (alt)</label>
+                                    <input type="text" id="inspAttrAlt" onchange="onInspectorAttrChange('alt', this.value)" placeholder="Mô tả nội dung ảnh..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-400">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Khớp khung (Object-Fit)</label>
+                                    <select onchange="onInspectorStyleChange('object-fit', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="cover">Phủ đầy (Cover)</option>
+                                        <option value="contain">Vừa khung (Contain)</option>
+                                        <option value="fill">Dãn ảnh (Fill)</option>
+                                        <option value="none">Nguyên gốc (None)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Bo góc ảnh</label>
+                                    <select onchange="applyQuickTypographyClass(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                        <option value="">Không bo</option>
+                                        <option value="rounded-xl">Bo vừa (12px)</option>
+                                        <option value="rounded-2xl">Bo lớn (16px)</option>
+                                        <option value="rounded-full">Tròn xoe (Avatar)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 5: FORM & INPUT (<INPUT>, <TEXTAREA>, <SELECT>, <FORM>) -->
+                        <div id="inspPanelInput" class="hidden space-y-3">
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Cấu Hình Ô Nhập Liệu:</span>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Loại ô (Type)</label>
+                                        <select id="inspInputType" onchange="onInspectorAttrChange('type', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                            <option value="text">Văn bản (text)</option>
+                                            <option value="tel">Số điện thoại (tel)</option>
+                                            <option value="email">Email</option>
+                                            <option value="number">Số lượng (number)</option>
+                                            <option value="hidden">Trường ẩn (hidden)</option>
+                                            <option value="password">Mật khẩu</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 mb-0.5">Tên trường (name)</label>
+                                        <input type="text" id="inspInputName" onchange="onInspectorAttrChange('name', this.value)" placeholder="phone / fullname..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Gợi ý mờ (Placeholder)</label>
+                                    <input type="text" id="inspInputPlaceholder" onchange="onInspectorAttrChange('placeholder', this.value)" placeholder="Nhập số điện thoại..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div class="flex items-center justify-between pt-1">
+                                    <label class="text-[11px] text-slate-300 font-semibold flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="inspInputRequired" onchange="onInspectorRequiredToggle(this.checked)" class="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0">
+                                        <span>Bắt buộc điền (Required)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 6: VIDEO / IFRAME -->
+                        <div id="inspPanelVideo" class="hidden space-y-3">
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <span class="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Cấu Hình Video &amp; Nhúng:</span>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn Video / Iframe (src)</label>
+                                    <input type="text" id="inspVideoSrc" onchange="onInspectorVideoSrcChange(this.value)" placeholder="https://www.youtube.com/embed/... hoặc .mp4" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-rose-400">
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 text-[10px]">
+                                    <button type="button" onclick="applyQuickTypographyClass('aspect-video')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 text-slate-300 border border-slate-800 text-center">Tỷ lệ 16:9 Chuẩn</button>
+                                    <button type="button" onclick="applyQuickTypographyClass('aspect-square')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 text-slate-300 border border-slate-800 text-center">Tỷ lệ 1:1 Vuông</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 7: CONTAINER / SECTION (DIV, SECTION, HEADER, CARD...) -->
+                        <div id="inspPanelContainer" class="hidden space-y-3">
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Khối Bố Cục (Container)</span>
+                                    <span id="inspContainerChildCount" class="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-400">0 thẻ con</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-slate-400 block mb-1">Bố cục nhanh cho khối:</span>
+                                    <div class="grid grid-cols-2 gap-1.5">
+                                        <button type="button" onclick="applyQuickTypographyClass('flex flex-col gap-4')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 border border-slate-800 text-[10px] text-slate-200 text-left flex items-center gap-1.5">
+                                            <i class="fa-solid fa-arrows-up-down text-cyan-400"></i> Cột Dọc (Flex Col)
+                                        </button>
+                                        <button type="button" onclick="applyQuickTypographyClass('flex flex-row items-center gap-4')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 border border-slate-800 text-[10px] text-slate-200 text-left flex items-center gap-1.5">
+                                            <i class="fa-solid fa-arrows-left-right text-emerald-400"></i> Hàng Ngang (Flex Row)
+                                        </button>
+                                        <button type="button" onclick="applyQuickTypographyClass('grid grid-cols-2 gap-4')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 border border-slate-800 text-[10px] text-slate-200 text-left flex items-center gap-1.5">
+                                            <i class="fa-solid fa-table-cells-large text-amber-400"></i> Lưới 2 Cột (Grid)
+                                        </button>
+                                        <button type="button" onclick="applyQuickTypographyClass('grid grid-cols-3 gap-4')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-855 border border-slate-800 text-[10px] text-slate-200 text-left flex items-center gap-1.5">
+                                            <i class="fa-solid fa-table-cells text-purple-400"></i> Lưới 3 Cột (Grid)
+                                        </button>
+                                    </div>
+                                </div>
+                                <!-- Clickable Child Elements -->
+                                <div id="inspContainerChildrenWrapper" class="pt-2 border-t border-slate-800/80 space-y-1">
+                                    <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">Các thẻ con bên trong (Click để chọn):</span>
+                                    <div id="inspContainerChildPills" class="flex flex-wrap gap-1 max-h-24 overflow-y-auto inspector-scroll">
+                                        <span class="text-[10px] text-slate-500 italic">Không có thẻ con</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- COMMON ATTRIBUTES (ID, TITLE) -->
+                        <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mã Định Danh &amp; Ghi Chú</span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Mã id</label>
+                                    <input type="text" id="inspAttrId" onchange="onInspectorAttrChange('id', this.value)" placeholder="id-phan-tu" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-400 mb-0.5">Chú thích title</label>
+                                    <input type="text" id="inspAttrTitle" onchange="onInspectorAttrChange('title', this.value)" placeholder="Tooltip text..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION: TAB CSS - HIỆN TOÀN BỘ CSS ĐANG ÁP DỤNG & THƯ VIỆN HIỆU ỨNG -->
+                    <div id="inspSectionCss" class="hidden space-y-4">
+                        <!-- 1. THƯ VIỆN HIỆU ỨNG & TÌM KIẾM (SEARCH & APPLY EFFECTS) -->
+                        <div class="space-y-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                    <span>Thư Viện Hiệu Ứng (CSS Effects)</span>
+                                </span>
+                                <span class="text-[9px] text-slate-500 font-mono">1 Click Apply</span>
+                            </div>
+
+                            <!-- Search Input -->
+                            <div class="relative">
+                                <input type="text" id="cssEffectSearchInput" oninput="filterCssEffects(this.value)" placeholder="Tìm: Neon, Glow, Glass, Gradient, Pulse, Shadow..." class="w-full bg-slate-900 border border-slate-800 rounded-lg pl-7 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                                <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500"></i>
+                            </div>
+
+                            <!-- Category Chips -->
+                            <div class="flex items-center gap-1 overflow-x-auto whitespace-nowrap text-[9px] font-mono pb-0.5">
+                                <button type="button" onclick="setCssEffectFilter('all')" id="btnEffCat_all" class="px-2 py-0.5 rounded-full bg-cyan-600 text-white font-bold transition">Tất cả</button>
+                                <button type="button" onclick="setCssEffectFilter('animation')" id="btnEffCat_animation" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Animation</button>
+                                <button type="button" onclick="setCssEffectFilter('glow')" id="btnEffCat_glow" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Glow &amp; Neon</button>
+                                <button type="button" onclick="setCssEffectFilter('glass')" id="btnEffCat_glass" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Kính Mờ Glass</button>
+                                <button type="button" onclick="setCssEffectFilter('gradient')" id="btnEffCat_gradient" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Gradient</button>
+                                <button type="button" onclick="setCssEffectFilter('shadow')" id="btnEffCat_shadow" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Bóng Đổ 3D</button>
+                                <button type="button" onclick="setCssEffectFilter('hover')" id="btnEffCat_hover" class="px-2 py-0.5 rounded-full bg-slate-850 hover:bg-slate-750 text-slate-300 transition">Hover FX</button>
+                            </div>
+
+                            <!-- Grid of Effect Presets -->
+                            <div id="cssEffectPresetsGrid" class="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto inspector-scroll pr-0.5">
+                                <!-- Cards dynamically populated by renderCssInspectorTab() -->
+                            </div>
+                        </div>
+
+                        <!-- 2. TOÀN BỘ CSS ĐANG ÁP DỤNG TRÊN THẺ (ACTIVE CSS INSPECTOR) -->
+                        <div class="space-y-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <i class="fa-solid fa-code"></i>
+                                    <span>Toàn Bộ CSS Đang Áp Dụng</span>
+                                </span>
+                                <span id="cssActivePropsCount" class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-cyan-400">0 thuộc tính</span>
+                            </div>
+
+                            <!-- Applied CSS Properties Table -->
+                            <div id="inspActiveCssList" class="space-y-1.5 max-h-56 overflow-y-auto inspector-scroll pr-0.5">
+                                <div class="text-[10px] text-slate-500 italic py-2 text-center">Chưa có thuộc tính CSS riêng biệt</div>
+                            </div>
+                        </div>
+
+                        <!-- 3. THÊM THUỘC TÍNH CSS MỚI & CSS RAW (ADD CUSTOM & RAW CSS) -->
+                        <div class="space-y-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                            <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-plus"></i>
+                                <span>Thêm Thuộc Tính CSS Mới</span>
+                            </span>
+                            <div class="grid grid-cols-12 gap-1.5">
+                                <div class="col-span-5">
+                                    <input type="text" id="cssCustomPropName" list="cssCommonPropsList" placeholder="Thuộc tính (prop)..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    <datalist id="cssCommonPropsList">
+                                        <option value="color">
+                                        <option value="background">
+                                        <option value="background-color">
+                                        <option value="font-size">
+                                        <option value="font-weight">
+                                        <option value="line-height">
+                                        <option value="letter-spacing">
+                                        <option value="text-align">
+                                        <option value="text-transform">
+                                        <option value="padding">
+                                        <option value="margin">
+                                        <option value="width">
+                                        <option value="height">
+                                        <option value="max-width">
+                                        <option value="min-width">
+                                        <option value="border">
+                                        <option value="border-radius">
+                                        <option value="border-color">
+                                        <option value="box-shadow">
+                                        <option value="text-shadow">
+                                        <option value="opacity">
+                                        <option value="display">
+                                        <option value="position">
+                                        <option value="left">
+                                        <option value="top">
+                                        <option value="z-index">
+                                        <option value="cursor">
+                                        <option value="backdrop-filter">
+                                        <option value="filter">
+                                        <option value="transform">
+                                        <option value="transition">
+                                        <option value="animation">
+                                        <option value="overflow">
+                                        <option value="gap">
+                                        <option value="flex-direction">
+                                        <option value="justify-content">
+                                        <option value="align-items">
+                                    </datalist>
+                                </div>
+                                <div class="col-span-5">
+                                    <input type="text" id="cssCustomPropValue" placeholder="Giá trị (value)..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div class="col-span-2">
+                                    <button type="button" id="btnAddCustomCssProp" onclick="addCustomCssPropertyFromInput()" class="w-full h-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-lg transition flex items-center justify-center shadow" title="Thêm thuộc tính">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Raw CSS Code Box -->
+                            <div class="pt-2 border-t border-slate-800/80 space-y-1.5">
+                                <label class="block text-[10px] text-slate-400">Gõ hoặc dán mã CSS thuần (Raw CSS):</label>
+                                <textarea id="cssRawTextarea" rows="2" placeholder="Ví dụ: border-radius: 14px; box-shadow: 0 0 15px cyan;" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"></textarea>
+                                <button type="button" onclick="applyRawCssString()" class="w-full bg-slate-855 hover:bg-slate-750 text-cyan-400 hover:text-cyan-300 border border-cyan-800/60 font-bold text-xs py-1.5 rounded-lg transition flex items-center justify-center gap-1 shadow-sm">
+                                    <i class="fa-solid fa-bolt text-[10px]"></i> Áp Dụng Mã CSS
+                                </button>
                             </div>
                         </div>
                     </div>

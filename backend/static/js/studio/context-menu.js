@@ -378,7 +378,13 @@
                 };
                 selectedNodeMeta = nodeData;
                 populateInspectorWithNode(nodeData);
-                highlightCodeAtOffset(node.startOffset);
+
+                // Đồng bộ và highlight dòng code trong Code Editor
+                if (typeof syncAndHighlightCodeForNode === 'function') {
+                    syncAndHighlightCodeForNode(nodeId);
+                } else if (typeof highlightCodeAtOffset === 'function') {
+                    highlightCodeAtOffset(node.startOffset);
+                }
             }
             requestNodeRect(nodeId, scrollToIframe);
             renderAstLayerTree();
@@ -386,5 +392,14 @@
                 const row = document.getElementById('layer-row-' + nodeId);
                 if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             }, 50);
+
+            // Tự động chuyển sang tab 'content' phù hợp với thẻ (nếu đang ở tab 'css' thì giữ nguyên và cập nhật)
+            if (typeof switchInspectorTab === 'function') {
+                if (currentInspTab === 'css') {
+                    if (typeof renderCssInspectorTab === 'function') renderCssInspectorTab();
+                } else {
+                    switchInspectorTab('content');
+                }
+            }
         }
 
