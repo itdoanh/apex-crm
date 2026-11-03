@@ -5,8 +5,17 @@
         // ============================================================
         // VISUAL GIZMO DRAG & RESIZE CONTROLLER (POINTER CAPTURE & SHIELD)
         // ============================================================
-        let resizeCurrentW = 0, resizeCurrentH = 0;
-        let moveCurrentDx = 0, moveCurrentDy = 0;
+        var isDraggingGizmo = false;
+        var isMovingGizmo = false;
+        var currentResizeDir = '';
+        var resizeStartRect = null;
+        var resizeStartX = 0, resizeStartY = 0;
+        var moveStartX = 0, moveStartY = 0;
+        var moveStartLeft = 0, moveStartTop = 0;
+        var moveInitialStyleLeft = 0, moveInitialStyleTop = 0;
+        var activeCapturedElement = null, activePointerId = null;
+        var resizeCurrentW = 0, resizeCurrentH = 0;
+        var moveCurrentDx = 0, moveCurrentDy = 0;
 
         // Kéo biến đổi kích thước (Resize Handles 60 FPS + PointerCapture)
         function startGizmoResize(e, dir) {

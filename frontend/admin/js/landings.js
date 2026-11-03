@@ -9,7 +9,7 @@
         let currentStudioLanding = null;
         let currentStudioFiles = [];
         let activeStudioFile = 'index.html';
-        let studioDeviceMode = 'pc'; // 'pc', 'laptop', 'mobile'
+        var studioDeviceMode = 'pc'; // 'pc', 'laptop', 'mobile'
         let modalPreviewDeviceMode = 'pc';
         let studioSplitOpen = true;
         let studioEditorDirty = false;

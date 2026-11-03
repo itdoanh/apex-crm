@@ -104,6 +104,8 @@ def run_tests():
             context.add_cookies(cookies)
 
         page = context.new_page()
+        page.on("console", lambda msg: print(f"CONSOLE [{msg.type}]: {msg.text}"))
+        page.on("pageerror", lambda err: print(f"PAGEERROR: {err}"))
         # Chèn token vào localStorage
         page.goto(f"{BASE_URL}/ads/")
         page.evaluate(f"token => {{ localStorage.setItem('apex_admin_token', token); }}", token)

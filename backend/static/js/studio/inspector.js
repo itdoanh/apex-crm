@@ -17,19 +17,19 @@
         var studioDeviceMode = 'pc'; // 'pc' | 'mobile' (Responsive Scope)
         window.studioDeviceMode = studioDeviceMode;
         var selectedAstNodeId = null;
-        let selectedNodeMeta = null;
-        let currentInspTab = 'content';
-        let isDraggingGizmo = false;
-        let isMovingGizmo = false;
-        let currentResizeDir = '';
-        let resizeStartRect = null;
-        let resizeStartX = 0, resizeStartY = 0;
-        let moveStartX = 0, moveStartY = 0;
-        let moveStartLeft = 0, moveStartTop = 0;
-        let moveInitialStyleLeft = 0, moveInitialStyleTop = 0;
-        let activeCapturedElement = null;
-        let activePointerId = null;
-        let editorDebounceTimer = null;
+        var selectedNodeMeta = null;
+        var currentInspTab = 'content';
+        var isDraggingGizmo = false;
+        var isMovingGizmo = false;
+        var currentResizeDir = '';
+        var resizeStartRect = null;
+        var resizeStartX = 0, resizeStartY = 0;
+        var moveStartX = 0, moveStartY = 0;
+        var moveStartLeft = 0, moveStartTop = 0;
+        var moveInitialStyleLeft = 0, moveInitialStyleTop = 0;
+        var activeCapturedElement = null;
+        var activePointerId = null;
+        var editorDebounceTimer = null;
 
         // Photoshop History Stack Architecture & Clipboard (declared in history.js)
         let editorHistoryTimer = null;
