@@ -10,11 +10,7 @@
 [![Argon2id](https://img.shields.io/badge/Security-Argon2id%20Hash-10B981?style=for-the-badge&logo=shield&logoColor=white)](#)
 [![Google Sheets](https://img.shields.io/badge/Integration-Master%20Service%20Account-34A853?style=for-the-badge&logo=googlesheets&logoColor=white)](#)
 
-<p align="center">
-  <img src="frontend/landing/assets/img/logo_APEX_K_NEN.png" alt="Apex Logo" width="220" />
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="frontend/landing/assets/img/logo_mxv.png" alt="MXV Logo" width="200" />
-</p>
+
 
 **Apex Fintech Multi-Landing & CRM Engine** là nền tảng quản trị khách hàng tiềm năng thế hệ mới được thiết kế may đo cho **Thành viên Kinh doanh số 080 - Sở Giao dịch Hàng hóa Việt Nam (MXV)** thuộc quản lý của **Bộ Công Thương**. Hệ thống tích hợp toàn diện từ phễu chuyển đổi cao (Landing Page), bộ thiết kế trực quan (Visual Drag & Drop Studio), cơ chế tự động cấp phát SSL 2 giây cho mọi tên miền, đến ma trận chống bot/spam đa tầng và luồng tự động đồng bộ Google Sheets qua Master Service Account Bot.
 
@@ -93,7 +89,7 @@ Tích hợp trực tiếp trong Admin CRM, biến bất kỳ Landing Page tĩnh 
 [ Người Dùng / Khách Hàng Tiềm Năng ]       [ Quản Trị Viên / Leader / Telesale ]
                   │                                             │
                   ▼                                             ▼
-       https://*.hanghoaphaisinh.net             https://crm.hanghoaphaisinh.net/ads
+       localhost             https://crm.domain/ads
                   │                                             │
                   └──────────────────────┬──────────────────────┘
                                          ▼
@@ -212,25 +208,6 @@ Hệ thống hỗ trợ ánh xạ tự động hoặc tùy biến 14 trường t
 
 ---
 
-## 📸 HÌNH ẢNH DỰ ÁN & BẰNG CHỨNG KIỂM THỬ
-
-<div align="center">
-
-### Chứng Nhận Pháp Lý Thành Viên Kinh Doanh MXV 080 & Top 1 Thị Phần
-<p align="center">
-  <img src="frontend/landing/assets/img/anh-man-hinh-2026-04-13-luc-214915-20260414045305-wfhpg.png" alt="Chứng nhận MXV 080" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" />
-  &nbsp;
-  <img src="frontend/landing/assets/img/apex_top1_thiphan_quy2_2026.jpg" alt="Top 1 Thị Phần MXV" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" />
-</p>
-
-### Báo Cáo Thị Phần Chính Thức & Chứng Chỉ Thành Viên
-<p align="center">
-  <img src="frontend/landing/assets/img/screenshot_23-20260725082024-h8ekv.png" alt="Báo Cáo Thị Phần MXV Q2" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" />
-  &nbsp;
-  <img src="frontend/landing/assets/img/screenshot_24-20260725081837-yuudp.png" alt="Chứng Chỉ Thành Viên" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" />
-</p>
-
-</div>
 
 ---
 
@@ -300,11 +277,6 @@ Hệ thống tuân thủ nghiêm ngặt các tiêu chuẩn an toàn thông tin:
 ## 👤 TÁC GIẢ & BẢN QUYỀN
 
 - **Tác giả phát triển:** **itdoanh** ([GitHub Profile](https://github.com/itdoanh))
-- **Đơn vị vận hành:** **Apex Fintech - Thành viên Kinh doanh Số 080 Sở Giao dịch Hàng hóa Việt Nam (MXV)**
-- **Giấy phép:** Bản quyền phần mềm nội bộ thuộc sở hữu của Apex Fintech. Nghiêm cấm mọi hành vi sao chép và phân phối trái phép khi chưa có sự đồng ý bằng văn bản.
+- **Giấy phép:** Bản quyền phần mềm nội bộ thuộc sở hữu của itdoanhq. Nghiêm cấm mọi hành vi sao chép và phân phối trái phép khi chưa có sự đồng ý bằng văn bản.
 
----
 
-<div align="center">
-  <b>Apex Fintech Multi-Landing & Enterprise CRM Engine — Vận Hành Bền Bỉ, Tốc Độ Vượt Trội</b>
-</div>
