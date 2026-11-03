@@ -228,24 +228,38 @@
             <div id="csPreviewPanel" class="flex-1 bg-slate-900 border-l border-slate-800 flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden">
                 <!-- Preview Toolbar -->
                 <div class="h-10 bg-slate-850 border-b border-slate-800 px-3 flex items-center justify-between flex-shrink-0">
-                    <!-- Viewport Switcher: PC, Laptop, Mobile -->
-                    <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs">
-                        <button id="btnDevicePC" onclick="setStudioDevice('pc')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 bg-cyan-600 text-white" title="Chế độ xem PC / Desktop (1440px)">
-                            <i class="fa-solid fa-desktop"></i>
-                            <span class="hidden sm:inline">PC (1440px)</span>
-                        </button>
-                        <button id="btnDeviceLaptop" onclick="setStudioDevice('laptop')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 text-slate-300 hover:text-white" title="Chế độ xem Laptop (1024px)">
-                            <i class="fa-solid fa-laptop"></i>
-                            <span class="hidden sm:inline">Laptop (1024px)</span>
-                        </button>
-                        <button id="btnDeviceMobile" onclick="setStudioDevice('mobile')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 text-slate-300 hover:text-white" title="Chế độ xem Mobile (390px)">
-                            <i class="fa-solid fa-mobile-screen"></i>
-                            <span class="hidden sm:inline">Mobile (390px)</span>
-                        </button>
+                    <!-- Viewport Switcher: Chỉ PC và Mobile (Độc Lập Phong Cách Giao Diện) -->
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs">
+                            <button id="btnDevicePC" onclick="setStudioDevice('pc')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 bg-cyan-600 text-white shadow-sm" title="Chế độ xem PC / Desktop (Chỉnh sửa riêng PC)">
+                                <i class="fa-solid fa-desktop text-xs"></i>
+                                <span>PC (1440px)</span>
+                            </button>
+                            <button id="btnDeviceMobile" onclick="setStudioDevice('mobile')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 text-slate-300 hover:text-white" title="Chế độ xem Mobile (Chỉnh sửa riêng Mobile, không ảnh hưởng PC)">
+                                <i class="fa-solid fa-mobile-screen text-xs"></i>
+                                <span>Mobile (390px)</span>
+                            </button>
+                        </div>
+                        <span id="csDeviceTargetBadge" class="bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px] font-mono px-2 py-0.5 rounded font-bold hidden sm:inline-flex items-center gap-1">
+                            <i class="fa-solid fa-laptop-code text-[9px]"></i> PC Mode
+                        </span>
                     </div>
 
-                    <!-- Right Toolbar Items -->
+                    <!-- Right Toolbar Items: Zoom & Utilities -->
                     <div class="flex items-center space-x-1.5">
+                        <!-- Zoom Controller (Ctrl + Scroll / Nút bấm) -->
+                        <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs" title="Thu phóng Canvas (Ctrl + Lăn chuột)">
+                            <button type="button" id="btnZoomOut" onclick="stepCanvasZoom(-0.1)" class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                                <i class="fa-solid fa-minus text-[9px]"></i>
+                            </button>
+                            <button type="button" id="lblZoomLevel" onclick="resetCanvasZoom()" class="px-2 py-0.5 rounded font-mono text-[11px] font-bold text-cyan-400 hover:bg-slate-800 transition" title="Nhấp để đặt lại 100%">
+                                100%
+                            </button>
+                            <button type="button" id="btnZoomIn" onclick="stepCanvasZoom(0.1)" class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                                <i class="fa-solid fa-plus text-[9px]"></i>
+                            </button>
+                        </div>
+
                         <span id="csFreezeStatusBadge" class="bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md hidden lg:inline">
                             🧊 Freeze Active
                         </span>
@@ -260,8 +274,24 @@
                 </div>
 
                 <!-- Iframe & Overlay Canvas Viewport Wrapper -->
-                <div class="flex-1 bg-slate-950 overflow-auto p-4 flex items-center justify-center relative">
-                    <div id="csIframeWrapper" class="w-full h-full bg-white rounded-xl overflow-hidden shadow-2xl transition-all duration-300 border border-slate-800 relative select-none">
+                <div id="csCanvasViewport" class="flex-1 bg-slate-950 overflow-hidden p-6 flex items-center justify-center relative select-none cs-design-canvas">
+                    <!-- Pan Mode Shield (Active when Ctrl is pressed to enable smooth drag without iframe swallowing events) -->
+                    <div id="csCanvasPanShield" class="absolute inset-0 z-40 hidden bg-transparent select-none"></div>
+
+                    <div id="csIframeWrapper" class="w-full h-full bg-white rounded-xl shadow-2xl transition-transform duration-75 border border-slate-800 relative select-none">
+                        <!-- 2 Resizable Side Handles: Kéo 2 bên điều chỉnh kích thước trực quan -->
+                        <div id="csCanvasResizeHandleLeft" class="cs-canvas-side-handle cs-canvas-handle-left" title="Kéo để điều chỉnh chiều rộng bên trái">
+                            <i class="fa-solid fa-grip-lines-vertical text-[10px] text-slate-400"></i>
+                        </div>
+                        <div id="csCanvasResizeHandleRight" class="cs-canvas-side-handle cs-canvas-handle-right" title="Kéo để điều chỉnh chiều rộng bên phải">
+                            <i class="fa-solid fa-grip-lines-vertical text-[10px] text-slate-400"></i>
+                        </div>
+
+                        <!-- Floating Canvas Width Indicator Badge -->
+                        <div id="csCanvasWidthBadge" class="hidden absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900/95 text-cyan-300 border border-slate-700 text-[10px] font-mono px-2 py-0.5 rounded-md shadow-lg pointer-events-none z-50 whitespace-nowrap">
+                            1440px
+                        </div>
+
                         <!-- Lớp Dưới: Sandboxed Iframe (Chạy toàn bộ CSS, Tailwind JIT CDN, Font, scripts thực tế) -->
                         <iframe id="csPreviewIframe" class="w-full h-full border-0" src="about:blank"></iframe>
 

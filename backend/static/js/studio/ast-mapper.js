@@ -10,6 +10,7 @@
                 this.astMap = {};
                 this.tree = [];
                 this.nodeCounter = 0;
+                this.mobileStylesMap = {};
                 this.voidElements = new Set([
                     'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
                     'link', 'meta', 'param', 'source', 'track', 'wbr'
@@ -195,6 +196,7 @@
                     i = openTagEnd;
                 }
 
+                this.parseResponsiveStyles();
                 return this;
             }
 
@@ -361,6 +363,22 @@
                     `    window.addEventListener('pointerup', function() {\n` +
                     `        window.parent.postMessage({ type: 'APEX_BUILDER_IFRAME_MOUSEUP' }, '*');\n` +
                     `    });\n` +
+                    `    window.addEventListener('keydown', function(e) {\n` +
+                    `        if (e.key === 'Control' || e.key === 'Meta') {\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: true }, '*');\n` +
+                    `        }\n` +
+                    `    }, true);\n` +
+                    `    window.addEventListener('keyup', function(e) {\n` +
+                    `        if (e.key === 'Control' || e.key === 'Meta') {\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_KEY_CTRL', pressed: false }, '*');\n` +
+                    `        }\n` +
+                    `    }, true);\n` +
+                    `    window.addEventListener('wheel', function(e) {\n` +
+                    `        if (e.ctrlKey || e.metaKey) {\n` +
+                    `            e.preventDefault();\n` +
+                    `            window.parent.postMessage({ type: 'APEX_BUILDER_WHEEL_ZOOM', deltaY: e.deltaY }, '*');\n` +
+                    `        }\n` +
+                    `    }, { passive: false });\n` +
                     `    document.addEventListener('contextmenu', function(e) {\n` +
                     `        if (window.__APEX_FREEZE_MODE__ || window.__APEX_BUILDER_ACTIVE__) {\n` +
                     `            e.preventDefault();\n` +
@@ -392,7 +410,21 @@
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_GET_NODE_RECT') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
-                    `            if (el) window.parent.postMessage({ type: 'APEX_BUILDER_RECT_RESPONSE', data: getNodeData(el) }, '*');\n` +
+                    `            if (el) {\n` +
+                    `                if (m.scrollIntoView) {\n` +
+                    `                    try { el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch(e) {}\n` +
+                    `                }\n` +
+                    `                window.parent.postMessage({ type: 'APEX_BUILDER_RECT_RESPONSE', data: getNodeData(el) }, '*');\n` +
+                    `            }\n` +
+                    `        }\n` +
+                    `        if (m.type === 'APEX_CMD_UPDATE_RESPONSIVE_CSS') {\n` +
+                    `            var rst = document.getElementById('__apex_responsive_styles__');\n` +
+                    `            if (!rst) {\n` +
+                    `                rst = document.createElement('style');\n` +
+                    `                rst.id = '__apex_responsive_styles__';\n` +
+                    `                document.head.appendChild(rst);\n` +
+                    `            }\n` +
+                    `            rst.textContent = m.cssText || '';\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_STYLE_TEMP') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
@@ -503,6 +535,104 @@
 
                 const newStyleStr = Object.keys(styles).map(k => `${k}: ${styles[k]}`).join('; ');
                 return this.spliceAttribute(nodeId, 'style', newStyleStr || null);
+            }
+
+            // --- PHÂN HỆ QUẢN LÝ RESPONSIVE STYLES ĐỘC LẬP (MOBILE VS PC) ---
+            parseResponsiveStyles() {
+                this.mobileStylesMap = {};
+                if (!this.rawHTML) return;
+                const styleMatch = this.rawHTML.match(/<style\s+id=["']__apex_responsive_styles__["'][^>]*>([\s\S]*?)<\/style>/i);
+                if (!styleMatch) return;
+                const content = styleMatch[1];
+                const mediaMatch = content.match(/@media[^{]*\{([\s\S]*)\}\s*$/i);
+                const mediaBody = mediaMatch ? mediaMatch[1] : content;
+
+                const ruleRegex = /\[data-ve-id=["']?([a-zA-Z0-9_-]+)["']?\]\s*\{([^}]+)\}/gi;
+                let rMatch;
+                while ((rMatch = ruleRegex.exec(mediaBody)) !== null) {
+                    const nodeId = rMatch[1];
+                    const declarations = rMatch[2];
+                    const styles = {};
+                    declarations.split(';').forEach(decl => {
+                        const parts = decl.split(':');
+                        if (parts.length >= 2) {
+                            const prop = parts[0].trim().toLowerCase();
+                            const val = parts.slice(1).join(':').replace(/\s*!important\s*$/i, '').trim();
+                            if (prop && val) styles[prop] = val;
+                        }
+                    });
+                    if (Object.keys(styles).length > 0) {
+                        this.mobileStylesMap[nodeId] = styles;
+                    }
+                }
+            }
+
+            getMobileStyles(nodeId) {
+                return (this.mobileStylesMap && this.mobileStylesMap[nodeId]) ? { ...this.mobileStylesMap[nodeId] } : {};
+            }
+
+            setMobileStyles(nodeId, styleObj) {
+                if (!this.mobileStylesMap) this.mobileStylesMap = {};
+                if (!this.mobileStylesMap[nodeId]) this.mobileStylesMap[nodeId] = {};
+
+                for (const prop in styleObj) {
+                    const val = styleObj[prop];
+                    if (val === null || val === '') {
+                        delete this.mobileStylesMap[nodeId][prop];
+                    } else {
+                        this.mobileStylesMap[nodeId][prop] = String(val).trim();
+                    }
+                }
+
+                if (Object.keys(this.mobileStylesMap[nodeId]).length === 0) {
+                    delete this.mobileStylesMap[nodeId];
+                }
+
+                return this.generateAndInjectResponsiveStyles();
+            }
+
+            generateAndInjectResponsiveStyles() {
+                const rules = [];
+                for (const nId in this.mobileStylesMap) {
+                    const s = this.mobileStylesMap[nId];
+                    const decls = Object.keys(s).map(p => `        ${p}: ${s[p]} !important;`).join('\n');
+                    if (decls) {
+                        rules.push(`    [data-ve-id="${nId}"] {\n${decls}\n    }`);
+                    }
+                }
+
+                let cssBody = '';
+                if (rules.length > 0) {
+                    cssBody = `@media (max-width: 768px) {\n    /* Apex Studio Mobile Responsive Styles (Chỉ áp dụng Mobile) */\n${rules.join('\n')}\n}`;
+                }
+
+                const tagStart = '<style id="__apex_responsive_styles__">';
+                const tagEnd = '</style>';
+                const fullBlock = cssBody ? `${tagStart}\n${cssBody}\n${tagEnd}` : '';
+
+                const existingMatch = this.rawHTML.match(/<style\s+id=["']__apex_responsive_styles__["'][^>]*>[\s\S]*?<\/style>/i);
+                if (existingMatch) {
+                    if (fullBlock) {
+                        this.rawHTML = this.rawHTML.replace(existingMatch[0], fullBlock);
+                    } else {
+                        this.rawHTML = this.rawHTML.replace(existingMatch[0], '');
+                    }
+                } else if (fullBlock) {
+                    const headCloseIdx = this.rawHTML.toLowerCase().indexOf('</head>');
+                    if (headCloseIdx !== -1) {
+                        this.rawHTML = this.rawHTML.substring(0, headCloseIdx) + '    ' + fullBlock + '\n' + this.rawHTML.substring(headCloseIdx);
+                    } else {
+                        const bodyCloseIdx = this.rawHTML.toLowerCase().indexOf('</body>');
+                        if (bodyCloseIdx !== -1) {
+                            this.rawHTML = this.rawHTML.substring(0, bodyCloseIdx) + '    ' + fullBlock + '\n' + this.rawHTML.substring(bodyCloseIdx);
+                        } else {
+                            this.rawHTML += '\n' + fullBlock;
+                        }
+                    }
+                }
+
+                this.parse(this.rawHTML);
+                return { html: this.rawHTML, css: cssBody };
             }
 
             deleteNode(nodeId) {

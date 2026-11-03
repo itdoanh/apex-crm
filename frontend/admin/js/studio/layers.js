@@ -250,15 +250,16 @@
                 const stackingBadges = checkNodeStacking(node);
                 const hasChildren = node.children && node.children.length > 0;
                 const expanded = isNodeExpanded(node.id, depth);
+                const hasMobOverride = typeof astMapper !== 'undefined' && astMapper.mobileStylesMap && astMapper.mobileStylesMap[node.id] && Object.keys(astMapper.mobileStylesMap[node.id]).length > 0;
 
                 const indentPx = depth * 14 + 4;
 
                 let rowHtml = `
                     <div id="layer-row-${node.id}"
-                         onclick="selectAstNode('${node.id}')"
-                         oncontextmenu="event.preventDefault(); event.stopPropagation(); selectAstNode('${node.id}'); openContextMenu(event.clientX, event.clientY, '${node.id}');"
+                         onclick="selectAstNode('${node.id}', true)"
+                         oncontextmenu="event.preventDefault(); event.stopPropagation(); selectAstNode('${node.id}', true); openContextMenu(event.clientX, event.clientY, '${node.id}');"
                          style="padding-left: ${indentPx}px;"
-                         class="group py-1 px-1.5 rounded-lg cursor-pointer transition select-none flex items-center justify-between gap-1 text-[11px] ${isSelected ? 'bg-cyan-950/90 text-cyan-200 border border-cyan-700/80 shadow-sm' : 'hover:bg-slate-850/80 text-slate-300'} ${isHidden ? 'opacity-50' : ''}">
+                         class="group py-1 px-1.5 rounded-lg cursor-pointer transition select-none flex items-center justify-between gap-1 text-[11px] ${isSelected ? 'layer-row-active bg-cyan-950/90 text-cyan-100 border border-cyan-500 shadow-md ring-1 ring-cyan-500/50' : 'hover:bg-slate-850/80 text-slate-300'} ${isHidden ? 'opacity-50' : ''}">
 
                         <!-- Cột Trái: Toggle Chevron, Icon Loại, Tên Thẻ, Preview, Badges -->
                         <div class="flex items-center gap-1.5 truncate flex-1 min-w-0">
@@ -277,6 +278,9 @@
 
                             <!-- Preview trích đoạn text hoặc class/id -->
                             ${info.preview ? `<span class="text-[10px] text-slate-400 truncate flex-shrink min-w-0">${escapeHTML(info.preview)}</span>` : ''}
+
+                            <!-- Badge riêng Mobile -->
+                            ${hasMobOverride ? `<span class="text-[8px] font-mono text-amber-300 bg-amber-950/60 border border-amber-800/80 px-1 py-0.2 rounded" title="Có tùy biến riêng cho Mobile">Mob</span>` : ''}
 
                             <!-- Badges Stacking Context: ABS, FIX, STK, Z-Index -->
                             ${stackingBadges.map(b => `<span class="text-[8px] font-mono px-1 py-0.2 rounded border font-bold ${b.cls} flex-shrink-0">${b.text}</span>`).join('')}

@@ -607,42 +607,68 @@
         }
 
         function setStudioDevice(mode) {
-            studioDeviceMode = mode;
+            studioDeviceMode = (mode === 'mobile') ? 'mobile' : 'pc';
             const btnPC = document.getElementById('btnDevicePC');
-            const btnLaptop = document.getElementById('btnDeviceLaptop');
             const btnMobile = document.getElementById('btnDeviceMobile');
+            const badge = document.getElementById('csDeviceTargetBadge');
             const wrapper = document.getElementById('csIframeWrapper');
 
-            [btnPC, btnLaptop, btnMobile].forEach(b => {
-                if (b) b.className = 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 text-slate-300 hover:text-white';
-            });
-
-            if (mode === 'pc') {
-                if (btnPC) btnPC.className = 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 bg-cyan-600 text-white';
-                wrapper.style.width = '100%';
-                wrapper.style.height = '100%';
-                wrapper.style.maxWidth = 'none';
-                wrapper.style.borderRadius = '12px';
-                wrapper.style.border = '1px solid #1e293b';
-            } else if (mode === 'laptop') {
-                if (btnLaptop) btnLaptop.className = 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 bg-cyan-600 text-white';
-                wrapper.style.width = '1024px';
-                wrapper.style.height = '100%';
-                wrapper.style.maxWidth = '100%';
-                wrapper.style.borderRadius = '16px';
-                wrapper.style.border = '2px solid #334155';
-            } else if (mode === 'mobile') {
-                if (btnMobile) btnMobile.className = 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1 bg-cyan-600 text-white';
-                wrapper.style.width = '390px';
-                wrapper.style.height = '844px';
-                wrapper.style.maxWidth = '100%';
-                wrapper.style.borderRadius = '32px';
-                wrapper.style.border = '4px solid #475569';
-                wrapper.style.boxShadow = '0 25px 50px -12px rgba(0, 0, 0, 0.7)';
+            if (btnPC) {
+                btnPC.className = (studioDeviceMode === 'pc')
+                    ? 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 bg-cyan-600 text-white shadow-sm'
+                    : 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 text-slate-300 hover:text-white';
+            }
+            if (btnMobile) {
+                btnMobile.className = (studioDeviceMode === 'mobile')
+                    ? 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 bg-cyan-600 text-white shadow-sm'
+                    : 'px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 text-slate-300 hover:text-white';
             }
 
-            if (selectedAstNodeId) {
-                setTimeout(() => requestNodeRect(selectedAstNodeId), 300);
+            if (badge) {
+                if (studioDeviceMode === 'pc') {
+                    badge.className = 'bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px] font-mono px-2 py-0.5 rounded font-bold hidden sm:inline-flex items-center gap-1';
+                    badge.innerHTML = '<i class="fa-solid fa-laptop-code text-[9px]"></i> PC Mode';
+                } else {
+                    badge.className = 'bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-mono px-2 py-0.5 rounded font-bold hidden sm:inline-flex items-center gap-1';
+                    badge.innerHTML = '<i class="fa-solid fa-mobile-screen text-[9px]"></i> Mobile Mode (Chỉ áp dụng Mobile)';
+                }
+            }
+
+            if (wrapper) {
+                if (studioDeviceMode === 'pc') {
+                    wrapper.style.width = '100%';
+                    wrapper.style.height = '100%';
+                    wrapper.style.maxWidth = 'none';
+                    wrapper.style.borderRadius = '12px';
+                    wrapper.style.border = '1px solid #1e293b';
+                    wrapper.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5)';
+                } else if (studioDeviceMode === 'mobile') {
+                    wrapper.style.width = '390px';
+                    wrapper.style.height = '844px';
+                    wrapper.style.maxWidth = '100%';
+                    wrapper.style.borderRadius = '32px';
+                    wrapper.style.border = '4px solid #475569';
+                    wrapper.style.boxShadow = '0 25px 50px -12px rgba(0, 0, 0, 0.7)';
+                }
+                if (typeof canvasPanX !== 'undefined') {
+                    canvasPanX = 0;
+                    canvasPanY = 0;
+                    if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
+                }
+            }
+
+            // Đồng bộ cập nhật lại Inspector theo đúng giao diện được chọn
+            if (selectedAstNodeId && typeof astMapper !== 'undefined' && astMapper.astMap && astMapper.astMap[selectedAstNodeId]) {
+                const node = astMapper.astMap[selectedAstNodeId];
+                const nodeData = {
+                    nodeId: node.id,
+                    tagName: node.tag,
+                    className: node.attrs['class'] ? node.attrs['class'].value : '',
+                    text: node.textContent,
+                    attributes: Object.fromEntries(Object.values(node.attrs).map(a => [a.name, a.value]))
+                };
+                populateInspectorWithNode(nodeData);
+                setTimeout(() => requestNodeRect(selectedAstNodeId), 250);
             }
         }
 

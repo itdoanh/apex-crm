@@ -3,6 +3,57 @@
    ============================================================== */
 
 let allDomains = [];
+window.allDomains = allDomains;
+window.allDomainsList = allDomains;
+
+// Đảm bảo danh sách tên miền luôn sẵn sàng dù chưa chuyển sang tab Tên Miền
+async function ensureDomainsLoaded() {
+    if (window.allDomains && Array.isArray(window.allDomains) && window.allDomains.length > 0) {
+        allDomains = window.allDomains;
+        return window.allDomains;
+    }
+    try {
+        const res = await fetch('/api/domains');
+        if (res.ok) {
+            const json = await res.json();
+            if (json && json.success && Array.isArray(json.data)) {
+                allDomains = json.data;
+                window.allDomains = allDomains;
+                window.allDomainsList = allDomains;
+                populateDomainDropdowns();
+                return allDomains;
+            }
+        }
+    } catch (err) {
+        console.warn('Lỗi ensureDomainsLoaded:', err);
+    }
+    return window.allDomains || [];
+}
+window.ensureDomainsLoaded = ensureDomainsLoaded;
+
+// Đảm bảo danh sách Landing Pages luôn sẵn sàng dù chưa mở tab Ladi Studio
+async function ensureLandingsLoaded() {
+    if (window.allLandingsList && Array.isArray(window.allLandingsList) && window.allLandingsList.length > 0) {
+        return window.allLandingsList;
+    }
+    try {
+        const res = await fetch('/api/landings');
+        if (res.ok) {
+            const json = await res.json();
+            const list = (json && json.landings && Array.isArray(json.landings)) ? json.landings : [];
+            window.allLandingsList = list;
+            if (typeof allLandingsList !== 'undefined') {
+                allLandingsList = list;
+            }
+            populateDomainDropdowns();
+            return list;
+        }
+    } catch (err) {
+        console.warn('Lỗi ensureLandingsLoaded:', err);
+    }
+    return window.allLandingsList || [];
+}
+window.ensureLandingsLoaded = ensureLandingsLoaded;
 
         // ==============================================================
 
@@ -15,6 +66,8 @@ let allDomains = [];
                 if (!json || !json.success) throw new Error(json.error || 'Lỗi dữ liệu');
 
                 allDomains = json.data || [];
+                window.allDomains = allDomains;
+                window.allDomainsList = allDomains;
 
                 // Cập nhật thống kê KPI
                 let activeCount = 0;
@@ -51,12 +104,14 @@ let allDomains = [];
 
         // 17.2. Đồng bộ các dropdown chọn domain
         function populateDomainDropdowns() {
+            const domains = (window.allDomains && window.allDomains.length > 0) ? window.allDomains : allDomains;
+
             // Dropdown trong cài đặt landing page (Ladi Studio)
             const cfgSelect = document.getElementById('cfgDomainSelect');
             if (cfgSelect) {
                 const curVal = cfgSelect.value;
                 cfgSelect.innerHTML = '<option value="">-- Dùng chung domain mặc định --</option>';
-                allDomains.forEach(d => {
+                domains.forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d.domain;
                     opt.textContent = `${d.domain} (${d.dns_status === 'active' ? 'DNS OK' : 'Chờ DNS'})`;
@@ -65,15 +120,29 @@ let allDomains = [];
                 if (curVal) cfgSelect.value = curVal;
             }
 
+            // Dropdown trong Modal Khởi Tạo Landing Mới
+            const newLandingDomain = document.getElementById('newLandingDomain');
+            if (newLandingDomain) {
+                const curVal = newLandingDomain.value;
+                newLandingDomain.innerHTML = '<option value="">-- Mặc định (Tất cả domain) --</option>';
+                domains.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.domain;
+                    opt.textContent = `${d.domain} (${d.dns_status === 'active' ? 'DNS OK' : 'Chờ DNS'})`;
+                    newLandingDomain.appendChild(opt);
+                });
+                if (curVal) newLandingDomain.value = curVal;
+            }
+
             // Dropdown trong Modal Deploy Route
             const deploySelect = document.getElementById('deployRouteDomainSelect');
             if (deploySelect) {
                 const curVal = deploySelect.value;
                 deploySelect.innerHTML = '<option value="">-- Chọn tên miền đã trỏ về --</option>';
-                allDomains.forEach(d => {
+                domains.forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d.id;
-                    opt.textContent = `${d.domain} [${d.dns_status.toUpperCase()}]`;
+                    opt.textContent = `${d.domain} [${(d.dns_status || '').toUpperCase()}]`;
                     opt.setAttribute('data-domain', d.domain);
                     deploySelect.appendChild(opt);
                 });
@@ -82,7 +151,9 @@ let allDomains = [];
 
             // Dropdown Landing Page trong Modal Thêm Domain
             const addDomainLanding = document.getElementById('addDomainDefaultLanding');
-            const landings = (typeof allLandingsList !== 'undefined' && Array.isArray(allLandingsList)) ? allLandingsList : (window.allLandingsList || []);
+            const landings = (typeof allLandingsList !== 'undefined' && Array.isArray(allLandingsList) && allLandingsList.length > 0)
+                ? allLandingsList
+                : (window.allLandingsList || []);
             if (addDomainLanding && landings.length > 0) {
                 const curVal = addDomainLanding.value;
                 addDomainLanding.innerHTML = '';
@@ -99,16 +170,17 @@ let allDomains = [];
             const deployLanding = document.getElementById('deployRouteLandingSelect');
             if (deployLanding && landings.length > 0) {
                 const curVal = deployLanding.value;
-                deployLanding.innerHTML = '';
+                deployLanding.innerHTML = '<option value="">-- Chọn Landing Page Triển Khai --</option>';
                 landings.forEach(p => {
                     const opt = document.createElement('option');
                     opt.value = p.page_id;
-                    opt.textContent = `${p.name} (${p.page_id})`;
+                    opt.textContent = `${p.name} (/p/${p.page_id})`;
                     deployLanding.appendChild(opt);
                 });
                 if (curVal) deployLanding.value = curVal;
             }
         }
+        window.populateDomainDropdowns = populateDomainDropdowns;
 
         // 17.3. Render danh sách Domain Cards
         function renderDomainsList() {
@@ -568,17 +640,45 @@ let allDomains = [];
         }
 
         // 17.9. Thao tác Triển Khai Route (Deploy Landing lên Domain + Path)
-        function openDeployRouteModal(domainId, domainName) {
+        async function openDeployRouteModal(domainId, domainName, landingId, pathPrefix) {
+            await Promise.all([ensureDomainsLoaded(), ensureLandingsLoaded()]);
             populateDomainDropdowns();
+
             const select = document.getElementById('deployRouteDomainSelect');
-            if (select && domainId) {
-                select.value = domainId;
+            if (select) {
+                if (domainId) {
+                    select.value = domainId;
+                } else if (domainName) {
+                    for (let i = 0; i < select.options.length; i++) {
+                        const opt = select.options[i];
+                        if (opt.getAttribute('data-domain') === domainName || opt.text.includes(domainName)) {
+                            select.selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
             }
-            document.getElementById('deployRoutePathPrefix').value = '/';
-            document.getElementById('deployRouteRedirectUrl').value = '';
+
+            const landingSelect = document.getElementById('deployRouteLandingSelect');
+            if (landingSelect && landingId) {
+                landingSelect.value = landingId;
+            }
+
+            const pathInput = document.getElementById('deployRoutePathPrefix');
+            if (pathInput) {
+                pathInput.value = pathPrefix || '/';
+            }
+
+            const redirectInput = document.getElementById('deployRouteRedirectUrl');
+            if (redirectInput) {
+                redirectInput.value = '';
+            }
+
             updatePreviewDeployUrl();
-            document.getElementById('modalDeployRoute').classList.remove('hidden');
+            const modal = document.getElementById('modalDeployRoute');
+            if (modal) modal.classList.remove('hidden');
         }
+        window.openDeployRouteModal = openDeployRouteModal;
 
         function closeDeployRouteModal() {
             document.getElementById('modalDeployRoute').classList.add('hidden');
@@ -600,18 +700,26 @@ let allDomains = [];
 
         async function saveDeployRouteFromModal(event) {
             event.preventDefault();
-            const domainId = parseInt(document.getElementById('deployRouteDomainSelect').value, 10);
-            let pathPrefix = document.getElementById('deployRoutePathPrefix').value.trim();
-            const landingId = document.getElementById('deployRouteLandingSelect').value;
-            const redirectUrl = document.getElementById('deployRouteRedirectUrl').value.trim();
+            const domainSelect = document.getElementById('deployRouteDomainSelect');
+            const domainId = parseInt(domainSelect.value, 10);
+            let pathPrefix = (document.getElementById('deployRoutePathPrefix').value || '/').trim();
+            const landingId = (document.getElementById('deployRouteLandingSelect').value || '').trim();
+            const redirectUrl = (document.getElementById('deployRouteRedirectUrl').value || '').trim();
 
             if (!domainId) {
                 alert('Vui lòng chọn tên miền.');
                 return;
             }
+            if (!landingId) {
+                alert('Vui lòng chọn Landing Page triển khai.');
+                return;
+            }
             if (!pathPrefix.startsWith('/')) {
                 pathPrefix = '/' + pathPrefix;
             }
+
+            const selectedOpt = domainSelect.options[domainSelect.selectedIndex];
+            const domainName = selectedOpt ? (selectedOpt.getAttribute('data-domain') || selectedOpt.text.split(' ')[0]) : '';
 
             try {
                 const res = await fetch('/api/domains/deploy', {
@@ -619,6 +727,7 @@ let allDomains = [];
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         domain_id: domainId,
+                        domain: domainName,
                         path_prefix: pathPrefix,
                         landing_id: landingId,
                         redirect_url: redirectUrl
@@ -631,7 +740,11 @@ let allDomains = [];
 
                 closeDeployRouteModal();
                 await loadDomains();
-                alert(`🚀 Đã triển khai Landing Page [${landingId}] lên đường dẫn [${pathPrefix}] thành công!`);
+                if (typeof loadLandingPages === 'function') {
+                    await loadLandingPages();
+                }
+                const fullUrl = `https://${domainName}${pathPrefix === '/' ? '' : pathPrefix}`;
+                alert(`🚀 Đã triển khai Landing Page [${landingId}] lên [${fullUrl}] thành công!`);
             } catch (err) {
                 alert('Lỗi: ' + err.message);
             }

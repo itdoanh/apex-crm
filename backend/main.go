@@ -224,9 +224,34 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok","time":"` + time.Now().Format(time.RFC3339) + `"}`))
 	}))
 
+	// LadiPage SDK Stub & Compatibility Polyfill Runtime
+	const ladiSDKStub = `/**
+ * LadiPage SDK Stub & Compatibility Runtime
+ * Apex CRM Multi-Landing Platform
+ */
+(function(window){'use strict';window.ladi=window.ladi||{};window.LadiPage=window.LadiPage||window.ladi;window.ladihtml=window.ladihtml||window.ladi;if(!window.ladi.isInit){window.ladi.isInit=true;window.ladi.version='1.0.0-compat';window.ladi.events=window.ladi.events||{};window.ladi.on=function(e,cb){window.ladi.events[e]=window.ladi.events[e]||[];window.ladi.events[e].push(cb);};window.ladi.trigger=function(e,d){if(window.ladi.events[e]){window.ladi.events[e].forEach(function(fn){try{fn(d);}catch(_){}});}};window.ladi.init=function(){window.ladi.trigger('ready');};if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){window.ladi.init();});}else{window.ladi.init();}}})(window);`
+
+	// Khai báo trước router đa tên miền để adminHandler có thể ủy quyền khi custom domain gọi route con
+	var landingEdgeRouter func(w http.ResponseWriter, r *http.Request)
+
 	// Giao diện Admin Dashboard (hỗ trợ cả /admin và /ads - crm.hanghoaphaisinh.net/ads)
 	adminHandler := func(w http.ResponseWriter, r *http.Request) {
 		reqPath := r.URL.Path
+
+		// QUAN TRỌNG: Nếu đây là custom domain (không phải domain admin crm.hanghoaphaisinh.net và không phải localhost / server IP)
+		// VÀ domainCache có route khớp với reqPath trên host này (ví dụ: host "ads.giaodichhanghoatuonglai.com" có route "/ads" hoặc "/landing")
+		// -> Nhường quyền xử lý cho multi-domain edge router, KHÔNG ĐƯỢC chặn để hiện Admin!
+		normHost := cache.NormalizeHost(r.Host)
+		if normHost != "crm.hanghoaphaisinh.net" && normHost != "localhost" && normHost != "127.0.0.1" && normHost != "103.124.95.232" {
+			if domainCache != nil && domainCache.HasDomain(r.Host) {
+				if _, _, _, _, found := domainCache.ResolveRoute(r.Host, reqPath); found {
+					if landingEdgeRouter != nil {
+						landingEdgeRouter(w, r)
+						return
+					}
+				}
+			}
+		}
 
 		// Nếu truy cập /ads hoặc /admin không có dấu gạch chéo cuối -> redirect về /ads/ hoặc /admin/
 		// Để trình duyệt hiểu đúng base path khi load các tài nguyên tương đối (js/, css/)
@@ -241,11 +266,34 @@ func main() {
 		subPath = strings.TrimPrefix(subPath, "/")
 
 		if subPath != "" && filepath.Ext(subPath) != "" && subPath != "index.html" {
+			cleanSub := filepath.Clean(filepath.Base(subPath))
+
+			// Phục vụ tức thì ladihtml.sdk.min.js cho Code Studio / Preview nếu được yêu cầu tại bất kỳ tiền tố nào
+			if cleanSub == "ladihtml.sdk.min.js" {
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				_, _ = w.Write([]byte(ladiSDKStub))
+				return
+			}
+
 			candidates := []string{
 				filepath.Join("..", "frontend", "admin", subPath),
 				filepath.Join("frontend", "admin", subPath),
+				filepath.Join("..", "frontend", "landing", subPath),
+				filepath.Join("frontend", "landing", subPath),
 				filepath.Join("static", subPath),
 				filepath.Join("..", "backend", "static", subPath),
+				filepath.Join("static", "js", subPath),
+				filepath.Join("..", "backend", "static", "js", subPath),
+				filepath.Join("..", "frontend", "admin", cleanSub),
+				filepath.Join("frontend", "admin", cleanSub),
+				filepath.Join("..", "frontend", "landing", cleanSub),
+				filepath.Join("frontend", "landing", cleanSub),
+				filepath.Join("static", cleanSub),
+				filepath.Join("..", "backend", "static", cleanSub),
+				filepath.Join("..", subPath),
+				subPath,
+				filepath.Join("..", cleanSub),
+				cleanSub,
 			}
 			for _, target := range candidates {
 				cleanTarget := filepath.Clean(target)
@@ -268,10 +316,19 @@ func main() {
 						w.Header().Set("Content-Type", "image/webp")
 					case ".jpg", ".jpeg":
 						w.Header().Set("Content-Type", "image/jpeg")
+					case ".ico":
+						w.Header().Set("Content-Type", "image/x-icon")
 					}
 					http.ServeFile(w, r, cleanTarget)
 					return
 				}
+			}
+			// Nếu yêu cầu file script .js mà không tìm thấy trên đĩa, trả về 404 có MIME JS chuẩn để tránh lỗi strict MIME checking
+			if strings.HasSuffix(strings.ToLower(cleanSub), ".js") {
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("/* 404: script not found */"))
+				return
 			}
 			http.NotFound(w, r)
 			return
@@ -320,7 +377,7 @@ func main() {
 	mux.HandleFunc("/config.js", adminConfigHandler)
 
 	// Multi-Domain Edge Router & Static Content Engine
-	mux.HandleFunc("/", leadHandler.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	landingEdgeRouter = func(w http.ResponseWriter, r *http.Request) {
 		reqPath := r.URL.Path
 
 		// 1. Chống Path Traversal (tuyệt đối không cho phép .. hoặc ký tự nguy hiểm)
@@ -339,15 +396,23 @@ func main() {
 
 			// Nếu là yêu cầu sub-resource (tracker.js, style.css, chucmung.html, config.json, hình ảnh...)
 			if subPath != "" && subPath != "index.html" {
-				lowerSub := strings.ToLower(subPath)
+				cleanSub := filepath.Clean(filepath.Base(subPath))
+				lowerSub := strings.ToLower(cleanSub)
 				// Bảo vệ file nhạy cảm và binary thực thi, cho phép config.json và tài nguyên tĩnh
 				if strings.Contains(lowerSub, "service-account") || strings.Contains(lowerSub, ".env") || strings.HasSuffix(lowerSub, ".key") || strings.HasSuffix(lowerSub, ".sql") || strings.HasSuffix(lowerSub, ".exe") {
 					http.NotFound(w, r)
 					return
 				}
 
+				// Phục vụ tức thì ladihtml.sdk.min.js cho các landing LadiPage
+				if cleanSub == "ladihtml.sdk.min.js" {
+					w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+					_, _ = w.Write([]byte(ladiSDKStub))
+					return
+				}
+
 				// Phục vụ trực tiếp trang chucmung.html, tuyệt đối không redirect vòng lặp vô tận
-				if subPath == "chucmung.html" {
+				if subPath == "chucmung.html" || cleanSub == "chucmung.html" {
 					cmCandidates := []string{
 						filepath.Join("..", "frontend", "landing", "chucmung.html"),
 						filepath.Join("frontend", "landing", "chucmung.html"),
@@ -383,7 +448,6 @@ func main() {
 				}
 
 				// Fallback sang các thư mục tĩnh của landing và admin
-				cleanSub := filepath.Clean(filepath.Base(subPath))
 				candidates := []string{
 					filepath.Join("..", "frontend", "landing", subPath),
 					filepath.Join("frontend", "landing", subPath),
@@ -393,7 +457,9 @@ func main() {
 					filepath.Join("frontend", "admin", subPath),
 					filepath.Join("static", subPath),
 					filepath.Join("..", "backend", "static", subPath),
-					filepath.Join("..", subPath),
+					filepath.Join("static", "js", subPath),
+					filepath.Join("..", "backend", "static", "js", subPath),
+					filepath.Join("..", "subPath"),
 					subPath,
 					filepath.Join("..", cleanSub),
 					cleanSub,
@@ -422,6 +488,8 @@ func main() {
 							w.Header().Set("Content-Type", "image/webp")
 						case ".jpg", ".jpeg":
 							w.Header().Set("Content-Type", "image/jpeg")
+						case ".ico":
+							w.Header().Set("Content-Type", "image/x-icon")
 						}
 						http.ServeFile(w, r, cleanTarget)
 						return
@@ -429,8 +497,14 @@ func main() {
 				}
 
 				// QUAN TRỌNG: Nếu là tài nguyên tĩnh có đuôi mở rộng (.js, .css, .png, .jpg, .json, .ico...)
-				// mà không tìm thấy -> trả về 404 ngay, TUYỆT ĐỐI không fallback sang trang Landing HTML!
+				// mà không tìm thấy -> trả về 404 ngay với MIME type đúng, TUYỆT ĐỐI không fallback sang trang Landing HTML!
 				if filepath.Ext(subPath) != "" && filepath.Ext(subPath) != ".html" {
+					if strings.HasSuffix(strings.ToLower(cleanSub), ".js") {
+						w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+						w.WriteHeader(http.StatusNotFound)
+						_, _ = w.Write([]byte("/* 404: script not found */"))
+						return
+					}
 					http.NotFound(w, r)
 					return
 				}
@@ -543,7 +617,10 @@ func main() {
 		}
 
 		http.NotFound(w, r)
-	}))
+	}
+
+	// Đăng ký router đa tên miền vào root path '/'
+	mux.HandleFunc("/", leadHandler.CORSMiddleware(landingEdgeRouter))
 
 	serverAddr := ":" + cfg.Port
 	server := &http.Server{

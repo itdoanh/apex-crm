@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 
@@ -38,6 +39,22 @@ func (c *DomainCache) Warmup(ctx context.Context) error {
 	for _, r := range routes {
 		dom := strings.ToLower(strings.TrimSpace(r.Domain))
 		c.routes[dom] = append(c.routes[dom], r)
+	}
+
+	// Sắp xếp routes của từng domain theo độ dài PathPrefix giảm dần (Longest Prefix Match)
+	// Đảm bảo route gốc '/' luôn được đánh giá ở cuối cùng
+	for dom := range c.routes {
+		sort.SliceStable(c.routes[dom], func(i, j int) bool {
+			pi := c.routes[dom][i].PathPrefix
+			pj := c.routes[dom][j].PathPrefix
+			if pi == "/" {
+				return false
+			}
+			if pj == "/" {
+				return true
+			}
+			return len(pi) > len(pj)
+		})
 	}
 
 	return nil

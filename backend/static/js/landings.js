@@ -207,7 +207,7 @@
 
                             <!-- Secondary Row: Deploy, Duplicate, Open & Delete -->
                             <div class="flex items-center justify-between gap-1 text-[11px]">
-                                <button onclick="quickDeployLanding('${escapeHTML(p.domain)}', '${escapeHTML(p.page_id)}')" class="text-emerald-400 hover:text-emerald-300 font-bold px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Xuất bản chính thức">
+                                <button onclick="handleDeployLandingClick('${escapeHTML(p.domain)}', '${escapeHTML(p.page_id)}', '${escapeHTML(p.path_prefix || '/')}')" class="text-emerald-400 hover:text-emerald-300 font-bold px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Triển khai Landing lên tên miền và đường dẫn">
                                     <i class="fa-solid fa-rocket"></i>
                                     <span>Deploy</span>
                                 </button>
@@ -246,7 +246,19 @@
             }
         }
 
-        // 17.5. Deploy nhanh Landing Page
+        // 17.5. Deploy Landing Page lên Tên Miền & Thư Mục (Multi-Domain Routing)
+        async function handleDeployLandingClick(domain, pageId, pathPrefix) {
+            if (typeof openDeployRouteModal === 'function') {
+                await openDeployRouteModal(null, domain, pageId, pathPrefix || '/');
+            } else if (typeof window.openDeployRouteModal === 'function') {
+                await window.openDeployRouteModal(null, domain, pageId, pathPrefix || '/');
+            } else {
+                alert('Đang nạp mô-đun Tên Miền, vui lòng thử lại sau giây lát...');
+            }
+        }
+        window.handleDeployLandingClick = handleDeployLandingClick;
+
+        // Deploy nhanh Landing Page (Fallback)
         async function quickDeployLanding(domain, pageId) {
             try {
                 // Lấy code hiện tại của landing
@@ -460,7 +472,7 @@
         // ============================================================
         // 17.8. MODAL KHỞI TẠO LANDING PAGE MỚI TINH GỌN & CODE STUDIO
         // ============================================================
-        function openCreateLandingModal() {
+        async function openCreateLandingModal() {
             const autoId = 'landing_' + Math.random().toString(36).substring(2, 8);
             const nameEl = document.getElementById('newLandingName');
             const pageIdEl = document.getElementById('newLandingPageId');
@@ -475,17 +487,19 @@
             if (pasteBox) pasteBox.classList.add('hidden');
             if (radioClean) radioClean.checked = true;
 
-            // Nạp danh sách tên miền vào dropdown
+            // Đảm bảo nạp danh sách tên miền vào dropdown
+            let doms = (window.allDomains && window.allDomains.length > 0) ? window.allDomains : [];
+            if (doms.length === 0 && typeof ensureDomainsLoaded === 'function') {
+                doms = await ensureDomainsLoaded();
+            }
             if (domainEl) {
                 domainEl.innerHTML = '<option value="">-- Mặc định (Tất cả domain) --</option>';
-                if (typeof allDomainsList !== 'undefined' && Array.isArray(allDomainsList)) {
-                    allDomainsList.forEach(d => {
-                        const opt = document.createElement('option');
-                        opt.value = d.domain;
-                        opt.textContent = `${d.domain} (${d.dns_status === 'active' ? 'DNS OK' : 'Chưa DNS'})`;
-                        domainEl.appendChild(opt);
-                    });
-                }
+                doms.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.domain;
+                    opt.textContent = `${d.domain} (${d.dns_status === 'active' ? 'DNS OK' : 'Chưa DNS'})`;
+                    domainEl.appendChild(opt);
+                });
             }
 
             toggleInitTypeUI();
@@ -644,6 +658,11 @@
 
         async function openLandingSettings(domain, pageId) {
             try {
+                // Đảm bảo nạp đầy đủ danh sách tên miền
+                if (typeof ensureDomainsLoaded === 'function') {
+                    await ensureDomainsLoaded();
+                }
+
                 const res = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domain)}`);
                 if (!res.ok) throw new Error('Không thể tải thông tin landing');
                 const data = await res.json();
@@ -657,8 +676,10 @@
                 document.getElementById('cfgPageId').setAttribute('readonly', 'true');
                 document.getElementById('cfgPageName').value = p.name || '';
                 document.getElementById('cfgDomain').value = p.domain || '';
-                document.getElementById('cfgPathPrefix').value = p.path_prefix || '/';
-                populateDomainDropdowns();
+                document.getElementById('cfgPathPrefix').value = p.path_prefix || s.path_prefix || '/';
+                if (typeof populateDomainDropdowns === 'function') {
+                    populateDomainDropdowns();
+                }
                 const curDomSel = document.getElementById('cfgDomainSelect');
                 if (curDomSel) curDomSel.value = p.domain || '';
                 document.getElementById('cfgNguonDefault').value = p.nguon_default || 'landing_chinh';

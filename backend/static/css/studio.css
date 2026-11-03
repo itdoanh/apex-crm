@@ -46,3 +46,62 @@
     background: #334155;
     border-radius: 4px;
 }
+
+/* Modern Design Canvas Cursor (Precision Arrow with Cyan Accent) */
+.cs-design-canvas {
+    cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 3L11.5 21L14.5 13.5L22 10.5L4 3Z' fill='%23090d16' stroke='%2338bdf8' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 4 3, crosshair;
+}
+
+/* Canvas Pan States (Ctrl Hand / Fist) */
+.cs-pan-grab, .cs-pan-grab * {
+    cursor: grab !important;
+}
+.cs-pan-grabbing, .cs-pan-grabbing * {
+    cursor: grabbing !important;
+}
+
+/* Canvas Resizable Side Handles (Left & Right Drag Bars) */
+.cs-canvas-side-handle {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 72px;
+    background: #1e293b;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    cursor: ew-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 45;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    user-select: none;
+    touch-action: none;
+}
+.cs-canvas-side-handle:hover {
+    background: #0284c7;
+    border-color: #38bdf8;
+    transform: translateY(-50%) scale(1.1);
+}
+.cs-canvas-side-handle:active {
+    background: #0369a1;
+    border-color: #7dd3fc;
+    transform: translateY(-50%) scale(1.15);
+}
+.cs-canvas-handle-left {
+    left: -18px;
+}
+.cs-canvas-handle-right {
+    right: -18px;
+}
+
+/* Active Layer Row in Layer Tree Hierarchy */
+.layer-row-active {
+    background: rgba(8, 145, 178, 0.25) !important;
+    border: 1px solid #06b6d4 !important;
+    color: #a5f3fc !important;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.25) !important;
+}
+

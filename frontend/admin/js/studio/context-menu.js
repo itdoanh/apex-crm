@@ -256,6 +256,15 @@
             const node = astMapper.astMap[targetId];
             if (!node) return;
 
+            if (studioDeviceMode === 'mobile') {
+                const mobStyles = astMapper.getMobileStyles(targetId);
+                const isHiddenMob = mobStyles.display === 'none';
+                applyAstStyleChange(targetId, { display: isHiddenMob ? null : 'none' }, isHiddenMob ? `Hiện Mobile <${node.tag}>` : `Ẩn Mobile <${node.tag}>`);
+                renderAstLayerTree();
+                showToastNotification(isHiddenMob ? 'Đã hiển thị layer trên Mobile' : 'Đã ẩn layer trên Mobile (chỉ áp dụng Mobile)');
+                return;
+            }
+
             const sVal = node.attrs['style'] ? node.attrs['style'].value : '';
             const isHidden = checkNodeHidden(node);
             let newStyle = '';
@@ -351,8 +360,8 @@
             }
         }
 
-        // Chọn node từ Cây Layer hoặc Breadcrumb
-        function selectAstNode(nodeId) {
+        // Chọn node từ Cây Layer hoặc Breadcrumb (Hỗ trợ cuộn mượt Iframe)
+        function selectAstNode(nodeId, scrollToIframe = false) {
             selectedAstNodeId = nodeId;
             const node = astMapper.astMap[nodeId];
             if (node) {
@@ -367,7 +376,7 @@
                 populateInspectorWithNode(nodeData);
                 highlightCodeAtOffset(node.startOffset);
             }
-            requestNodeRect(nodeId);
+            requestNodeRect(nodeId, scrollToIframe);
             renderAstLayerTree();
         }
 

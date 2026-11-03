@@ -199,6 +199,12 @@ func (s *Store) GetLandingPage(domain string, pageID string) (*models.LandingPag
 	p.Settings = make(map[string]interface{})
 	if len(settingsBytes) > 0 {
 		_ = json.Unmarshal(settingsBytes, &p.Settings)
+		if pp, ok := p.Settings["path_prefix"].(string); ok && pp != "" {
+			p.PathPrefix = pp
+		}
+	}
+	if p.PathPrefix == "" {
+		p.PathPrefix = "/"
 	}
 
 	return &p, nil
@@ -235,6 +241,12 @@ func (s *Store) GetLandingPageByID(pageID string) (*models.LandingPage, error) {
 	p.Settings = make(map[string]interface{})
 	if len(settingsBytes) > 0 {
 		_ = json.Unmarshal(settingsBytes, &p.Settings)
+		if pp, ok := p.Settings["path_prefix"].(string); ok && pp != "" {
+			p.PathPrefix = pp
+		}
+	}
+	if p.PathPrefix == "" {
+		p.PathPrefix = "/"
 	}
 
 	return &p, nil
@@ -286,6 +298,12 @@ func (s *Store) ListLandingPages() ([]models.LandingPage, error) {
 		p.Settings = make(map[string]interface{})
 		if len(settingsBytes) > 0 {
 			_ = json.Unmarshal(settingsBytes, &p.Settings)
+			if pp, ok := p.Settings["path_prefix"].(string); ok && pp != "" {
+				p.PathPrefix = pp
+			}
+		}
+		if p.PathPrefix == "" {
+			p.PathPrefix = "/"
 		}
 		result = append(result, p)
 	}
@@ -323,6 +341,12 @@ func (s *Store) GetAllLandingsWithCode(ctx context.Context) ([]models.LandingPag
 		p.Settings = make(map[string]interface{})
 		if len(settingsBytes) > 0 {
 			_ = json.Unmarshal(settingsBytes, &p.Settings)
+			if pp, ok := p.Settings["path_prefix"].(string); ok && pp != "" {
+				p.PathPrefix = pp
+			}
+		}
+		if p.PathPrefix == "" {
+			p.PathPrefix = "/"
 		}
 		result = append(result, p)
 	}

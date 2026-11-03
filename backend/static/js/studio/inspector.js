@@ -13,6 +13,7 @@
         let studioViewMode = 'split'; // 'code' | 'split' | 'visual'
         let studioFreezeMode = true; // true = Design Freeze, false = Live Interactive
         let studioInspectorOpen = true;
+        var studioDeviceMode = 'pc'; // 'pc' | 'mobile' (Responsive Scope)
         let selectedAstNodeId = null;
         let selectedNodeMeta = null;
         let currentInspTab = 'content';
@@ -118,18 +119,45 @@
                 if (isDraggingGizmo || isMovingGizmo) {
                     endGizmoDragOrResize();
                 }
+                if (typeof endCanvasPan === 'function' && isCanvasPanning) {
+                    endCanvasPan();
+                }
+            }
+
+            if (msg.type === 'APEX_BUILDER_KEY_CTRL') {
+                if (typeof setCtrlPanState === 'function') {
+                    setCtrlPanState(!!msg.pressed);
+                }
+            }
+
+            if (msg.type === 'APEX_BUILDER_WHEEL_ZOOM') {
+                if (typeof stepCanvasZoom === 'function') {
+                    stepCanvasZoom(msg.deltaY < 0 ? 0.08 : -0.08);
+                }
             }
         });
 
-        function requestNodeRect(nodeId) {
+        function expandAncestorsInLayerTree(nodeId) {
+            if (!astMapper || !astMapper.astMap) return;
+            let cur = astMapper.astMap[nodeId];
+            while (cur && cur.parentId) {
+                layerExpandedState[cur.parentId] = true;
+                cur = astMapper.astMap[cur.parentId];
+            }
+        }
+
+        function requestNodeRect(nodeId, scrollIntoView = false) {
             const iframe = document.getElementById('csPreviewIframe');
             if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({ type: 'APEX_CMD_GET_NODE_RECT', nodeId: nodeId }, '*');
+                iframe.contentWindow.postMessage({ type: 'APEX_CMD_GET_NODE_RECT', nodeId: nodeId, scrollIntoView: scrollIntoView }, '*');
             }
             try {
                 if (iframe && iframe.contentDocument) {
                     const el = iframe.contentDocument.querySelector('[data-ve-id="' + nodeId + '"]');
                     if (el) {
+                        if (scrollIntoView) {
+                            try { el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch(e) {}
+                        }
                         const r = el.getBoundingClientRect();
                         repositionGizmoBox({ top: r.top, left: r.left, width: r.width, height: r.height });
                     }
@@ -153,6 +181,17 @@
 
             // Cập nhật bảng thuộc tính Visual Inspector
             populateInspectorWithNode(data);
+
+            // Tự động chọn đúng tab Layer và highlight node trên cây DOM (Đồng bộ 2 chiều Canvas <-> Layer Tree)
+            expandAncestorsInLayerTree(data.nodeId);
+            switchInspectorTab('layers');
+            renderAstLayerTree();
+            setTimeout(() => {
+                const row = document.getElementById('layer-row-' + data.nodeId);
+                if (row) {
+                    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }, 50);
 
             // Mở tự động Inspector nếu đang ở Visual Builder
             if (studioViewMode === 'visual' && !studioInspectorOpen) {
@@ -364,8 +403,12 @@
             // Tab Classes
             renderInspectorClasses(data.className);
 
-            // Tab Styles (6 Phân Hệ Chi Tiết)
-            const style = data.style || {};
+            // Tab Styles (6 Phân Hệ Chi Tiết - Hỗ Trợ Scope Riêng Mobile vs PC)
+            let style = Object.assign({}, data.style || {});
+            if (studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles && data.nodeId) {
+                const mobStyles = astMapper.getMobileStyles(data.nodeId);
+                style = Object.assign(style, mobStyles);
+            }
 
             // 1. Bố cục & Flexbox
             if (document.getElementById('inspStyleDisplay')) {
@@ -619,6 +662,20 @@
         }
 
         function applyAstStyleChange(nodeId, styleObj, actionTitle = 'Đổi kiểu Style') {
+            if (studioDeviceMode === 'mobile') {
+                const res = astMapper.setMobileStyles(nodeId, styleObj);
+                syncCodeEditorFromAst(res.html);
+                pushStudioHistory(`[Mobile] ${actionTitle}`, res.html, nodeId);
+
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_RESPONSIVE_CSS', cssText: res.css }, '*');
+                    iframe.contentWindow.postMessage({ type: 'APEX_CMD_UPDATE_STYLE_TEMP', nodeId: nodeId, styles: styleObj }, '*');
+                }
+                requestNodeRect(nodeId);
+                return;
+            }
+
             const updated = astMapper.spliceStyle(nodeId, styleObj);
             syncCodeEditorFromAst(updated);
             pushStudioHistory(actionTitle, updated, nodeId);
