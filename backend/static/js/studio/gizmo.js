@@ -13,9 +13,16 @@
         var moveStartX = 0, moveStartY = 0;
         var moveStartLeft = 0, moveStartTop = 0;
         var moveInitialStyleLeft = 0, moveInitialStyleTop = 0;
+        var moveInitialPosition = 'relative';
+        var moveCurrentDx = 0, moveCurrentDy = 0;
+        var moveCurrentContentDx = 0, moveCurrentContentDy = 0;
         var activeCapturedElement = null, activePointerId = null;
         var resizeCurrentW = 0, resizeCurrentH = 0;
-        var moveCurrentDx = 0, moveCurrentDy = 0;
+        var resizeCurrentContentW = 0, resizeCurrentContentH = 0;
+        var resizeCurrentContentL = 0, resizeCurrentContentT = 0;
+        var resizeInitialStyleLeft = 0, resizeInitialStyleTop = 0;
+        var resizeInitialPosition = 'relative';
+        var resizeNeedsPos = false;
 
         // Kéo biến đổi kích thước (Resize Handles 60 FPS + PointerCapture)
         function startGizmoResize(e, dir) {
@@ -37,6 +44,8 @@
             resizeStartX = e.clientX;
             resizeStartY = e.clientY;
 
+            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+
             resizeStartRect = {
                 left: parseFloat(gizmoBox.style.left) || 0,
                 top: parseFloat(gizmoBox.style.top) || 0,
@@ -45,6 +54,45 @@
             };
             resizeCurrentW = resizeStartRect.width;
             resizeCurrentH = resizeStartRect.height;
+            resizeCurrentContentW = Math.round(resizeStartRect.width / zoom);
+            resizeCurrentContentH = Math.round(resizeStartRect.height / zoom);
+            resizeNeedsPos = false;
+
+            // Đọc vị trí ban đầu và position của node từ AST mapper (Phân biệt độc lập PC vs Mobile)
+            const node = astMapper.astMap[selectedAstNodeId];
+            let initL = 0, initT = 0, initPos = '';
+            if (studioDeviceMode === 'mobile') {
+                const mob = astMapper.getMobileStyles(selectedAstNodeId);
+                if (mob.left !== undefined) initL = parseFloat(mob.left) || 0;
+                if (mob.top !== undefined) initT = parseFloat(mob.top) || 0;
+                if (mob.position) initPos = mob.position;
+            } else {
+                const pc = astMapper.getPCStyles(selectedAstNodeId);
+                if (pc.left !== undefined) initL = parseFloat(pc.left) || 0;
+                if (pc.top !== undefined) initT = parseFloat(pc.top) || 0;
+                if (pc.position) initPos = pc.position;
+            }
+            if (node && node.attrs && node.attrs['style']) {
+                const sVal = node.attrs['style'].value || '';
+                if (initL === 0) {
+                    const matchL = sVal.match(/left:\s*(-?[\d.]+)px/i);
+                    if (matchL) initL = parseFloat(matchL[1]) || 0;
+                }
+                if (initT === 0) {
+                    const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
+                    if (matchT) initT = parseFloat(matchT[1]) || 0;
+                }
+                if (!initPos) {
+                    const matchP = sVal.match(/position:\s*([a-z]+)/i);
+                    if (matchP) initPos = matchP[1];
+                }
+            }
+            if (!initPos || initPos === 'static') initPos = 'relative';
+            resizeInitialStyleLeft = initL;
+            resizeInitialStyleTop = initT;
+            resizeCurrentContentL = initL;
+            resizeCurrentContentT = initT;
+            resizeInitialPosition = initPos;
 
             // 1. Kích hoạt Pointer Capture trên handle để giữ chặt con trỏ bất kể di chuyển đi đâu
             activeCapturedElement = e.currentTarget || e.target;
@@ -84,42 +132,45 @@
             moveStartY = e.clientY;
             moveCurrentDx = 0;
             moveCurrentDy = 0;
+            moveCurrentContentDx = 0;
+            moveCurrentContentDy = 0;
 
             moveStartLeft = parseFloat(gizmoBox.style.left) || 0;
             moveStartTop = parseFloat(gizmoBox.style.top) || 0;
 
             // Đọc vị trí top/left ban đầu của node từ AST mapper (Phân biệt độc lập PC vs Mobile)
             const node = astMapper.astMap[selectedAstNodeId];
-            let initL = 0, initT = 0;
+            let initL = 0, initT = 0, initPos = '';
             if (studioDeviceMode === 'mobile') {
                 const mob = astMapper.getMobileStyles(selectedAstNodeId);
                 if (mob.left !== undefined) initL = parseFloat(mob.left) || 0;
-                else if (node && node.attrs && node.attrs['style']) {
-                    const matchL = (node.attrs['style'].value || '').match(/left:\s*(-?[\d.]+)px/i);
-                    if (matchL) initL = parseFloat(matchL[1]) || 0;
-                }
                 if (mob.top !== undefined) initT = parseFloat(mob.top) || 0;
-                else if (node && node.attrs && node.attrs['style']) {
-                    const matchT = (node.attrs['style'].value || '').match(/top:\s*(-?[\d.]+)px/i);
-                    if (matchT) initT = parseFloat(matchT[1]) || 0;
-                }
+                if (mob.position) initPos = mob.position;
             } else {
                 const pc = astMapper.getPCStyles(selectedAstNodeId);
                 if (pc.left !== undefined) initL = parseFloat(pc.left) || 0;
-                else if (node && node.attrs && node.attrs['style']) {
-                    const sVal = node.attrs['style'].value || '';
+                if (pc.top !== undefined) initT = parseFloat(pc.top) || 0;
+                if (pc.position) initPos = pc.position;
+            }
+            if (node && node.attrs && node.attrs['style']) {
+                const sVal = node.attrs['style'].value || '';
+                if (initL === 0) {
                     const matchL = sVal.match(/left:\s*(-?[\d.]+)px/i);
                     if (matchL) initL = parseFloat(matchL[1]) || 0;
                 }
-                if (pc.top !== undefined) initT = parseFloat(pc.top) || 0;
-                else if (node && node.attrs && node.attrs['style']) {
-                    const sVal = node.attrs['style'].value || '';
+                if (initT === 0) {
                     const matchT = sVal.match(/top:\s*(-?[\d.]+)px/i);
                     if (matchT) initT = parseFloat(matchT[1]) || 0;
                 }
+                if (!initPos) {
+                    const matchP = sVal.match(/position:\s*([a-z]+)/i);
+                    if (matchP) initPos = matchP[1];
+                }
             }
+            if (!initPos || initPos === 'static') initPos = 'relative';
             moveInitialStyleLeft = initL;
             moveInitialStyleTop = initT;
+            moveInitialPosition = initPos;
 
             // 1. Kích hoạt Pointer Capture
             activeCapturedElement = e.currentTarget || e.target;
@@ -143,90 +194,156 @@
             const iframe = document.getElementById('csPreviewIframe');
             if (!gizmoBox || !iframe || !iframe.contentWindow) return;
 
+            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+
             // TRƯỜNG HỢP 1: KÉO CO GIÃN KÍCH THƯỚC (RESIZE)
             if (isDraggingGizmo && resizeStartRect) {
-                const dx = ev.clientX - resizeStartX;
-                const dy = ev.clientY - resizeStartY;
+                const screenDx = ev.clientX - resizeStartX;
+                const screenDy = ev.clientY - resizeStartY;
                 const dir = currentResizeDir;
 
-                let newW = resizeStartRect.width;
-                let newH = resizeStartRect.height;
-                let newL = resizeStartRect.left;
-                let newT = resizeStartRect.top;
+                const startScreenW = resizeStartRect.width;
+                const startScreenH = resizeStartRect.height;
+                const startScreenL = resizeStartRect.left;
+                const startScreenT = resizeStartRect.top;
 
-                if (dir.includes('e')) newW = Math.max(20, resizeStartRect.width + dx);
-                if (dir.includes('s')) newH = Math.max(10, resizeStartRect.height + dy);
+                let newScreenW = startScreenW;
+                let newScreenH = startScreenH;
+                let newScreenL = startScreenL;
+                let newScreenT = startScreenT;
+
+                const minW = Math.max(10, 20 * zoom);
+                const minH = Math.max(10, 10 * zoom);
+
+                if (dir.includes('e')) {
+                    newScreenW = Math.max(minW, startScreenW + screenDx);
+                }
+                if (dir.includes('s')) {
+                    newScreenH = Math.max(minH, startScreenH + screenDy);
+                }
                 if (dir.includes('w')) {
-                    const possibleW = resizeStartRect.width - dx;
-                    if (possibleW >= 20) {
-                        newW = possibleW;
-                        newL = resizeStartRect.left + dx;
+                    const possibleW = startScreenW - screenDx;
+                    if (possibleW >= minW) {
+                        newScreenW = possibleW;
+                        newScreenL = startScreenL + screenDx;
+                    } else {
+                        newScreenW = minW;
+                        newScreenL = startScreenL + (startScreenW - minW);
                     }
                 }
                 if (dir.includes('n')) {
-                    const possibleH = resizeStartRect.height - dy;
-                    if (possibleH >= 10) {
-                        newH = possibleH;
-                        newT = resizeStartRect.top + dy;
+                    const possibleH = startScreenH - screenDy;
+                    if (possibleH >= minH) {
+                        newScreenH = possibleH;
+                        newScreenT = startScreenT + screenDy;
+                    } else {
+                        newScreenH = minH;
+                        newScreenT = startScreenT + (startScreenH - minH);
                     }
                 }
 
                 // Giữ tỷ lệ khung hình (Aspect Ratio) khi nhấn Shift
-                if (ev.shiftKey && resizeStartRect.height > 0) {
-                    const ratio = resizeStartRect.width / resizeStartRect.height;
+                if (ev.shiftKey && startScreenH > 0) {
+                    const ratio = startScreenW / startScreenH;
                     if (dir === 'e' || dir === 'w') {
-                        newH = Math.max(10, newW / ratio);
+                        newScreenH = Math.max(minH, newScreenW / ratio);
                     } else {
-                        newW = Math.max(20, newH * ratio);
+                        newScreenW = Math.max(minW, newScreenH * ratio);
                     }
                 }
 
-                resizeCurrentW = Math.round(newW);
-                resizeCurrentH = Math.round(newH);
+                resizeCurrentW = Math.round(newScreenW);
+                resizeCurrentH = Math.round(newScreenH);
 
-                gizmoBox.style.width = newW + 'px';
-                gizmoBox.style.height = newH + 'px';
-                gizmoBox.style.left = newL + 'px';
-                gizmoBox.style.top = newT + 'px';
+                gizmoBox.style.width = newScreenW + 'px';
+                gizmoBox.style.height = newScreenH + 'px';
+                gizmoBox.style.left = newScreenL + 'px';
+                gizmoBox.style.top = newScreenT + 'px';
+
+                // Quy đổi chính xác sang hệ tọa độ CSS nội dung của iframe (chia zoom)
+                const contentW = Math.round(newScreenW / zoom);
+                const contentH = Math.round(newScreenH / zoom);
+                resizeCurrentContentW = contentW;
+                resizeCurrentContentH = contentH;
 
                 const sizeTag = document.getElementById('csGizmoSize');
-                if (sizeTag) sizeTag.innerText = `${resizeCurrentW} × ${resizeCurrentH}px`;
+                if (sizeTag) sizeTag.innerText = `${contentW} × ${contentH}px`;
 
                 // Cập nhật giá trị vào Inspector inputs
                 const wInput = document.getElementById('inspStyleWidth');
                 const hInput = document.getElementById('inspStyleHeight');
-                if (wInput) wInput.value = resizeCurrentW + 'px';
-                if (hInput) hInput.value = resizeCurrentH + 'px';
+                if (wInput) wInput.value = contentW + 'px';
+                if (hInput) hInput.value = contentH + 'px';
 
-                // Bắn cập nhật 60 FPS sang iframe preview
+                const stylesToSend = {
+                    width: contentW + 'px',
+                    height: contentH + 'px',
+                    'max-width': 'none',
+                    'min-width': '0px'
+                };
+
+                let contentL = resizeInitialStyleLeft;
+                let contentT = resizeInitialStyleTop;
+                let needsPos = false;
+
+                if (dir.includes('w')) {
+                    const screenShiftX = newScreenL - startScreenL;
+                    contentL = Math.round(resizeInitialStyleLeft + (screenShiftX / zoom));
+                    stylesToSend.left = contentL + 'px';
+                    needsPos = true;
+                }
+                if (dir.includes('n')) {
+                    const screenShiftY = newScreenT - startScreenT;
+                    contentT = Math.round(resizeInitialStyleTop + (screenShiftY / zoom));
+                    stylesToSend.top = contentT + 'px';
+                    needsPos = true;
+                }
+
+                if (needsPos) {
+                    stylesToSend.position = resizeInitialPosition;
+                    const posInput = document.getElementById('inspStylePosition');
+                    const lInput = document.getElementById('inspStyleLeft');
+                    const tInput = document.getElementById('inspStyleTop');
+                    if (posInput) posInput.value = resizeInitialPosition;
+                    if (lInput && dir.includes('w')) lInput.value = contentL + 'px';
+                    if (tInput && dir.includes('n')) tInput.value = contentT + 'px';
+                }
+
+                resizeCurrentContentL = contentL;
+                resizeCurrentContentT = contentT;
+                resizeNeedsPos = needsPos;
+
+                // Bắn cập nhật 60 FPS sang iframe preview kèm important override
                 iframe.contentWindow.postMessage({
                     type: 'APEX_CMD_UPDATE_STYLE_TEMP',
                     nodeId: selectedAstNodeId,
-                    styles: {
-                        width: resizeCurrentW + 'px',
-                        height: resizeCurrentH + 'px'
-                    }
+                    styles: stylesToSend
                 }, '*');
             }
 
             // TRƯỜNG HỢP 2: KÉO DI CHUYỂN VỊ TRÍ (DRAG TO MOVE)
             if (isMovingGizmo) {
-                const dx = ev.clientX - moveStartX;
-                const dy = ev.clientY - moveStartY;
-                moveCurrentDx = dx;
-                moveCurrentDy = dy;
+                const screenDx = ev.clientX - moveStartX;
+                const screenDy = ev.clientY - moveStartY;
+                const contentDx = screenDx / zoom;
+                const contentDy = screenDy / zoom;
 
-                gizmoBox.style.left = (moveStartLeft + dx) + 'px';
-                gizmoBox.style.top = (moveStartTop + dy) + 'px';
+                moveCurrentDx = screenDx;
+                moveCurrentDy = screenDy;
+                moveCurrentContentDx = contentDx;
+                moveCurrentContentDy = contentDy;
 
-                const targetLeft = Math.round(moveInitialStyleLeft + dx);
-                const targetTop = Math.round(moveInitialStyleTop + dy);
+                gizmoBox.style.left = (moveStartLeft + screenDx) + 'px';
+                gizmoBox.style.top = (moveStartTop + screenDy) + 'px';
+
+                const targetLeft = Math.round(moveInitialStyleLeft + contentDx);
+                const targetTop = Math.round(moveInitialStyleTop + contentDy);
 
                 // Cập nhật trực tiếp lên Inspector
                 const posInput = document.getElementById('inspStylePosition');
                 const lInput = document.getElementById('inspStyleLeft');
                 const tInput = document.getElementById('inspStyleTop');
-                if (posInput && !posInput.value) posInput.value = 'relative';
+                if (posInput && !posInput.value) posInput.value = moveInitialPosition;
                 if (lInput) lInput.value = targetLeft + 'px';
                 if (tInput) tInput.value = targetTop + 'px';
 
@@ -235,7 +352,7 @@
                     type: 'APEX_CMD_UPDATE_STYLE_TEMP',
                     nodeId: selectedAstNodeId,
                     styles: {
-                        position: 'relative',
+                        position: moveInitialPosition,
                         left: targetLeft + 'px',
                         top: targetTop + 'px'
                     }
@@ -252,6 +369,7 @@
 
             isDraggingGizmo = false;
             isMovingGizmo = false;
+            const savedResizeDir = currentResizeDir;
             currentResizeDir = '';
 
             // 1. Giải phóng Pointer Capture an toàn
@@ -274,17 +392,26 @@
             // 4. Lưu thay đổi chính thức vào AST Source Mapper
             if (selectedAstNodeId) {
                 if (wasResizing) {
-                    const finalW = resizeCurrentW || Math.round(parseFloat(document.getElementById('csGizmoBox').style.width));
-                    const finalH = resizeCurrentH || Math.round(parseFloat(document.getElementById('csGizmoBox').style.height));
-                    applyAstStyleChange(selectedAstNodeId, {
+                    const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+                    const finalW = resizeCurrentContentW || Math.round((parseFloat(document.getElementById('csGizmoBox').style.width) || 0) / zoom);
+                    const finalH = resizeCurrentContentH || Math.round((parseFloat(document.getElementById('csGizmoBox').style.height) || 0) / zoom);
+                    const styleToSave = {
                         width: finalW + 'px',
-                        height: finalH + 'px'
-                    }, 'Co dãn kích thước');
+                        height: finalH + 'px',
+                        'max-width': 'none',
+                        'min-width': '0px'
+                    };
+                    if (resizeNeedsPos) {
+                        styleToSave.position = resizeInitialPosition;
+                        if (savedResizeDir.includes('w')) styleToSave.left = resizeCurrentContentL + 'px';
+                        if (savedResizeDir.includes('n')) styleToSave.top = resizeCurrentContentT + 'px';
+                    }
+                    applyAstStyleChange(selectedAstNodeId, styleToSave, 'Co dãn kích thước');
                 } else if (wasMoving) {
-                    const finalLeft = Math.round(moveInitialStyleLeft + moveCurrentDx);
-                    const finalTop = Math.round(moveInitialStyleTop + moveCurrentDy);
+                    const finalLeft = Math.round(moveInitialStyleLeft + moveCurrentContentDx);
+                    const finalTop = Math.round(moveInitialStyleTop + moveCurrentContentDy);
                     applyAstStyleChange(selectedAstNodeId, {
-                        position: 'relative',
+                        position: moveInitialPosition,
                         left: finalLeft + 'px',
                         top: finalTop + 'px'
                     }, 'Kéo di chuyển');
@@ -293,12 +420,11 @@
                 // Xóa sạch inline styles tạm thời khỏi DOM iframe trên cả PC và Mobile
                 // để phần tử hoàn toàn tuân theo Media Query tương ứng (@media min-width 769px / max-width 768px),
                 // triệt tiêu 100% hiện tượng inline styles rò rỉ làm ảnh hưởng thiết bị còn lại.
-                const iframe = document.getElementById('csPreviewIframe');
                 if (iframe && iframe.contentWindow) {
                     iframe.contentWindow.postMessage({
                         type: 'APEX_CMD_CLEAR_TEMP_STYLES',
                         nodeId: selectedAstNodeId,
-                        props: ['left', 'top', 'position', 'width', 'height']
+                        props: ['left', 'top', 'position', 'width', 'height', 'max-width', 'min-width']
                     }, '*');
                 }
 

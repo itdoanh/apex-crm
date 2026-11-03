@@ -256,12 +256,12 @@
             const btnImg = document.getElementById('btnGizmoChangeImg');
             const btnLink = document.getElementById('btnGizmoChangeLink');
 
-            if (!gizmoBox || !rect) return;
+            if (!gizmoBox || !rect || isDraggingGizmo || isMovingGizmo) return;
 
-            gizmoBox.style.top = Math.max(0, rect.top) + 'px';
-            gizmoBox.style.left = Math.max(0, rect.left) + 'px';
-            gizmoBox.style.width = Math.max(20, rect.width) + 'px';
-            gizmoBox.style.height = Math.max(12, rect.height) + 'px';
+            gizmoBox.style.top = Math.round(rect.top) + 'px';
+            gizmoBox.style.left = Math.round(rect.left) + 'px';
+            gizmoBox.style.width = Math.max(10, Math.round(rect.width)) + 'px';
+            gizmoBox.style.height = Math.max(10, Math.round(rect.height)) + 'px';
 
             const tag = selectedNodeMeta ? selectedNodeMeta.tagName : 'div';
             const classSummary = selectedNodeMeta && selectedNodeMeta.className ? '.' + selectedNodeMeta.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
@@ -269,7 +269,8 @@
             if (gizmoTag) {
                 gizmoTag.innerHTML = `${isLocked ? '<i class="fa-solid fa-lock text-yellow-400 mr-1"></i>' : ''}${tag.toUpperCase()} ${classSummary}`;
             }
-            if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)}px`;
+            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+            if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width / zoom)} × ${Math.round(rect.height / zoom)}px`;
 
             const handles = gizmoBox.querySelectorAll('.cs-gizmo-handle');
             handles.forEach(h => h.style.display = isLocked ? 'none' : '');

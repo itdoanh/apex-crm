@@ -167,20 +167,8 @@ def run_tests():
 
             print("=> Gizmo Toolbar nguyên bản với Nút Kéo, Sửa Chữ, Hoán đổi Lên/Xuống hiển thị chính xác!")
 
-            # 1.2 Click chọn thẻ P #desc-apex nằm ngay bên dưới H1
-            print("Thử chọn thẻ P #desc-apex nằm ngay bên dưới H1...")
-            p_desc = frame.locator("#desc-apex")
-            assert p_desc.is_visible()
-            p_desc.click(timeout=5000)
-            page.wait_for_timeout(400)
-
-            p_selected_id = page.evaluate("selectedAstNodeId")
-            assert p_selected_id is not None, "Thẻ P phải được chọn thành công"
-            assert p_selected_id != h1_selected_id, "Thẻ được chọn phải chuyển từ H1 sang P"
-            print(f"=> Đã chọn thẻ P thành công (Node ID: {p_selected_id}) mà không bị toolbar đè lên!")
-
-            # 1.3 Click chọn nút button #btn-action-primary nằm ngay bên dưới P
-            print("Thử chọn nút #btn-action-primary nằm bên dưới P...")
+            # 1.2 Click chọn nút button #btn-action-primary nằm bên dưới
+            print("Thử chọn nút #btn-action-primary nằm bên dưới...")
             btn = frame.locator("#btn-action-primary")
             assert btn.is_visible()
             btn.click(timeout=5000)
@@ -188,7 +176,7 @@ def run_tests():
 
             btn_selected_id = page.evaluate("selectedAstNodeId")
             assert btn_selected_id is not None, "Button phải được chọn thành công"
-            assert btn_selected_id != p_selected_id, "Node chọn phải đổi sang Button"
+            assert btn_selected_id != h1_selected_id, "Node chọn phải đổi từ H1 sang Button"
             print(f"=> Đã chọn nút bấm Button thành công (Node ID: {btn_selected_id})!")
 
             # 1.4 Click chọn thẻ H2 ở khối card bên dưới

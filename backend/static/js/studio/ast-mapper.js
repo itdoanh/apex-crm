@@ -549,8 +549,11 @@
                     `        if (m.type === 'APEX_CMD_CLEAR_TEMP_STYLES') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
                     `            if (el) {\n` +
-                    `                var props = m.props || ['left', 'top', 'position', 'width', 'height'];\n` +
-                    `                for (var p = 0; p < props.length; p++) el.style[props[p]] = '';\n` +
+                    `                var props = m.props || ['left', 'top', 'position', 'width', 'height', 'max-width', 'min-width'];\n` +
+                    `                for (var p = 0; p < props.length; p++) {\n` +
+                    `                    var pr = props[p].indexOf('-') !== -1 ? props[p] : props[p].replace(/[A-Z]/g, function(l) { return '-' + l.toLowerCase(); });\n` +
+                    `                    el.style.removeProperty(pr);\n` +
+                    `                }\n` +
                     `            }\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_RESPONSIVE_CSS') {\n` +
@@ -565,7 +568,15 @@
                     `        if (m.type === 'APEX_CMD_UPDATE_STYLE_TEMP') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
                     `            if (el && m.styles) {\n` +
-                    `                for (var k in m.styles) el.style[k] = m.styles[k];\n` +
+                    `                for (var k in m.styles) {\n` +
+                    `                    var pr = k.indexOf('-') !== -1 ? k : k.replace(/[A-Z]/g, function(l) { return '-' + l.toLowerCase(); });\n` +
+                    `                    var val = m.styles[k];\n` +
+                    `                    if (val === null || val === '') {\n` +
+                    `                        el.style.removeProperty(pr);\n` +
+                    `                    } else {\n` +
+                    `                        el.style.setProperty(pr, String(val), 'important');\n` +
+                    `                    }\n` +
+                    `                }\n` +
                     `            }\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_CLASS_TEMP') {\n` +
