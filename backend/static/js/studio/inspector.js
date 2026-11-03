@@ -6,15 +6,17 @@
         // ============================================================
         // GLOBAL VISUAL BUILDER CONTROLLER & STATE
         // ============================================================
-        let astMapper = new ApexASTSourceMapper();
-        let studioFolders = [];
-        let folderExpandedState = {};
-        let currentRenameTarget = { type: 'file', oldPath: '' };
-        let studioViewMode = 'split'; // 'code' | 'split' | 'visual'
-        let studioFreezeMode = true; // true = Design Freeze, false = Live Interactive
-        let studioInspectorOpen = true;
+        var astMapper = new ApexASTSourceMapper();
+        window.astMapper = astMapper;
+        var studioFolders = [];
+        var folderExpandedState = {};
+        var currentRenameTarget = { type: 'file', oldPath: '' };
+        var studioViewMode = 'split'; // 'code' | 'split' | 'visual'
+        var studioFreezeMode = true; // true = Design Freeze, false = Live Interactive
+        var studioInspectorOpen = true;
         var studioDeviceMode = 'pc'; // 'pc' | 'mobile' (Responsive Scope)
-        let selectedAstNodeId = null;
+        window.studioDeviceMode = studioDeviceMode;
+        var selectedAstNodeId = null;
         let selectedNodeMeta = null;
         let currentInspTab = 'content';
         let isDraggingGizmo = false;
