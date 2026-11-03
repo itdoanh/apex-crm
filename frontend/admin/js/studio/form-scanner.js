@@ -43,18 +43,11 @@
                     }
                 }
 
-                // 3. Nếu vẫn chưa có HTML (landing mới hoàn toàn), fetch mẫu mặc định từ /ladi.html
-                if (!htmlContent) {
-                    try {
-                        const tplRes = await fetch('/ladi.html');
-                        if (tplRes.ok) {
-                            htmlContent = await tplRes.text();
-                        }
-                    } catch (_) {}
-                }
-
-                if (!htmlContent) {
-                    throw new Error('Không tìm thấy nội dung HTML của Landing Page để quét.');
+                // 3. Nếu chưa có HTML hoặc HTML trống, yêu cầu nhập mã nguồn
+                if (!htmlContent || !htmlContent.trim()) {
+                    statusEl.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Chưa có mã HTML. Vui lòng nhập mã code vào Code Studio trước.</span>`;
+                    alert('Chưa có nội dung HTML để phân tích. Vui lòng nhập hoặc dán mã code của bạn vào Code Studio trước khi thực hiện Quét Form & Input!');
+                    return;
                 }
 
                 // Tiến hành phân tích cú pháp cây DOM
@@ -99,8 +92,8 @@
                 });
 
                 if (validInputs.length === 0) {
-                    statusEl.innerHTML = `<span class="text-amber-400">Không tìm thấy trường input nào trong mã HTML.</span>`;
-                    alert('Không tìm thấy trường nhập liệu nào trong HTML của landing page này!');
+                    renderScannedInputsTable([]);
+                    statusEl.innerHTML = `<span class="text-sky-400 font-semibold"><i class="fa-solid fa-circle-info mr-1"></i> Trang nội dung không có form input (Landing cảm ơn / hiển thị thuần)</span>`;
                     return;
                 }
 

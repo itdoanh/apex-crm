@@ -4,6 +4,7 @@ package models
 type LandingPage struct {
 	PageID       string                 `json:"page_id"`
 	Domain       string                 `json:"domain"`
+	PathPrefix   string                 `json:"path_prefix,omitempty"`
 	Name         string                 `json:"name"`
 	IsActive     bool                   `json:"is_active"`
 	Status       string                 `json:"status"` // 'published', 'draft', 'archived'

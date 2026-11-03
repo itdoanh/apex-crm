@@ -22,6 +22,7 @@
                 if (!res.ok) throw new Error('Không thể tải danh sách Landing');
                 const data = await res.json();
                 allLandingsList = data.landings || [];
+                window.allLandingsList = allLandingsList;
 
                 // Cập nhật thống kê KPI
                 let activeCount = 0;
@@ -456,67 +457,189 @@
             }
         }
 
+        // ============================================================
+        // 17.8. MODAL KHỞI TẠO LANDING PAGE MỚI TINH GỌN & CODE STUDIO
+        // ============================================================
         function openCreateLandingModal() {
             const autoId = 'landing_' + Math.random().toString(36).substring(2, 8);
-            document.getElementById('cfgPageId').value = autoId;
-            document.getElementById('cfgPageId').removeAttribute('readonly');
-            document.getElementById('cfgPageName').value = 'Chiến Dịch Landing Page Mới';
-            document.getElementById('cfgDomain').value = '';
-            document.getElementById('cfgPathPrefix').value = '/';
-            populateDomainDropdowns();
-            const rDomainSel = document.getElementById('cfgDomainSelect');
-            if (rDomainSel) rDomainSel.value = '';
-            document.getElementById('cfgNguonDefault').value = 'landing_chinh';
-            document.getElementById('cfgIsActive').checked = true;
-            document.getElementById('cfgRedirectUrl').value = 'chucmung.html';
-            document.getElementById('cfgHotline').value = '0984.386.538';
-            document.getElementById('cfgZaloLink').value = 'https://zalo.me/0984386538';
-            document.getElementById('cfgSuccessRedirect').value = 'chucmung.html';
-            document.getElementById('cfgFacebookPixel').value = '1558828029597854';
-            document.getElementById('cfgGoogleAnalytics').value = '';
-            document.getElementById('cfgTikTokPixel').value = '';
-            document.getElementById('cfgCustomHead').value = '';
-            document.getElementById('cfgCustomBody').value = '';
+            const nameEl = document.getElementById('newLandingName');
+            const pageIdEl = document.getElementById('newLandingPageId');
+            const domainEl = document.getElementById('newLandingDomain');
+            const codeEl = document.getElementById('newLandingInitialCode');
+            const pasteBox = document.getElementById('newLandingPasteCodeContainer');
+            const radioClean = document.querySelector('input[name="newLandingInitType"][value="clean"]');
 
-            // Cấu hình Brand, Tiêu Đề và 3 Ô thông tin mặc định
-            document.getElementById('cfgBrandHeader1').value = 'Bộ Công Thương';
-            document.getElementById('cfgBrandHeader2').value = 'Sở giao dịch hàng hóa Việt Nam MXV';
-            document.getElementById('cfgBrandLogo').value = 'assets/img/logo_APEX_K_NEN.webp';
-            document.getElementById('cfgBrandMemberText').value = 'Thành viên 080 MXV';
-            document.getElementById('cfgBadgeText').value = 'LỚP HỌC ONLINE MIỄN PHÍ';
-            document.getElementById('cfgTitleLine1').value = 'GIẢI MÃ ĐẦU TƯ';
-            document.getElementById('cfgTitleLine2').value = 'HÀNG HÓA';
-            document.getElementById('cfgSubtitle').value = 'Hiểu thị trường – Nắm cơ hội – Quản trị rủi ro';
-            document.getElementById('cfgBox1Top').value = '03/11/2026';
-            document.getElementById('cfgBox1Bottom').value = '20:00 Online';
-            document.getElementById('cfgBox2Top').value = 'Học Online';
-            document.getElementById('cfgBox2Bottom').value = 'Qua Zoom';
-            document.getElementById('cfgBox3Top').value = '2 Giờ';
-            document.getElementById('cfgBox3Bottom').value = 'Thực chiến';
+            if (nameEl) nameEl.value = '';
+            if (pageIdEl) pageIdEl.value = autoId;
+            if (codeEl) codeEl.value = '';
+            if (pasteBox) pasteBox.classList.add('hidden');
+            if (radioClean) radioClean.checked = true;
 
-            document.getElementById('cfgEventTitle').value = 'Giải Mã Đầu Tư Hàng Hóa';
-            document.getElementById('cfgTargetDate').value = '2026-11-03T20:00:00';
-            document.getElementById('cfgEventQuota').value = 'Chỉ dành cho 100 suất';
-            document.getElementById('cfgMetaTitle').value = 'Hội Thảo Giao Dịch Hàng Hóa - Khóa Học MXV 080';
-            document.getElementById('cfgMetaDesc').value = 'Khóa học thực chiến đầu tư hàng hóa phái sinh cùng chuyên gia hàng đầu. Miễn phí tham gia online qua Zoom.';
-            document.getElementById('cfgOgImage').value = '';
+            // Nạp danh sách tên miền vào dropdown
+            if (domainEl) {
+                domainEl.innerHTML = '<option value="">-- Mặc định (Tất cả domain) --</option>';
+                if (typeof allDomainsList !== 'undefined' && Array.isArray(allDomainsList)) {
+                    allDomainsList.forEach(d => {
+                        const opt = document.createElement('option');
+                        opt.value = d.domain;
+                        opt.textContent = `${d.domain} (${d.dns_status === 'active' ? 'DNS OK' : 'Chưa DNS'})`;
+                        domainEl.appendChild(opt);
+                    });
+                }
+            }
 
-            // Cấu hình Form Mapping & Heuristics mặc định
-            document.getElementById('cfgFormSelector').value = '';
-            document.getElementById('cfgOptValidatePhone').checked = true;
-            document.getElementById('cfgOptHoneypot').checked = true;
-            document.getElementById('cfgOptUtmCapture').checked = true;
-            document.getElementById('cfgOptCookie180d').checked = true;
-            document.getElementById('scanFormStatus').innerHTML = `<span>Chưa thực hiện quét</span><span class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Sẵn sàng</span>`;
-            renderScannedInputsTable([]);
+            toggleInitTypeUI();
+            const modal = document.getElementById('modalCreateLanding');
+            if (modal) modal.classList.remove('hidden');
+        }
 
-            const rSel = document.getElementById('cfgSyncModeSelected');
-            if (rSel) rSel.checked = true;
-            loadSheetsForLandingSettings([], 'selected');
-            toggleSheetSelectionUI();
+        function closeCreateLandingModal() {
+            const modal = document.getElementById('modalCreateLanding');
+            if (modal) modal.classList.add('hidden');
+        }
 
-            switchSettingsTab('domain');
-            document.getElementById('landingSettingsModal').classList.remove('hidden');
+        function autoGeneratePageId(name) {
+            if (!name) return;
+            let slug = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            slug = slug.replace(/[đĐ]/g, 'd');
+            slug = slug.replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            const el = document.getElementById('newLandingPageId');
+            if (el) el.value = slug || 'landing_' + Math.random().toString(36).substring(2, 8);
+        }
+
+        function toggleInitTypeUI() {
+            const selected = document.querySelector('input[name="newLandingInitType"]:checked')?.value || 'clean';
+            const pasteContainer = document.getElementById('newLandingPasteCodeContainer');
+            const labelClean = document.getElementById('labelInitClean');
+            const labelPaste = document.getElementById('labelInitPaste');
+
+            if (selected === 'paste') {
+                if (pasteContainer) pasteContainer.classList.remove('hidden');
+                if (labelPaste) {
+                    labelPaste.className = 'relative flex flex-col p-3 rounded-xl border border-cyan-500/50 bg-cyan-950/20 cursor-pointer hover:border-cyan-400 transition';
+                }
+                if (labelClean) {
+                    labelClean.className = 'relative flex flex-col p-3 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition';
+                }
+            } else {
+                if (pasteContainer) pasteContainer.classList.add('hidden');
+                if (labelClean) {
+                    labelClean.className = 'relative flex flex-col p-3 rounded-xl border border-cyan-500/50 bg-cyan-950/20 cursor-pointer hover:border-cyan-400 transition';
+                }
+                if (labelPaste) {
+                    labelPaste.className = 'relative flex flex-col p-3 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition';
+                }
+            }
+        }
+
+        async function submitCreateLandingForm(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const name = (document.getElementById('newLandingName')?.value || '').trim();
+            let pageId = (document.getElementById('newLandingPageId')?.value || '').trim();
+            const domain = (document.getElementById('newLandingDomain')?.value || '').trim();
+            const initType = document.querySelector('input[name="newLandingInitType"]:checked')?.value || 'clean';
+            const initialCode = (document.getElementById('newLandingInitialCode')?.value || '').trim();
+
+            if (!name) {
+                alert('Vui lòng nhập Tên Gợi Nhớ cho Landing Page.');
+                return;
+            }
+            if (!pageId) {
+                autoGeneratePageId(name);
+                pageId = (document.getElementById('newLandingPageId')?.value || '').trim();
+            }
+            pageId = pageId.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+            let htmlContent = '';
+            if (initType === 'paste' && initialCode) {
+                htmlContent = initialCode;
+            } else {
+                htmlContent = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHtml(name)}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-white min-h-screen">
+    <!-- Landing Page: ${escapeHtml(name)} -->
+    <header class="py-6 px-4 border-b border-slate-800 max-w-6xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <span class="text-cyan-400 text-xl font-bold"><i class="fa-solid fa-cube mr-1.5"></i>Apex</span>
+        </div>
+        <a href="#register" class="btn bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition">Đăng Ký Ngay</a>
+    </header>
+
+    <main class="max-w-4xl mx-auto py-16 px-4 text-center">
+        <h1 class="hero-title text-3xl sm:text-5xl font-black mb-4 tracking-tight leading-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+            ${escapeHtml(name)}
+        </h1>
+        <p class="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto mb-8">
+            Chào mừng bạn đến với trang Landing Page mới. Bạn có thể mở Code Studio để tạo tệp tin, soạn thảo mã nguồn và quét tùy chỉnh nhanh nội dung.
+        </p>
+        <div class="flex items-center justify-center gap-3">
+            <a href="#register" class="btn bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-sm px-6 py-3 rounded-xl transition shadow-lg">
+                Bắt Đầu Ngay
+            </a>
+        </div>
+    </main>
+
+    <footer class="py-8 border-t border-slate-900 text-center text-xs text-slate-500">
+        <p>© 2026 ${escapeHtml(name)}. Mọi quyền được bảo lưu.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>`;
+            }
+
+            const btn = document.getElementById('btnSubmitCreateLanding');
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang khởi tạo...';
+            }
+
+            try {
+                const res = await fetch('/api/landings/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        page_id: pageId,
+                        name: name,
+                        domain: domain,
+                        path_prefix: '/',
+                        nguon_default: 'landing_chinh',
+                        is_active: true,
+                        code_html: htmlContent,
+                        settings: {}
+                    })
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(errText || 'Lỗi khởi tạo landing page');
+                }
+
+                closeCreateLandingModal();
+                await loadLandingPages();
+                if (typeof loadDomains === 'function') loadDomains();
+
+                // Lập tức đưa người dùng vào Code Studio để quản lý thư mục, file và code
+                if (typeof openCodeStudio === 'function') {
+                    openCodeStudio(domain, pageId);
+                }
+            } catch (err) {
+                alert('Lỗi tạo Landing Page: ' + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            }
         }
 
         async function openLandingSettings(domain, pageId) {
@@ -534,7 +657,7 @@
                 document.getElementById('cfgPageId').setAttribute('readonly', 'true');
                 document.getElementById('cfgPageName').value = p.name || '';
                 document.getElementById('cfgDomain').value = p.domain || '';
-                document.getElementById('cfgPathPrefix').value = '/';
+                document.getElementById('cfgPathPrefix').value = p.path_prefix || '/';
                 populateDomainDropdowns();
                 const curDomSel = document.getElementById('cfgDomainSelect');
                 if (curDomSel) curDomSel.value = p.domain || '';
@@ -544,7 +667,7 @@
 
                 document.getElementById('cfgHotline').value = s.hotline || '';
                 document.getElementById('cfgZaloLink').value = s.zalo_link || '';
-                document.getElementById('cfgSuccessRedirect').value = fc.success_redirect || p.redirect_url || 'chucmung.html';
+                document.getElementById('cfgSuccessRedirect').value = fc.success_redirect || p.redirect_url || '';
 
                 document.getElementById('cfgFacebookPixel').value = s.facebook_pixel_id || '';
                 document.getElementById('cfgGoogleAnalytics').value = s.google_analytics_id || '';
@@ -552,33 +675,59 @@
                 document.getElementById('cfgCustomHead').value = s.custom_head_scripts || '';
                 document.getElementById('cfgCustomBody').value = s.custom_body_scripts || '';
 
-                const bh = s.brand_header || {};
-                const td = s.tieu_de || {};
-                const mb = s.metric_boxes || {};
-                const b1 = mb.box_1 || {};
-                const b2 = mb.box_2 || {};
-                const b3 = mb.box_3 || {};
+                // PHÂN BIỆT RÕ RÀNG: TEMPLATE GỐC (mxv_080_online) VS LANDING MỚI ĐỘC LẬP
+                const secOriginal = document.getElementById('cfgSecOriginalTemplate');
+                const secDynamic = document.getElementById('cfgSecDynamicContent');
 
-                document.getElementById('cfgBrandHeader1').value = bh.co_quan_1 || 'Bộ Công Thương';
-                document.getElementById('cfgBrandHeader2').value = bh.co_quan_2 || 'Sở giao dịch hàng hóa Việt Nam MXV';
-                document.getElementById('cfgBrandLogo').value = bh.logo_url || 'assets/img/logo_APEX_K_NEN.webp';
-                document.getElementById('cfgBrandMemberText').value = bh.member_text || 'Thành viên 080 MXV';
+                if (p.page_id === 'mxv_080_online') {
+                    // Mẫu gốc MXV 080: Hiển thị bộ cài đặt đặc thù của template này
+                    if (secOriginal) secOriginal.classList.remove('hidden');
+                    if (secDynamic) secDynamic.classList.add('hidden');
 
-                document.getElementById('cfgBadgeText').value = td.badge || 'LỚP HỌC ONLINE MIỄN PHÍ';
-                document.getElementById('cfgTitleLine1').value = td.line_1 || 'GIẢI MÃ ĐẦU TƯ';
-                document.getElementById('cfgTitleLine2').value = td.line_2 || 'HÀNG HÓA';
-                document.getElementById('cfgSubtitle').value = td.mo_ta || 'Hiểu thị trường – Nắm cơ hội – Quản trị rủi ro';
+                    const bh = s.brand_header || {};
+                    const td = s.tieu_de || {};
+                    const mb = s.metric_boxes || {};
+                    const b1 = mb.box_1 || {};
+                    const b2 = mb.box_2 || {};
+                    const b3 = mb.box_3 || {};
 
-                document.getElementById('cfgBox1Top').value = b1.top || (tg.ngay || '03/11/2026');
-                document.getElementById('cfgBox1Bottom').value = b1.bottom || (tg.gio || '20:00 Online');
-                document.getElementById('cfgBox2Top').value = b2.top || 'Học Online';
-                document.getElementById('cfgBox2Bottom').value = b2.bottom || 'Qua Zoom';
-                document.getElementById('cfgBox3Top').value = b3.top || '2 Giờ';
-                document.getElementById('cfgBox3Bottom').value = b3.bottom || 'Thực chiến';
+                    document.getElementById('cfgBrandHeader1').value = bh.co_quan_1 || bh.agency_1 || '';
+                    document.getElementById('cfgBrandHeader2').value = bh.co_quan_2 || bh.agency_2 || '';
+                    document.getElementById('cfgBrandLogo').value = bh.logo_url || '';
+                    document.getElementById('cfgBrandMemberText').value = bh.member_text || '';
 
-                document.getElementById('cfgEventTitle').value = kh.ten || '';
-                document.getElementById('cfgTargetDate').value = tg.target_date || '';
-                document.getElementById('cfgEventQuota').value = kh.suat_hoc || '';
+                    document.getElementById('cfgBadgeText').value = td.badge || '';
+                    document.getElementById('cfgTitleLine1').value = td.line_1 || '';
+                    document.getElementById('cfgTitleLine2').value = td.line_2 || '';
+                    document.getElementById('cfgSubtitle').value = td.mo_ta || '';
+
+                    document.getElementById('cfgBox1Top').value = b1.top || tg.ngay || '';
+                    document.getElementById('cfgBox1Bottom').value = b1.bottom || tg.gio || '';
+                    document.getElementById('cfgBox2Top').value = b2.top || '';
+                    document.getElementById('cfgBox2Bottom').value = b2.bottom || '';
+                    document.getElementById('cfgBox3Top').value = b3.top || '';
+                    document.getElementById('cfgBox3Bottom').value = b3.bottom || '';
+
+                    document.getElementById('cfgEventTitle').value = kh.ten || '';
+                    document.getElementById('cfgTargetDate').value = tg.target_date || '';
+                    document.getElementById('cfgEventQuota').value = kh.suat_hoc || '';
+                } else {
+                    // Tất cả các Landing Page khác: Ẩn hoàn toàn trường mẫu gốc, hiển thị Smart Dynamic Content
+                    if (secOriginal) secOriginal.classList.add('hidden');
+                    if (secDynamic) secDynamic.classList.remove('hidden');
+
+                    const customFields = Array.isArray(s.custom_content_fields) ? s.custom_content_fields : [];
+                    renderCustomContentTable(customFields);
+
+                    const statusEl = document.getElementById('scanContentStatus');
+                    if (statusEl) {
+                        if (customFields.length > 0) {
+                            statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Đã cấu hình ${customFields.length} trường tùy chỉnh nhanh</span>`;
+                        } else {
+                            statusEl.innerHTML = `<span class="text-slate-400"><i class="fa-solid fa-circle-info mr-1 text-slate-500"></i> Bấm "Quét Nội Dung Từ HTML" để hệ thống tự động bóc tách các trường chỉnh sửa nhanh.</span>`;
+                        }
+                    }
+                }
 
                 document.getElementById('cfgMetaTitle').value = s.title || '';
                 document.getElementById('cfgMetaDesc').value = s.meta_description || '';
@@ -628,6 +777,347 @@
             document.getElementById('landingSettingsModal').classList.add('hidden');
         }
 
+        // ============================================================
+        // 17.8.3. BỘ BÓC TÁCH NỘI DUNG ĐỘNG (SMART DYNAMIC CONTENT)
+        // ============================================================
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function getDomSelector(el) {
+            if (!el) return '';
+            if (el.id) return '#' + el.id;
+            if (el.getAttribute('data-role')) return `[data-role="${el.getAttribute('data-role')}"]`;
+            if (el.getAttribute('data-field')) return `[data-field="${el.getAttribute('data-field')}"]`;
+
+            if (el.classList && el.classList.length > 0) {
+                for (let i = 0; i < el.classList.length; i++) {
+                    const cls = el.classList[i];
+                    if (!cls.startsWith('hover:') && !cls.startsWith('focus:') && !cls.startsWith('active:') && cls.length > 2) {
+                        try {
+                            if (el.ownerDocument && el.ownerDocument.querySelectorAll('.' + cls).length === 1) {
+                                return '.' + cls;
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }
+
+            const tag = el.tagName.toLowerCase();
+            const parent = el.parentElement;
+            if (parent) {
+                const siblings = Array.from(parent.children).filter(c => c.tagName.toLowerCase() === tag);
+                if (siblings.length > 1) {
+                    const idx = siblings.indexOf(el) + 1;
+                    const parentSel = parent.id ? '#' + parent.id + ' > ' : (parent.tagName.toLowerCase() !== 'body' ? parent.tagName.toLowerCase() + ' > ' : '');
+                    return `${parentSel}${tag}:nth-of-type(${idx})`;
+                }
+            }
+            return tag;
+        }
+
+        async function scanLandingContentFields() {
+            const btn = document.getElementById('btnScanContent');
+            const statusEl = document.getElementById('scanContentStatus');
+            const pageId = (document.getElementById('cfgPageId')?.value || '').trim();
+            const domain = (document.getElementById('cfgDomain')?.value || '').trim();
+
+            if (!pageId) {
+                alert('Vui lòng chọn hoặc nhập Mã Định Danh (Page ID) trước khi quét!');
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> <span>Đang quét DOM...</span>';
+            }
+            if (statusEl) {
+                statusEl.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang tải và phân tích cấu trúc HTML...</span>`;
+            }
+
+            try {
+                let htmlContent = '';
+                if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
+                    htmlContent = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
+                }
+
+                if (!htmlContent) {
+                    const res = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domain)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.landing && data.landing.code_html) {
+                            htmlContent = data.landing.code_html;
+                        } else if (data.files && data.files.length > 0) {
+                            const idxFile = data.files.find(f => f.file_path === 'index.html' || f.file_path.endsWith('.html'));
+                            if (idxFile) htmlContent = idxFile.content;
+                        }
+                    }
+                }
+
+                if (!htmlContent || !htmlContent.trim()) {
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Chưa có mã HTML. Vui lòng mở Code Studio và nhập code trước.</span>`;
+                    }
+                    alert('Chưa có mã HTML để bóc tách. Vui lòng mở Code Studio, nhập/dán mã nguồn rồi lưu lại trước khi Quét Nội Dung!');
+                    return;
+                }
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent, 'text/html');
+
+                const scannedFields = [];
+                const seenSelectors = new Set();
+
+                // 1. Quét Tiêu Đề (Headings: h1, h2, h3, .hero-title, [data-role="title"])
+                const headingEls = doc.querySelectorAll('h1, h2, h3, .hero-title, .title, [data-role="title"], [data-role="heading"]');
+                headingEls.forEach(el => {
+                    const text = el.textContent.trim().replace(/\s+/g, ' ');
+                    if (!text || text.length < 2 || text.length > 300) return;
+                    const sel = getDomSelector(el);
+                    if (seenSelectors.has(sel)) return;
+                    seenSelectors.add(sel);
+
+                    const tagName = el.tagName.toLowerCase();
+                    scannedFields.push({
+                        type: 'heading',
+                        label: `Tiêu Đề (${tagName.toUpperCase()})`,
+                        selector: sel,
+                        value: text,
+                        extra: ''
+                    });
+                });
+
+                // 2. Quét Hình Ảnh (Images: img[src])
+                const imgEls = doc.querySelectorAll('img[src]');
+                imgEls.forEach(img => {
+                    const src = img.getAttribute('src') || '';
+                    if (!src || src.startsWith('data:image') || src.includes('pixel') || src.includes('favicon')) return;
+                    const sel = getDomSelector(img);
+                    if (seenSelectors.has(sel)) return;
+                    seenSelectors.add(sel);
+
+                    const alt = img.getAttribute('alt') || '';
+                    scannedFields.push({
+                        type: 'image',
+                        label: `Hình Ảnh (${alt ? alt.substring(0, 20) : 'Banner/Logo'})`,
+                        selector: sel,
+                        value: src,
+                        extra: alt
+                    });
+                });
+
+                // 3. Quét Nút Kêu Gọi Hành Động (CTA Buttons / Links)
+                const ctaEls = doc.querySelectorAll('a.btn, a[class*="btn"], button, [data-role="cta"]');
+                ctaEls.forEach(btnEl => {
+                    const text = btnEl.textContent.trim().replace(/\s+/g, ' ');
+                    if (!text || text.length < 2 || text.length > 80) return;
+                    const sel = getDomSelector(btnEl);
+                    if (seenSelectors.has(sel)) return;
+                    seenSelectors.add(sel);
+
+                    const href = btnEl.getAttribute('href') || '';
+                    scannedFields.push({
+                        type: 'cta',
+                        label: `Nút Bấm CTA (${text.substring(0, 20)})`,
+                        selector: sel,
+                        value: text,
+                        extra: href
+                    });
+                });
+
+                // 4. Quét Liên Hệ (Hotline / Zalo / Email)
+                const contactEls = doc.querySelectorAll('a[href^="tel:"], a[href*="zalo.me"], a[href^="mailto:"]');
+                contactEls.forEach(cEl => {
+                    const href = cEl.getAttribute('href') || '';
+                    const sel = getDomSelector(cEl);
+                    if (seenSelectors.has(sel)) return;
+                    seenSelectors.add(sel);
+
+                    let cType = 'Hotline';
+                    if (href.includes('zalo.me')) cType = 'Zalo Link';
+                    else if (href.startsWith('mailto:')) cType = 'Email';
+
+                    scannedFields.push({
+                        type: 'contact',
+                        label: `Liên Hệ (${cType})`,
+                        selector: sel,
+                        value: href,
+                        extra: cEl.textContent.trim()
+                    });
+                });
+
+                renderCustomContentTable(scannedFields);
+
+                if (statusEl) {
+                    statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Bóc tách thành công ${scannedFields.length} phần tử từ HTML</span>`;
+                }
+            } catch (e) {
+                console.error('Lỗi scanLandingContentFields:', e);
+                if (statusEl) {
+                    statusEl.innerHTML = `<span class="text-rose-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Lỗi quét HTML: ${e.message}</span>`;
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> <span>Quét Nội Dung Từ HTML</span>';
+                }
+            }
+        }
+
+        function renderCustomContentTable(fields) {
+            const tbody = document.getElementById('tbodyCustomContentFields');
+            if (!tbody) return;
+
+            if (!fields || fields.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-slate-500 font-sans">
+                            <div class="max-w-md mx-auto space-y-2">
+                                <i class="fa-solid fa-layer-group text-slate-600 text-3xl mb-1"></i>
+                                <p class="text-slate-400 text-xs font-semibold">Chưa có trường tùy chỉnh nhanh nào cho Landing Page này.</p>
+                                <p class="text-slate-500 text-[11px]">Hãy nhập/dán mã code của bạn vào Code Studio rồi bấm <b class="text-cyan-400">"Quét Nội Dung Từ HTML"</b> bên trên để trích xuất các tiêu đề, hình ảnh và nút bấm có thể chỉnh sửa.</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = fields.map(f => {
+                let badgeHtml = '';
+                if (f.type === 'heading') {
+                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"><i class="fa-solid fa-heading"></i> Tiêu Đề</span>`;
+                } else if (f.type === 'image') {
+                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20"><i class="fa-solid fa-image"></i> Hình Ảnh</span>`;
+                } else if (f.type === 'cta') {
+                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><i class="fa-solid fa-arrow-pointer"></i> Nút CTA</span>`;
+                } else if (f.type === 'contact') {
+                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"><i class="fa-solid fa-phone"></i> Liên Hệ</span>`;
+                } else {
+                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20"><i class="fa-solid fa-font"></i> Văn Bản</span>`;
+                }
+
+                let valueInputHtml = '';
+                if (f.type === 'heading') {
+                    valueInputHtml = `
+                        <div class="space-y-1">
+                            <textarea rows="2" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">${escapeHtml(f.value || '')}</textarea>
+                        </div>
+                    `;
+                } else if (f.type === 'image') {
+                    valueInputHtml = `
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] text-slate-400 w-12 shrink-0">URL Ảnh:</span>
+                                <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}" placeholder="https://... hoặc assets/img.png">
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] text-slate-400 w-12 shrink-0">Thẻ Alt:</span>
+                                <input type="text" class="custom-field-extra w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.extra || '')}" placeholder="Mô tả hình ảnh">
+                            </div>
+                        </div>
+                    `;
+                } else if (f.type === 'cta') {
+                    valueInputHtml = `
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] text-slate-400 w-14 shrink-0">Chữ Nút:</span>
+                                <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}">
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] text-slate-400 w-14 shrink-0">Link Href:</span>
+                                <input type="text" class="custom-field-extra w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-indigo-300 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.extra || '')}" placeholder="#register hoặc https://...">
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    valueInputHtml = `
+                        <div class="space-y-1">
+                            <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}">
+                            ${f.extra ? `<input type="hidden" class="custom-field-extra" value="${escapeHtml(f.extra)}">` : ''}
+                        </div>
+                    `;
+                }
+
+                return `
+                    <tr data-custom-field-row data-field-type="${f.type}" class="hover:bg-slate-900/40 transition">
+                        <td class="py-2.5 px-3 align-top">
+                            ${badgeHtml}
+                        </td>
+                        <td class="py-2.5 px-3 align-top">
+                            <input type="text" class="custom-field-label w-full bg-slate-900/60 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-semibold mb-1 focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.label || '')}" placeholder="Tên gợi nhớ">
+                            <input type="text" class="custom-field-selector w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.selector || '')}" placeholder="CSS Selector (vd: h1, #logo)">
+                        </td>
+                        <td class="py-2.5 px-3 align-top">
+                            ${valueInputHtml}
+                        </td>
+                        <td class="py-2.5 px-3 align-top text-center">
+                            <button type="button" onclick="removeContentFieldRow(this)" class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition flex items-center justify-center mx-auto" title="Xóa trường này">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function addManualContentFieldRow() {
+            const tbody = document.getElementById('tbodyCustomContentFields');
+            if (!tbody) return;
+
+            if (tbody.querySelector('td[colspan="4"]')) {
+                tbody.innerHTML = '';
+            }
+
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-custom-field-row', 'true');
+            tr.setAttribute('data-field-type', 'heading');
+            tr.className = 'hover:bg-slate-900/40 transition';
+            tr.innerHTML = `
+                <td class="py-2.5 px-3 align-top">
+                    <select onchange="this.closest('tr').setAttribute('data-field-type', this.value)" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-500">
+                        <option value="heading">Tiêu Đề</option>
+                        <option value="image">Hình Ảnh</option>
+                        <option value="cta">Nút CTA</option>
+                        <option value="contact">Liên Hệ</option>
+                        <option value="text">Văn Bản</option>
+                    </select>
+                </td>
+                <td class="py-2.5 px-3 align-top">
+                    <input type="text" class="custom-field-label w-full bg-slate-900/60 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-semibold mb-1 focus:outline-none focus:border-cyan-500" value="Trường Tùy Chỉnh" placeholder="Tên gợi nhớ">
+                    <input type="text" class="custom-field-selector w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500" value="" placeholder="CSS Selector (vd: .banner-title)">
+                </td>
+                <td class="py-2.5 px-3 align-top">
+                    <textarea rows="2" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500" placeholder="Nhập nội dung mới..."></textarea>
+                </td>
+                <td class="py-2.5 px-3 align-top text-center">
+                    <button type="button" onclick="removeContentFieldRow(this)" class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition flex items-center justify-center mx-auto" title="Xóa trường này">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function removeContentFieldRow(btn) {
+            const tr = btn.closest('tr');
+            if (tr) tr.remove();
+            const tbody = document.getElementById('tbodyCustomContentFields');
+            if (tbody && tbody.querySelectorAll('tr[data-custom-field-row]').length === 0) {
+                renderCustomContentTable([]);
+            }
+        }
+
+        function closeLandingSettings() {
+            document.getElementById('landingSettingsModal').classList.add('hidden');
+        }
+
         async function saveLandingSettings() {
             const pageId = document.getElementById('cfgPageId').value.trim();
             const pageName = document.getElementById('cfgPageName').value.trim();
@@ -642,14 +1132,33 @@
             const checkedBoxes = document.querySelectorAll('input[name="cfgSheetCheckbox"]:checked');
             const selectedSheetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value, 10)).filter(id => !isNaN(id));
 
-            const box1Top = document.getElementById('cfgBox1Top').value.trim() || '03/11/2026';
-            const box1Btm = document.getElementById('cfgBox1Bottom').value.trim() || '20:00 Online';
-            const box2Top = document.getElementById('cfgBox2Top').value.trim() || 'Học Online';
-            const box2Btm = document.getElementById('cfgBox2Bottom').value.trim() || 'Qua Zoom';
-            const box3Top = document.getElementById('cfgBox3Top').value.trim() || '2 Giờ';
-            const box3Btm = document.getElementById('cfgBox3Bottom').value.trim() || 'Thực chiến';
+            const box1Top = document.getElementById('cfgBox1Top').value.trim();
+            const box1Btm = document.getElementById('cfgBox1Bottom').value.trim();
+            const box2Top = document.getElementById('cfgBox2Top').value.trim();
+            const box2Btm = document.getElementById('cfgBox2Bottom').value.trim();
+            const box3Top = document.getElementById('cfgBox3Top').value.trim();
+            const box3Btm = document.getElementById('cfgBox3Bottom').value.trim();
+
+            const domainVal = (document.getElementById('cfgDomain')?.value || document.getElementById('cfgDomainSelect')?.value || '').trim();
+            let pathPrefixVal = (document.getElementById('cfgPathPrefix')?.value || '/').trim();
+            if (!pathPrefixVal.startsWith('/')) pathPrefixVal = '/' + pathPrefixVal;
+            if (pathPrefixVal.length > 1) pathPrefixVal = pathPrefixVal.replace(/\/+$/, '');
+
+            // Bóc tách & thu thập các trường Custom Content Fields (Smart Dynamic Content)
+            const customFields = [];
+            document.querySelectorAll('#tbodyCustomContentFields tr[data-custom-field-row]').forEach(row => {
+                const type = row.getAttribute('data-field-type') || 'heading';
+                const selector = row.querySelector('.custom-field-selector')?.value?.trim() || '';
+                const label = row.querySelector('.custom-field-label')?.value?.trim() || '';
+                const value = row.querySelector('.custom-field-value')?.value || '';
+                const extra = row.querySelector('.custom-field-extra')?.value || '';
+                if (selector) {
+                    customFields.push({ type, selector, label, value, extra });
+                }
+            });
 
             const settings = {
+                path_prefix: pathPrefixVal,
                 title: document.getElementById('cfgMetaTitle').value.trim(),
                 meta_description: document.getElementById('cfgMetaDesc').value.trim(),
                 og_image: document.getElementById('cfgOgImage').value.trim(),
@@ -662,19 +1171,20 @@
                 custom_body_scripts: document.getElementById('cfgCustomBody').value.trim(),
                 google_sheet_sync_mode: syncMode,
                 google_sheet_ids: selectedSheetIds,
+                custom_content_fields: customFields,
                 brand_header: {
-                    co_quan_1: document.getElementById('cfgBrandHeader1').value.trim() || 'Bộ Công Thương',
-                    co_quan_2: document.getElementById('cfgBrandHeader2').value.trim() || 'Sở giao dịch hàng hóa Việt Nam MXV',
-                    agency_1: document.getElementById('cfgBrandHeader1').value.trim() || 'Bộ Công Thương',
-                    agency_2: document.getElementById('cfgBrandHeader2').value.trim() || 'Sở giao dịch hàng hóa Việt Nam MXV',
-                    logo_url: document.getElementById('cfgBrandLogo').value.trim() || 'assets/img/logo_APEX_K_NEN.webp',
-                    member_text: document.getElementById('cfgBrandMemberText').value.trim() || 'Thành viên 080 MXV',
+                    co_quan_1: document.getElementById('cfgBrandHeader1').value.trim(),
+                    co_quan_2: document.getElementById('cfgBrandHeader2').value.trim(),
+                    agency_1: document.getElementById('cfgBrandHeader1').value.trim(),
+                    agency_2: document.getElementById('cfgBrandHeader2').value.trim(),
+                    logo_url: document.getElementById('cfgBrandLogo').value.trim(),
+                    member_text: document.getElementById('cfgBrandMemberText').value.trim(),
                 },
                 tieu_de: {
-                    badge: document.getElementById('cfgBadgeText').value.trim() || 'LỚP HỌC ONLINE MIỄN PHÍ',
-                    line_1: document.getElementById('cfgTitleLine1').value.trim() || 'GIẢI MÃ ĐẦU TƯ',
-                    line_2: document.getElementById('cfgTitleLine2').value.trim() || 'HÀNG HÓA',
-                    mo_ta: document.getElementById('cfgSubtitle').value.trim() || 'Hiểu thị trường – Nắm cơ hội – Quản trị rủi ro',
+                    badge: document.getElementById('cfgBadgeText').value.trim(),
+                    line_1: document.getElementById('cfgTitleLine1').value.trim(),
+                    line_2: document.getElementById('cfgTitleLine2').value.trim(),
+                    mo_ta: document.getElementById('cfgSubtitle').value.trim(),
                 },
                 metric_boxes: {
                     box_1: { top: box1Top, bottom: box1Btm },
@@ -684,8 +1194,8 @@
                 thoi_gian_chia_se: {
                     ngay: box1Top,
                     gio: box1Btm,
-                    hien_thi: `${box1Btm} - ${box1Top}`,
-                    hinh_thuc: `${box2Top} - ${box2Btm}`,
+                    hien_thi: (box1Btm && box1Top) ? `${box1Btm} - ${box1Top}` : (box1Btm || box1Top || ''),
+                    hinh_thuc: (box2Top && box2Btm) ? `${box2Top} - ${box2Btm}` : (box2Top || box2Btm || ''),
                     target_date: document.getElementById('cfgTargetDate').value.trim(),
                 },
                 khoa_hoc: {
@@ -736,10 +1246,107 @@
                 })()
             };
 
+            // Nếu không phải template gốc và có tùy chỉnh nội dung nhanh, cập nhật trực tiếp vào file HTML
+            if (pageId !== 'mxv_080_online' && customFields.length > 0) {
+                try {
+                    let htmlCode = '';
+                    if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
+                        htmlCode = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
+                    }
+                    if (!htmlCode) {
+                        const gRes = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domainVal)}`);
+                        if (gRes.ok) {
+                            const gData = await gRes.json();
+                            htmlCode = gData.landing?.code_html || '';
+                            if (!htmlCode && gData.files && gData.files.length > 0) {
+                                const fIdx = gData.files.find(f => f.file_path === 'index.html');
+                                if (fIdx) htmlCode = fIdx.content || '';
+                            }
+                        }
+                    }
+
+                    if (htmlCode) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(htmlCode, 'text/html');
+                        let hasModified = false;
+
+                        customFields.forEach(cf => {
+                            try {
+                                const el = doc.querySelector(cf.selector);
+                                if (el) {
+                                    if (cf.type === 'heading' || cf.type === 'text') {
+                                        if (cf.value !== undefined) {
+                                            el.textContent = cf.value;
+                                            hasModified = true;
+                                        }
+                                    } else if (cf.type === 'image') {
+                                        if (cf.value) {
+                                            el.setAttribute('src', cf.value);
+                                            hasModified = true;
+                                        }
+                                        if (cf.extra) {
+                                            el.setAttribute('alt', cf.extra);
+                                            hasModified = true;
+                                        }
+                                    } else if (cf.type === 'cta') {
+                                        if (cf.value) {
+                                            el.textContent = cf.value;
+                                            hasModified = true;
+                                        }
+                                        if (cf.extra) {
+                                            el.setAttribute('href', cf.extra);
+                                            hasModified = true;
+                                        }
+                                    } else if (cf.type === 'contact') {
+                                        if (cf.value) {
+                                            el.setAttribute('href', cf.value);
+                                            hasModified = true;
+                                        }
+                                        if (cf.extra && el.textContent.trim()) {
+                                            el.textContent = cf.extra;
+                                            hasModified = true;
+                                        }
+                                    }
+                                }
+                            } catch (e) {}
+                        });
+
+                        if (hasModified) {
+                            const updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+                            await fetch('/api/landings/save-code', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    page_id: pageId,
+                                    domain: domainVal,
+                                    code_html: updatedHtml
+                                })
+                            });
+                            await fetch('/api/landings/file/save', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    page_id: pageId,
+                                    domain: domainVal,
+                                    file_path: 'index.html',
+                                    content: updatedHtml
+                                })
+                            });
+                            if (typeof studioFileContents !== 'undefined') {
+                                studioFileContents['index.html'] = updatedHtml;
+                            }
+                        }
+                    }
+                } catch (modErr) {
+                    console.warn('Lỗi tự động cập nhật HTML:', modErr);
+                }
+            }
+
             const payload = {
                 page_id: pageId,
                 name: pageName || pageId,
-                domain: document.getElementById('cfgDomain').value.trim(),
+                domain: domainVal,
+                path_prefix: pathPrefixVal,
                 nguon_default: document.getElementById('cfgNguonDefault').value.trim() || 'landing_chinh',
                 is_active: document.getElementById('cfgIsActive').checked,
                 redirect_url: document.getElementById('cfgRedirectUrl').value.trim(),
@@ -756,6 +1363,7 @@
                 alert('✅ Đã lưu cài đặt Landing Page thành công!');
                 closeLandingSettingsModal();
                 loadLandingPages();
+                if (typeof loadDomains === 'function') loadDomains();
 
                 // Đồng bộ thông tin cấu hình vào Code Studio nếu đang mở
                 if (currentStudioLanding && currentStudioLanding.page_id === payload.page_id) {

@@ -9,11 +9,11 @@ Tài liệu này cung cấp quy trình chuẩn bị, cài đặt, cấu hình t�
 
 - **Hệ điều hành:** Windows Server 2025 Datacenter Evaluation (x64)
 - **Dung lượng ổ cứng khả dụng:** ~30GB *(Đã tối ưu hóa toàn diện, hệ thống chỉ chiếm <1GB)*
-- **Địa chỉ IP máy chủ:** `103.173.226.15` *(thay bằng IP thực tế của bạn)*
+- **Địa chỉ IP máy chủ:** `103.124.95.232` *(IP chính thức máy chủ)*
 - **Tên miền quản trị Admin/CRM:** `https://crm.hanghoaphaisinh.net/ads`
 - **NameServers hệ thống:**
-  - `ns1.hanghoaphaisinh.net` ➔ `103.173.226.15`
-  - `ns2.hanghoaphaisinh.net` ➔ `103.173.226.15`
+  - `ns1.hanghoaphaisinh.net` ➔ `103.124.95.232`
+  - `ns2.hanghoaphaisinh.net` ➔ `103.124.95.232`
 - **Tài khoản quản trị tối cao duy nhất:**
   - **Username:** `admin`
   - **Mật khẩu ban đầu:** `ApexAdmin@2026!` *(Băm Argon2id - đổi ngay sau khi đăng nhập)*
@@ -27,14 +27,14 @@ Tài liệu này cung cấp quy trình chuẩn bị, cài đặt, cấu hình t�
 
 | Loại (Type) | Tên (Host / Name) | Giá Trị (Points to) | Giải thích |
 | :--- | :--- | :--- | :--- |
-| **A** | `crm` | `103.173.226.15` | Tên miền Admin CRM (`crm.hanghoaphaisinh.net`) |
-| **A** | `ns1` | `103.173.226.15` | NameServer 1 phục vụ trỏ tên miền phụ |
-| **A** | `ns2` | `103.173.226.15` | NameServer 2 phục vụ trỏ tên miền phụ |
-| **A** | `@` | `103.173.226.15` | Landing page chính |
-| **A** | `*` (Wildcard) | `103.173.226.15` | Đón tất cả subdomain landing tự động |
+| **A** | `crm` | `103.124.95.232` | Tên miền Admin CRM (`crm.hanghoaphaisinh.net`) |
+| **A** | `ns1` | `103.124.95.232` | NameServer 1 phục vụ trỏ tên miền phụ |
+| **A** | `ns2` | `103.124.95.232` | NameServer 2 phục vụ trỏ tên miền phụ |
+| **A** | `@` | `103.124.95.232` | Landing page chính |
+| **A** | `*` (Wildcard) | `103.124.95.232` | Đón tất cả subdomain landing tự động |
 
 > **Đối với bất kỳ tên miền nào khác (ví dụ: `dautuhanghoa.vn`):**
-> Chỉ cần trỏ bản ghi **A** về `103.173.226.15` (hoặc đổi cụm NameServer sang `ns1`/`ns2.hanghoaphaisinh.net`).
+> Chỉ cần trỏ bản ghi **A** về `103.124.95.232` (hoặc đổi cụm NameServer sang `ns1`/`ns2.hanghoaphaisinh.net`).
 
 ---
 
@@ -197,7 +197,7 @@ Register-ScheduledTask -TaskName "Apex_Weekly_Disk_Cleanup" -Action $action -Tri
 ### 3. Kiểm tra cấp SSL On-Demand cho Tên Miền Mới Bất Kỳ:
 - Vào mục **Quản Lý Tên Miền** trong Admin CRM.
 - Nhập một tên miền mới (ví dụ: `khoahocmoi.vn`).
-- Trỏ bản ghi A của `khoahocmoi.vn` về IP `103.173.226.15`.
+- Trỏ bản ghi A của `khoahocmoi.vn` về IP `103.124.95.232`.
 - Mở trình duyệt vào `https://khoahocmoi.vn`:
   - Caddy tự động gọi Go Backend thẩm định: Domain hợp lệ ➔ Let's Encrypt cấp SSL trong **2 giây**!
   - Trang web hiển thị ngay lập tức với chứng chỉ SSL bảo mật mà không cần gõ bất kỳ dòng lệnh nào!

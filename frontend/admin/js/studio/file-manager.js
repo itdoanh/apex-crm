@@ -240,7 +240,7 @@
                 if (!confirm('Bạn có thay đổi chưa lưu mã nguồn. Bạn có chắc chắn muốn đóng Code Studio không?')) return;
             }
             document.getElementById('codeStudioModal').classList.add('hidden');
-            loadLandingPages();
+            if (typeof loadLandingPages === 'function') loadLandingPages();
         }
 
         function toggleFolderExpand(fldPath) {

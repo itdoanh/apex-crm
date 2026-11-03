@@ -251,7 +251,7 @@ func (s *Store) initSchema(ctx context.Context) error {
 		domain VARCHAR(255) UNIQUE NOT NULL,
 		ns1 VARCHAR(255) NOT NULL DEFAULT 'ns1.hanghoaphaisinh.net',
 		ns2 VARCHAR(255) NOT NULL DEFAULT 'ns2.hanghoaphaisinh.net',
-		target_ip VARCHAR(100) NOT NULL DEFAULT '103.173.226.15',
+		target_ip VARCHAR(100) NOT NULL DEFAULT '103.124.95.232',
 		dns_status VARCHAR(50) NOT NULL DEFAULT 'pending',
 		ssl_status VARCHAR(50) NOT NULL DEFAULT 'active',
 		default_landing_id VARCHAR(100) NOT NULL DEFAULT 'mxv_080_online',

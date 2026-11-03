@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apex Fintech - Enterprise CRM & Real-time Analytics Dashboard</title>
+    <base href="/ads/">
     <!-- Tailwind CSS Play CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome Icons -->
@@ -1212,7 +1213,7 @@
                         <i class="fa-solid fa-circle-info text-indigo-400"></i>
                         <h3 class="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">Hướng Dẫn Cấu Hình DNS Tên Miền Về Hệ Thống</h3>
                     </div>
-                    <span class="text-[11px] text-slate-400 font-mono">Server IP: 103.173.226.15</span>
+                    <span class="text-[11px] text-slate-400 font-mono">Server IP: 103.124.95.232</span>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1266,16 +1267,16 @@
                             <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
                                 <div>
                                     <span class="text-[10px] text-slate-400 block font-semibold">Bản ghi A (Host @):</span>
-                                    <span class="text-xs font-mono text-amber-400 font-bold select-all" id="valIpTarget">103.173.226.15</span>
+                                    <span class="text-xs font-mono text-amber-400 font-bold select-all" id="valIpTarget">103.124.95.232</span>
                                 </div>
-                                <button onclick="copyToClipboard('103.173.226.15', this)" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 transition flex items-center gap-1">
+                                <button onclick="copyToClipboard('103.124.95.232', this)" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 transition flex items-center gap-1">
                                     <i class="fa-regular fa-copy"></i> Copy
                                 </button>
                             </div>
                             <div class="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
                                 <div>
                                     <span class="text-[10px] text-slate-400 block font-semibold">Bản ghi CNAME (Host www):</span>
-                                    <span class="text-xs font-mono text-amber-400 font-bold select-all">@ (hoặc IP 103.173.226.15)</span>
+                                    <span class="text-xs font-mono text-amber-400 font-bold select-all">@ (hoặc IP 103.124.95.232)</span>
                                 </div>
                                 <span class="text-[10px] text-slate-500 font-mono">Tự động chuyển hướng</span>
                             </div>
@@ -2126,7 +2127,7 @@
                     3. Pixel &amp; Mã QC Các Bên
                 </button>
                 <button type="button" id="cfgTabBtnEvent" onclick="switchSettingsTab('event')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
-                    4. Giao Diện &amp; Nội Dung Hero
+                    4. Tùy Chỉnh Nhanh (Nội Dung)
                 </button>
                 <button type="button" id="cfgTabBtnSEO" onclick="switchSettingsTab('seo')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
                     5. SEO &amp; Mạng Xã Hội
@@ -2362,8 +2363,10 @@
                     </div>
                 </div>
 
-                <!-- TAB 4: GIAO DIỆN & NỘI DUNG HERO (THƯƠNG HIỆU, TIÊU ĐỀ, 3 Ô THÔNG TIN) -->
+                <!-- TAB 4: TÙY CHỈNH NHANH NỘI DUNG (DYNAMIC CONTENT & SMART SCANNER) -->
                 <div id="cfgTabSecEvent" class="hidden space-y-5">
+                    <!-- KHỐI A: TÙY CHỈNH ĐẶC THÙ CHO TEMPLATE GỐC (mxv_080_online) -->
+                    <div id="cfgSecOriginalTemplate" class="space-y-5">
                     <!-- 1. Nhận Diện Thương Hiệu -->
                     <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
                         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -2498,6 +2501,65 @@
                             <input type="text" id="cfgEventTitle" placeholder="Giải Mã Đầu Tư Hàng Hóa" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
                         </div>
                     </div>
+                    </div><!-- /#cfgSecOriginalTemplate -->
+
+                    <!-- KHỐI B: BỘ TÙY CHỈNH NỘI DUNG THÔNG MINH CHO TẤT CẢ LANDING PAGE KHÁC -->
+                    <div id="cfgSecDynamicContent" class="space-y-4">
+                        <!-- Toolbar Quét & Thêm Trường -->
+                        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                            <div class="flex items-center gap-3">
+                                <span class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-lg shrink-0">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                </span>
+                                <div>
+                                    <h4 class="font-bold text-white text-xs sm:text-sm">Bóc Tách &amp; Tùy Chỉnh Nhanh Nội Dung (Dynamic Content)</h4>
+                                    <p class="text-[11px] text-slate-400">Tự động quét cây DOM để tìm tiêu đề, ảnh, nút bấm CTA và cho phép sửa nhanh</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 w-full sm:w-auto">
+                                <button type="button" id="btnScanContent" onclick="scanLandingContentFields()" class="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <span>Quét Nội Dung Từ HTML</span>
+                                </button>
+                                <button type="button" onclick="addManualContentFieldRow()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs px-3 py-2 rounded-xl border border-slate-700 transition flex items-center gap-1">
+                                    <i class="fa-solid fa-plus text-cyan-400"></i>
+                                    <span>Thêm Trường</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Trạng thái quét -->
+                        <div id="scanContentStatus" class="text-xs px-1">
+                            <span class="text-slate-400"><i class="fa-solid fa-circle-info mr-1 text-slate-500"></i> Bấm "Quét Nội Dung Từ HTML" để hệ thống tự động bóc tách các trường chỉnh sửa nhanh.</span>
+                        </div>
+
+                        <!-- Bảng Các Trường Tùy Chỉnh Nhanh -->
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-inner">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-xs">
+                                    <thead class="bg-slate-900/90 text-slate-400 text-[11px] border-b border-slate-800 uppercase tracking-wider font-mono">
+                                        <tr>
+                                            <th class="py-2.5 px-3 w-28">Loại Phần Tử</th>
+                                            <th class="py-2.5 px-3 w-48">Tên &amp; CSS Selector</th>
+                                            <th class="py-2.5 px-3">Nội Dung / Giá Trị Tùy Chỉnh Nhanh</th>
+                                            <th class="py-2.5 px-3 text-center w-14">Xóa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbodyCustomContentFields" class="divide-y divide-slate-850">
+                                        <tr>
+                                            <td colspan="4" class="py-8 text-center text-slate-500 font-sans">
+                                                <div class="max-w-md mx-auto space-y-2">
+                                                    <i class="fa-solid fa-layer-group text-slate-600 text-3xl mb-1"></i>
+                                                    <p class="text-slate-400 text-xs font-semibold">Chưa có trường tùy chỉnh nhanh nào cho Landing Page này.</p>
+                                                    <p class="text-slate-500 text-[11px]">Hãy nhập/dán mã code của bạn vào Code Studio rồi bấm <b class="text-cyan-400">"Quét Nội Dung Từ HTML"</b> bên trên để trích xuất các tiêu đề, hình ảnh và nút bấm có thể chỉnh sửa.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div><!-- /#cfgSecDynamicContent -->
                 </div>
 
                 <!-- TAB 5: SEO & MXH -->
@@ -2653,6 +2715,89 @@
     </div>
 
     <!-- ============================================================== -->
+    <!-- MODAL 4.5: KHỞI TẠO LANDING PAGE MỚI                           -->
+    <!-- ============================================================== -->
+    <div id="modalCreateLanding" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full flex flex-col shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                        <i class="fa-solid fa-file-circle-plus"></i>
+                    </span>
+                    <div>
+                        <h3 class="font-bold text-base text-white">Khởi Tạo Landing Page Mới</h3>
+                        <p class="text-xs text-slate-400">Khởi tạo dự án sạch sẽ để soạn thảo code &amp; bóc tách tùy chỉnh nhanh</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeCreateLandingModal()" class="text-slate-400 hover:text-white p-2">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form onsubmit="submitCreateLandingForm(event)" class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-200 mb-1">Tên Gợi Nhớ Landing Page *</label>
+                    <input type="text" id="newLandingName" required placeholder="ví dụ: Khóa Học Đầu Tư Hàng Hóa Mới" oninput="autoGeneratePageId(this.value)"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 transition">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-200 mb-1">Mã Định Danh (Page ID / Slug) *</label>
+                        <input type="text" id="newLandingPageId" required placeholder="ví dụ: khoa_hoc_dau_tu_moi"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-cyan-400 font-mono focus:outline-none focus:border-cyan-500 transition">
+                        <span class="text-[10px] text-slate-500 mt-0.5 block">Định danh URL, viết thường không dấu</span>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-200 mb-1">Tên Miền Triển Khai (Tùy chọn)</label>
+                        <select id="newLandingDomain" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
+                            <option value="">-- Mặc định (Tất cả domain) --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tùy chọn nguồn mã ban đầu -->
+                <div class="space-y-2 pt-1">
+                    <label class="block font-bold text-slate-200">Hình Thức Khởi Tạo Mã Nguồn:</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="relative flex flex-col p-3 rounded-xl border border-cyan-500/50 bg-cyan-950/20 cursor-pointer hover:border-cyan-400 transition" id="labelInitClean">
+                            <div class="flex items-center gap-2 mb-1">
+                                <input type="radio" name="newLandingInitType" value="clean" checked onchange="toggleInitTypeUI()" class="text-cyan-500 focus:ring-0">
+                                <span class="font-bold text-white text-xs">Trang Trắng Sạch Sẽ</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400">Khung HTML rỗng, tự tạo file &amp; nhập code trong Code Studio</p>
+                        </label>
+
+                        <label class="relative flex flex-col p-3 rounded-xl border border-slate-800 bg-slate-950/60 cursor-pointer hover:border-slate-700 transition" id="labelInitPaste">
+                            <div class="flex items-center gap-2 mb-1">
+                                <input type="radio" name="newLandingInitType" value="paste" onchange="toggleInitTypeUI()" class="text-cyan-500 focus:ring-0">
+                                <span class="font-bold text-white text-xs">Dán Sẵn Mã Code HTML</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400">Dán code có sẵn của bạn để bóc tách form &amp; nội dung</p>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Textarea dán code (ẩn mặc định, hiện khi chọn 'paste') -->
+                <div id="newLandingPasteCodeContainer" class="hidden space-y-1.5">
+                    <label class="block font-bold text-slate-300">Dán Mã Nguồn HTML Của Bạn Tại Đây:</label>
+                    <textarea id="newLandingInitialCode" rows="6" placeholder="<!DOCTYPE html><html><head>...</head><body>...</body></html>"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"></textarea>
+                    <span class="text-[10px] text-slate-500 block">Sau khi tạo, hệ thống sẽ lưu file index.html và tự động mở Code Studio.</span>
+                </div>
+
+                <div class="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="closeCreateLandingModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl transition font-semibold">Hủy</button>
+                    <button type="submit" id="btnSubmitCreateLanding" class="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-code"></i>
+                        <span>Khởi Tạo &amp; Mở Code Studio</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
     <!-- MODAL 5: THÊM TÊN MIỀN MỚI                                     -->
     <!-- ============================================================== -->
     <div id="modalAddDomain" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-5">
@@ -2692,7 +2837,7 @@
                 </div>
                 <div>
                     <label class="block font-bold text-slate-300 mb-1">IP Máy Chủ Dự Kiến (A Record)</label>
-                    <input type="text" id="addDomainTargetIp" value="103.173.226.15"
+                    <input type="text" id="addDomainTargetIp" value="103.124.95.232"
                         class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 font-mono focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
@@ -2831,7 +2976,7 @@
                     <div class="grid grid-cols-2 gap-2 text-[11px]">
                         <div>
                             <span class="text-slate-500 block">Dự kiến:</span>
-                            <div id="dnsExpectedIP" class="font-mono text-slate-300 font-semibold">103.173.226.15</div>
+                            <div id="dnsExpectedIP" class="font-mono text-slate-300 font-semibold">103.124.95.232</div>
                         </div>
                         <div>
                             <span class="text-slate-500 block">IP thực tế tìm thấy:</span>
@@ -2843,6 +2988,83 @@
                 <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
                     <span>Thời gian kiểm tra: <span id="dnsCheckedAt" class="font-mono text-slate-400">--</span></span>
                     <button type="button" onclick="closeDNSResultModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-1.5 rounded-lg transition">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL 7.5: KẾT QUẢ KIỂM TRA & CẤP CHỨNG CHỈ SSL (HTTPS)        -->
+    <!-- ============================================================== -->
+    <div id="modalSSLResult" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full flex flex-col shadow-2xl">
+            <div class="px-6 py-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                        <i class="fa-solid fa-lock"></i>
+                    </span>
+                    <div>
+                        <h3 class="font-bold text-base text-white">Kiểm Tra Chứng Chỉ SSL (HTTPS)</h3>
+                        <p id="sslResultDomainText" class="text-xs text-indigo-400 font-mono">--</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeSSLResultModal()" class="text-slate-400 hover:text-white p-2">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4 text-xs">
+                <!-- Status Banner -->
+                <div id="sslResultBanner" class="p-3.5 rounded-xl border flex items-center gap-3 bg-slate-950 border-slate-800">
+                    <div id="sslResultStatusIcon" class="text-2xl text-slate-400">
+                        <i class="fa-solid fa-circle-question"></i>
+                    </div>
+                    <div>
+                        <div id="sslResultStatusTitle" class="font-bold text-sm text-white">--</div>
+                        <p id="sslResultMessage" class="text-slate-300 text-[11px] mt-0.5 leading-relaxed">--</p>
+                    </div>
+                </div>
+
+                <!-- DNS Record Verification -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <span class="font-bold text-slate-300 block">Xác Thực DNS Trước Khi Cấp SSL (Let's Encrypt / ZeroSSL):</span>
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                            <span class="text-slate-500 block">IP Máy Chủ Dự Kiến:</span>
+                            <div id="sslServerIP" class="font-mono text-slate-300 font-semibold">103.124.95.232</div>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">IP Thực Tế Trỏ Về:</span>
+                            <div id="sslFoundIP" class="font-mono text-emerald-400 font-semibold space-y-0.5">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SSL Certificate Details -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <span class="font-bold text-slate-300 block">Thông Tin Chứng Chỉ SSL:</span>
+                    <div class="grid grid-cols-3 gap-2 text-[11px]">
+                        <div>
+                            <span class="text-slate-500 block">Nhà Cung Cấp:</span>
+                            <div id="sslIssuer" class="font-mono text-cyan-400 font-semibold">--</div>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">Hết Hạn Vào:</span>
+                            <div id="sslExpiresAt" class="font-mono text-slate-300 font-semibold">--</div>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">Còn Lại:</span>
+                            <div id="sslDaysLeft" class="font-mono text-emerald-400 font-semibold">--</div>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[11px]">
+                        <span class="text-slate-400">Kiểm tra kết nối trực tiếp:</span>
+                        <a id="sslTestLink" href="#" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-mono">--</a>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span>Thời gian kiểm tra: <span id="sslCheckedAt" class="font-mono text-slate-400">--</span></span>
+                    <button type="button" onclick="closeSSLResultModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-1.5 rounded-lg transition">Đóng</button>
                 </div>
             </div>
         </div>

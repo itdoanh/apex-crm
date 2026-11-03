@@ -6,11 +6,11 @@ Tài liệu này cung cấp toàn bộ quy trình chuẩn bị, cấu hình tên
 
 ## 📋 THÔNG TIN HỆ THỐNG MẪU
 
-- **Địa chỉ IP máy chủ:** `103.173.226.15` *(thay bằng IP thực tế của bạn)*
+- **Địa chỉ IP máy chủ:** `103.124.95.232` *(IP chính thức máy chủ)*
 - **Tên miền quản trị Admin/CRM:** `crm.hanghoaphaisinh.net/ads`
 - **NameServers hệ thống:**
-  - `ns1.hanghoaphaisinh.net` ➔ `103.173.226.15`
-  - `ns2.hanghoaphaisinh.net` ➔ `103.173.226.15`
+  - `ns1.hanghoaphaisinh.net` ➔ `103.124.95.232`
+  - `ns2.hanghoaphaisinh.net` ➔ `103.124.95.232`
 - **Tài khoản quản trị mặc định ban đầu:**
   - Username: `admin`
   - Mật khẩu: `ApexAdmin@2026!` *(Băm Argon2id - đổi ngay sau khi đăng nhập lần đầu)*
@@ -23,14 +23,14 @@ Tài liệu này cung cấp toàn bộ quy trình chuẩn bị, cấu hình tên
 
 | Loại (Type) | Tên (Host / Name) | Giá Trị (Value / Points to) | Giải thích |
 | :--- | :--- | :--- | :--- |
-| **A** | `crm` | `103.173.226.15` | Tên miền Admin CRM (`crm.hanghoaphaisinh.net`) |
-| **A** | `ns1` | `103.173.226.15` | NameServer 1 phục vụ trỏ tên miền phụ |
-| **A** | `ns2` | `103.173.226.15` | NameServer 2 phục vụ trỏ tên miền phụ |
-| **A** | `@` (hoặc domain gốc) | `103.173.226.15` | Landing page chính |
-| **A** | `*` (Wildcard) | `103.173.226.15` | Đón tất cả subdomain landing tạo tự động |
+| **A** | `crm` | `103.124.95.232` | Tên miền Admin CRM (`crm.hanghoaphaisinh.net`) |
+| **A** | `ns1` | `103.124.95.232` | NameServer 1 phục vụ trỏ tên miền phụ |
+| **A** | `ns2` | `103.124.95.232` | NameServer 2 phục vụ trỏ tên miền phụ |
+| **A** | `@` (hoặc domain gốc) | `103.124.95.232` | Landing page chính |
+| **A** | `*` (Wildcard) | `103.124.95.232` | Đón tất cả subdomain landing tạo tự động |
 
 > **Lưu ý với các tên miền landing riêng biệt khác (ví dụ: `dautuhanghoa.vn`):**
-> - **Cách 1 (Khuyên dùng):** Trỏ bản ghi **A** của tên miền đó về IP `103.173.226.15`.
+> - **Cách 1 (Khuyên dùng):** Trỏ bản ghi **A** của tên miền đó về IP `103.124.95.232`.
 > - **Cách 2:** Hoặc đổi cụm NameServer của tên miền đó sang `ns1.hanghoaphaisinh.net` và `ns2.hanghoaphaisinh.net`.
 
 ---
@@ -41,7 +41,7 @@ Sử dụng `SCP`, `Rsync` hoặc phần mềm `FileZilla` / `WinSCP` để copy
 
 ```bash
 # Ví dụ lệnh Rsync từ máy cá nhân lên server:
-rsync -avz --exclude 'backend/tests' --exclude '.git' ./ root@103.173.226.15:/var/www/apex-landing/
+rsync -avz --exclude 'backend/tests' --exclude '.git' ./ root@103.124.95.232:/var/www/apex-landing/
 ```
 
 Cấu trúc thư mục tối thiểu cần có trên máy chủ:

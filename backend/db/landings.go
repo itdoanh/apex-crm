@@ -355,8 +355,8 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 	}
 
 	query := `
-		INSERT INTO landing_pages (page_id, domain, name, is_active, status, redirect_url, nguon_default, settings, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+		INSERT INTO landing_pages (page_id, domain, name, is_active, status, redirect_url, nguon_default, settings, code_html, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 		ON CONFLICT (domain, page_id) DO UPDATE SET
 			name = EXCLUDED.name,
 			is_active = EXCLUDED.is_active,
@@ -364,13 +364,29 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 			redirect_url = EXCLUDED.redirect_url,
 			nguon_default = EXCLUDED.nguon_default,
 			settings = EXCLUDED.settings,
+			code_html = CASE WHEN EXCLUDED.code_html != '' THEN EXCLUDED.code_html ELSE landing_pages.code_html END,
 			updated_at = NOW()
 	`
 
 	_, err = s.pool.Exec(ctx, query,
-		p.PageID, p.Domain, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, settingsJSON,
+		p.PageID, p.Domain, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, settingsJSON, p.CodeHTML,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Nếu gán domain cụ thể, tự động đồng bộ tệp tin từ domain rỗng
+	if p.Domain != "" {
+		_, _ = s.pool.Exec(ctx, `
+			INSERT INTO landing_files (page_id, domain, file_path, file_type, content, updated_at)
+			SELECT page_id, $1, file_path, file_type, content, NOW()
+			FROM landing_files
+			WHERE page_id = $2 AND domain = ''
+			ON CONFLICT (domain, page_id, file_path) DO NOTHING
+		`, p.Domain, p.PageID)
+	}
+
+	return nil
 }
 
 // UpdateLandingCode cập nhật mã code HTML hoặc deploy của landing page

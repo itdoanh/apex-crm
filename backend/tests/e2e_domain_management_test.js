@@ -104,7 +104,7 @@ const path = require('path');
         const valNs2 = await page.$eval('#valNs2', el => el.innerText.trim());
         const valIp = await page.$eval('#valIpTarget', el => el.innerText.trim());
         console.log(`   Cấu hình DNS chuẩn: NS1="${valNs1}", NS2="${valNs2}", IP="${valIp}"`);
-        if (valNs1 !== 'ns1.hanghoaphaisinh.net' || valNs2 !== 'ns2.hanghoaphaisinh.net' || valIp !== '103.173.226.15') {
+        if (valNs1 !== 'ns1.hanghoaphaisinh.net' || valNs2 !== 'ns2.hanghoaphaisinh.net' || valIp !== '103.124.95.232') {
             throw new Error('Giá trị DNS chuẩn hiển thị sai lệch!');
         }
         console.log('   ✅ Thông tin hướng dẫn trỏ DNS chuẩn chính xác 100%!');

@@ -157,7 +157,7 @@
 
                 // Nạp lại dữ liệu hệ thống
                 loadCurrentTabData();
-                loadDomains();
+                if (typeof loadDomains === 'function') loadDomains();
             } catch (err) {
                 if (errText) errText.innerText = err.message || 'Đăng nhập thất bại. Vui lòng thử lại.';
                 if (errBox) errBox.classList.remove('hidden');

@@ -82,10 +82,11 @@ let allDomains = [];
 
             // Dropdown Landing Page trong Modal Thêm Domain
             const addDomainLanding = document.getElementById('addDomainDefaultLanding');
-            if (addDomainLanding && allLandingsList) {
+            const landings = (typeof allLandingsList !== 'undefined' && Array.isArray(allLandingsList)) ? allLandingsList : (window.allLandingsList || []);
+            if (addDomainLanding && landings.length > 0) {
                 const curVal = addDomainLanding.value;
                 addDomainLanding.innerHTML = '';
-                allLandingsList.forEach(p => {
+                landings.forEach(p => {
                     const opt = document.createElement('option');
                     opt.value = p.page_id;
                     opt.textContent = `${p.name} (${p.page_id})`;
@@ -96,10 +97,10 @@ let allDomains = [];
 
             // Dropdown Landing Page trong Modal Deploy Route
             const deployLanding = document.getElementById('deployRouteLandingSelect');
-            if (deployLanding && allLandingsList) {
+            if (deployLanding && landings.length > 0) {
                 const curVal = deployLanding.value;
                 deployLanding.innerHTML = '';
-                allLandingsList.forEach(p => {
+                landings.forEach(p => {
                     const opt = document.createElement('option');
                     opt.value = p.page_id;
                     opt.textContent = `${p.name} (${p.page_id})`;
@@ -155,6 +156,28 @@ let allDomains = [];
                     statusIcon = 'fa-solid fa-circle-xmark';
                 }
 
+                let sslBadgeClass = 'bg-slate-800 text-slate-400 border-slate-700';
+                let sslLabel = 'Chưa Thể Cấp SSL (Chưa Trỏ DNS)';
+                let sslIcon = 'fa-solid fa-lock';
+
+                if (d.dns_status !== 'active' || d.ssl_status === 'dns_error') {
+                    sslBadgeClass = 'bg-slate-800 text-slate-400 border-slate-700';
+                    sslLabel = 'Chưa Thể Cấp SSL (Chưa Trỏ DNS)';
+                    sslIcon = 'fa-solid fa-lock';
+                } else if (d.ssl_status === 'active') {
+                    sslBadgeClass = 'bg-emerald-950 text-emerald-300 border-emerald-700';
+                    sslLabel = 'SSL Hoạt Động (HTTPS)';
+                    sslIcon = 'fa-solid fa-shield-halved';
+                } else if (d.ssl_status === 'issuing' || d.ssl_status === 'pending') {
+                    sslBadgeClass = 'bg-amber-950 text-amber-300 border-amber-700';
+                    sslLabel = 'Đang Cấp SSL...';
+                    sslIcon = 'fa-solid fa-spinner fa-spin';
+                } else {
+                    sslBadgeClass = 'bg-rose-950 text-rose-300 border-rose-700';
+                    sslLabel = 'Lỗi Cấp SSL (Kiểm Tra Lại DNS)';
+                    sslIcon = 'fa-solid fa-triangle-exclamation';
+                }
+
                 const routes = d.routes || [];
 
                 return `
@@ -166,8 +189,8 @@ let allDomains = [];
                                     <i class="fa-solid fa-globe"></i>
                                 </span>
                                 <div>
-                                    <div class="flex items-center gap-2">
-                                        <a href="http://${escapeHTML(d.domain)}" target="_blank" class="text-base font-black text-white hover:text-indigo-400 transition flex items-center gap-1.5">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <a href="https://${escapeHTML(d.domain)}" target="_blank" class="text-base font-black text-white hover:text-indigo-400 transition flex items-center gap-1.5">
                                             <span>${escapeHTML(d.domain)}</span>
                                             <i class="fa-solid fa-arrow-up-right-from-square text-xs text-slate-500"></i>
                                         </a>
@@ -175,9 +198,13 @@ let allDomains = [];
                                             <i class="${statusIcon}"></i>
                                             <span>${statusLabel}</span>
                                         </span>
+                                        <span class="${sslBadgeClass} border text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                            <i class="${sslIcon}"></i>
+                                            <span>${sslLabel}</span>
+                                        </span>
                                     </div>
                                     <div class="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                                        <span>Target IP: <code class="text-amber-400 font-mono">${escapeHTML(d.target_ip || '103.173.226.15')}</code></span>
+                                        <span>Target IP: <code class="text-amber-400 font-mono">${escapeHTML(d.target_ip || '103.124.95.232')}</code></span>
                                         <span>NS1: <code class="text-indigo-300 font-mono">${escapeHTML(d.ns1 || 'ns1.hanghoaphaisinh.net')}</code></span>
                                         <span>NS2: <code class="text-indigo-300 font-mono">${escapeHTML(d.ns2 || 'ns2.hanghoaphaisinh.net')}</code></span>
                                         ${d.notes ? `<span class="text-slate-500 italic"><i class="fa-regular fa-note-sticky mr-1"></i>${escapeHTML(d.notes)}</span>` : ''}
@@ -188,6 +215,10 @@ let allDomains = [];
                                 <button onclick="checkDomainDNS(${d.id}, '${escapeHTML(d.domain)}')" id="btnCheckDNS_${d.id}" class="bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm" title="Kiểm tra DNS trực tiếp qua mạng Internet">
                                     <i class="fa-solid fa-network-wired"></i>
                                     <span>Kiểm Tra DNS</span>
+                                </button>
+                                <button onclick="checkDomainSSL(${d.id}, '${escapeHTML(d.domain)}')" id="btnCheckSSL_${d.id}" class="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm" title="Kiểm tra trạng thái chứng chỉ SSL và kích hoạt cấp tự động qua Let's Encrypt / Caddy">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                    <span>Kiểm Tra & Cấp SSL</span>
                                 </button>
                                 <button onclick="openDeployRouteModal(${d.id}, '${escapeHTML(d.domain)}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm" title="Triển khai landing lên domain này">
                                     <i class="fa-solid fa-plus"></i>
@@ -347,7 +378,7 @@ let allDomains = [];
             }
 
             // IP details
-            document.getElementById('dnsExpectedIP').innerText = data.expected_ip || '103.173.226.15';
+            document.getElementById('dnsExpectedIP').innerText = data.expected_ip || '103.124.95.232';
             const fndIP = document.getElementById('dnsFoundIP');
             if (data.found_ips && data.found_ips.length > 0) {
                 fndIP.innerHTML = data.found_ips.map(ip => `<div class="${data.is_ip_matched ? 'text-emerald-400 font-bold' : 'text-slate-300'}">${escapeHTML(ip)}</div>`).join('');
@@ -362,12 +393,104 @@ let allDomains = [];
             document.getElementById('modalDNSResult').classList.add('hidden');
         }
 
+        // 17.6B. Kiểm Tra và Kích Hoạt Chứng Chỉ SSL (Caddy / Let's Encrypt / ZeroSSL)
+        async function checkDomainSSL(domainId, domainName) {
+            const btn = document.getElementById('btnCheckSSL_' + domainId);
+            const origHTML = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Đang xác thực SSL...</span>';
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetch('/api/domains/check-ssl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain_id: domainId, domain: domainName })
+                });
+
+                if (!res.ok) throw new Error('Không thể kiểm tra SSL');
+                const json = await res.json();
+                if (!json || !json.success) throw new Error(json.error || 'Kiểm tra thất bại');
+
+                showSSLResultModal(json.data);
+                loadDomains();
+            } catch (err) {
+                alert('Lỗi kiểm tra SSL: ' + err.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = origHTML;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        function showSSLResultModal(data) {
+            const modal = document.getElementById('modalSSLResult');
+            if (!modal) return;
+
+            document.getElementById('sslResultDomainText').innerText = data.domain || '--';
+            document.getElementById('sslCheckedAt').innerText = new Date().toLocaleString('vi-VN');
+
+            const banner = document.getElementById('sslResultBanner');
+            const iconEl = document.getElementById('sslResultStatusIcon');
+            const titleEl = document.getElementById('sslResultStatusTitle');
+            const msgEl = document.getElementById('sslResultMessage');
+
+            if (data.ssl_active) {
+                banner.className = 'p-3.5 rounded-xl border flex items-center gap-3 bg-emerald-950/40 border-emerald-800/80';
+                iconEl.className = 'text-2xl text-emerald-400';
+                iconEl.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+                titleEl.className = 'font-bold text-sm text-emerald-400';
+                titleEl.innerText = 'Chứng Chỉ SSL Hoạt Động (HTTPS Bảo Mật)';
+            } else if (data.ssl_status === 'issuing' || data.ssl_status === 'pending') {
+                banner.className = 'p-3.5 rounded-xl border flex items-center gap-3 bg-amber-950/40 border-amber-800/80';
+                iconEl.className = 'text-2xl text-amber-400';
+                iconEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+                titleEl.className = 'font-bold text-sm text-amber-400';
+                titleEl.innerText = 'Đang Kích Hoạt & Cấp Phát SSL (Let\'s Encrypt / ZeroSSL)';
+            } else {
+                banner.className = 'p-3.5 rounded-xl border flex items-center gap-3 bg-rose-950/40 border-rose-800/80';
+                iconEl.className = 'text-2xl text-rose-400';
+                iconEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
+                titleEl.className = 'font-bold text-sm text-rose-400';
+                titleEl.innerText = 'Chưa Thể Cấp SSL (Bản Ghi DNS Chưa Trỏ)';
+            }
+
+            msgEl.innerText = data.message || '';
+
+            document.getElementById('sslServerIP').innerText = data.server_ip || '103.124.95.232';
+            const fndIP = document.getElementById('sslFoundIP');
+            if (data.found_ips && data.found_ips.length > 0) {
+                fndIP.innerHTML = data.found_ips.map(ip => `<div class="${data.is_dns_ok ? 'text-emerald-400 font-bold' : 'text-rose-400 font-semibold'}">${escapeHTML(ip)}</div>`).join('');
+            } else {
+                fndIP.innerHTML = '<span class="text-rose-400 italic">Chưa tìm thấy bản ghi A</span>';
+            }
+
+            document.getElementById('sslIssuer').innerText = data.issuer || (data.ssl_active ? 'Let\'s Encrypt' : 'Đang xử lý');
+            document.getElementById('sslExpiresAt').innerText = data.expires_at || (data.ssl_active ? '90 ngày' : '--');
+            document.getElementById('sslDaysLeft').innerText = data.days_left ? `${data.days_left} ngày` : '--';
+
+            const testLink = document.getElementById('sslTestLink');
+            if (testLink) {
+                testLink.href = `https://${data.domain}`;
+                testLink.innerText = `https://${data.domain}`;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeSSLResultModal() {
+            const modal = document.getElementById('modalSSLResult');
+            if (modal) modal.classList.add('hidden');
+        }
+
         // 17.7. Thao tác Thêm Tên Miền Mới
         function openAddDomainModal() {
             document.getElementById('addDomainInput').value = '';
             document.getElementById('addDomainNs1').value = 'ns1.hanghoaphaisinh.net';
             document.getElementById('addDomainNs2').value = 'ns2.hanghoaphaisinh.net';
-            document.getElementById('addDomainTargetIp').value = '103.173.226.15';
+            document.getElementById('addDomainTargetIp').value = '103.124.95.232';
             document.getElementById('addDomainNotes').value = '';
             populateDomainDropdowns();
             document.getElementById('modalAddDomain').classList.remove('hidden');
@@ -538,7 +661,7 @@ let allDomains = [];
         function onCfgDomainSelectChange() {
             const sel = document.getElementById('cfgDomainSelect');
             const inp = document.getElementById('cfgDomain');
-            if (sel && inp && sel.value) {
+            if (sel && inp) {
                 inp.value = sel.value;
             }
         }
@@ -568,7 +691,7 @@ let allDomains = [];
                         domain: domain,
                         path_prefix: pathPrefix,
                         landing_id: pageId,
-                        redirect_url: document.getElementById('cfgRedirectUrl')?.value || ''
+                        redirect_url: ''
                     })
                 });
 

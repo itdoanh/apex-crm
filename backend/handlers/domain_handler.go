@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -50,7 +52,7 @@ func (h *DomainHandler) HandleListDomains(w http.ResponseWriter, r *http.Request
 		"system_info": map[string]interface{}{
 			"ns1":       "ns1.hanghoaphaisinh.net",
 			"ns2":       "ns2.hanghoaphaisinh.net",
-			"target_ip": "103.173.226.15",
+			"target_ip": "103.124.95.232",
 		},
 	})
 }
@@ -217,7 +219,7 @@ func (h *DomainHandler) HandleCheckDNS(w http.ResponseWriter, r *http.Request) {
 				Domain:   strings.ToLower(strings.TrimSpace(req.Domain)),
 				NS1:      "ns1.hanghoaphaisinh.net",
 				NS2:      "ns2.hanghoaphaisinh.net",
-				TargetIP: "103.173.226.15",
+				TargetIP: "103.124.95.232",
 			}
 		} else {
 			http.Error(w, "Không tìm thấy tên miền để kiểm tra", http.StatusBadRequest)
@@ -273,8 +275,8 @@ func (h *DomainHandler) HandleCheckDNS(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Nếu domain đã có trong DB, cập nhật trạng thái
 	if targetDomain.ID > 0 {
-		sslStatus := "active"
-		if res.Status != "active" {
+		sslStatus := "dns_error"
+		if res.Status == "active" {
 			sslStatus = "pending"
 		}
 		_ = h.store.UpdateDomainDNSStatus(targetDomain.ID, res.Status, sslStatus)
@@ -481,3 +483,158 @@ func (h *DomainHandler) HandleDeleteRoute(w http.ResponseWriter, r *http.Request
 		"message": "Đã gỡ bỏ đường dẫn khỏi tên miền",
 	})
 }
+
+// HandleCheckSSL kiểm tra chi tiết bản ghi DNS và trạng thái chứng chỉ SSL của tên miền
+func (h *DomainHandler) HandleCheckSSL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		DomainID int    `json:"domain_id"`
+		Domain   string `json:"domain"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.DomainID <= 0 {
+		if idStr := r.URL.Query().Get("domain_id"); idStr != "" {
+			req.DomainID, _ = strconv.Atoi(idStr)
+		}
+	}
+	if req.Domain == "" {
+		req.Domain = strings.TrimSpace(r.URL.Query().Get("domain"))
+	}
+
+	var targetDomain *models.Domain
+	var err error
+	if req.DomainID > 0 {
+		targetDomain, err = h.store.GetDomain(req.DomainID)
+	} else if req.Domain != "" {
+		targetDomain, err = h.store.GetDomainByName(req.Domain)
+	}
+
+	if err != nil || targetDomain == nil {
+		if req.Domain != "" {
+			targetDomain = &models.Domain{
+				Domain:   strings.ToLower(strings.TrimSpace(req.Domain)),
+				TargetIP: "103.124.95.232",
+			}
+		} else {
+			http.Error(w, "Không tìm thấy tên miền để kiểm tra SSL", http.StatusBadRequest)
+			return
+		}
+	}
+
+	cleanDomain := strings.ToLower(strings.TrimSpace(targetDomain.Domain))
+	if idx := strings.Index(cleanDomain, ":"); idx != -1 {
+		cleanDomain = cleanDomain[:idx]
+	}
+	cleanDomain = strings.TrimPrefix(cleanDomain, "http://")
+	cleanDomain = strings.TrimPrefix(cleanDomain, "https://")
+	cleanDomain = strings.TrimRight(cleanDomain, "/")
+
+	serverIP := "103.124.95.232"
+
+	// 1. Kiểm tra DNS A Records
+	foundIPs := make([]string, 0)
+	isIPMatched := false
+	ipRecords, err := net.LookupIP(cleanDomain)
+	if err == nil {
+		for _, ip := range ipRecords {
+			ipStr := ip.String()
+			foundIPs = append(foundIPs, ipStr)
+			if ipStr == serverIP || strings.HasPrefix(ipStr, "127.") || ipStr == "::1" {
+				isIPMatched = true
+			}
+		}
+	}
+
+	result := map[string]interface{}{
+		"domain":     cleanDomain,
+		"server_ip":  serverIP,
+		"found_ips":  foundIPs,
+		"is_dns_ok":  isIPMatched,
+		"ssl_active": false,
+		"ssl_status": "pending",
+		"issuer":     "",
+		"expires_at": "",
+		"days_left":  0,
+		"message":    "",
+	}
+
+	if !isIPMatched {
+		result["ssl_status"] = "dns_error"
+		if len(foundIPs) > 0 {
+			result["message"] = fmt.Sprintf("Tên miền đang trỏ về IP [%s]. Vui lòng cập nhật bản ghi A về IP máy chủ %s để Caddy kích hoạt chứng chỉ SSL.", strings.Join(foundIPs, ", "), serverIP)
+		} else {
+			result["message"] = fmt.Sprintf("Chưa tìm thấy bản ghi DNS của tên miền. Vui lòng trỏ bản ghi A về IP máy chủ %s và đợi lan truyền DNS.", serverIP)
+		}
+		if targetDomain.ID > 0 {
+			_ = h.store.UpdateDomainDNSStatus(targetDomain.ID, "pending", "dns_error")
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    result,
+		})
+		return
+	}
+
+	// 2. Nếu DNS đã trỏ đúng IP server: Thử nghiệm kết nối TLS / HTTPS trực tiếp
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	tlsConfig := &tls.Config{
+		ServerName:         cleanDomain,
+		InsecureSkipVerify: false,
+	}
+
+	conn, errTLS := tls.DialWithDialer(dialer, "tcp", cleanDomain+":443", tlsConfig)
+	if errTLS == nil && conn != nil {
+		defer conn.Close()
+		state := conn.ConnectionState()
+		if len(state.PeerCertificates) > 0 {
+			cert := state.PeerCertificates[0]
+			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+			issuer := cert.Issuer.CommonName
+			if issuer == "" && len(cert.Issuer.Organization) > 0 {
+				issuer = cert.Issuer.Organization[0]
+			}
+			result["ssl_active"] = true
+			result["ssl_status"] = "active"
+			result["issuer"] = issuer
+			result["expires_at"] = cert.NotAfter.Format("2006-01-02 15:04:05")
+			result["days_left"] = daysLeft
+			result["message"] = fmt.Sprintf("Chứng chỉ SSL (%s) đang hoạt động hợp lệ! Còn %d ngày hiệu lực.", issuer, daysLeft)
+
+			if targetDomain.ID > 0 {
+				_ = h.store.UpdateDomainDNSStatus(targetDomain.ID, "active", "active")
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"data":    result,
+			})
+			return
+		}
+	}
+
+	// 3. Nếu chưa có chứng chỉ TLS nhưng DNS đã trỏ: Gửi HTTP request để kích hoạt Caddy On-Demand TLS
+	go func(d string) {
+		client := &http.Client{Timeout: 8 * time.Second}
+		_, _ = client.Get("http://" + d)
+	}(cleanDomain)
+
+	result["ssl_active"] = false
+	result["ssl_status"] = "issuing"
+	result["message"] = fmt.Sprintf("DNS đã trỏ chuẩn về %s! Hệ thống đã gửi yêu cầu kích hoạt cấp chứng chỉ SSL tự động (Let's Encrypt / ZeroSSL) tới Caddy. Quá trình cấp phát mất từ 30s - 60s, vui lòng bấm kiểm tra lại sau 1 phút.", serverIP)
+
+	if targetDomain.ID > 0 {
+		_ = h.store.UpdateDomainDNSStatus(targetDomain.ID, "active", "pending")
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    result,
+	})
+}
+

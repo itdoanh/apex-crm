@@ -249,7 +249,7 @@ Truy cập hệ thống:
 Toàn bộ quy trình triển khai máy chủ sản xuất đã được tự động hóa qua thư mục `deploy/windows/`:
 
 1. **Bước 1: Trỏ DNS**
-   - Trỏ bản ghi A `crm.hanghoaphaisinh.net` và `*` về IP máy chủ: `103.173.226.15`.
+   - Trỏ bản ghi A `crm.hanghoaphaisinh.net` và `*` về IP máy chủ: `103.124.95.232`.
    - Trỏ 2 bản ghi NameServer `ns1` và `ns2` về IP máy chủ.
 2. **Bước 2: Cài PostgreSQL Native**
    - Chạy `install_postgres_native.ps1` hoặc cài đặt bản PostgreSQL 16 x64 cho Windows.

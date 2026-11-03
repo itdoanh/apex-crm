@@ -72,7 +72,7 @@ func main() {
 	leadHandler := handlers.NewLeadHandler(cfg, store, landingCache)
 	analyticsHandler := handlers.NewAnalyticsHandler(cfg, store)
 	sheetHandler := handlers.NewGoogleSheetHandler(cfg, store)
-	landingHandler := handlers.NewLandingHandler(cfg, store, landingCache)
+	landingHandler := handlers.NewLandingHandler(cfg, store, landingCache, domainCache)
 	domainHandler := handlers.NewDomainHandler(cfg, store, domainCache)
 	authHandler := handlers.NewAuthHandler(cfg, store)
 
@@ -210,6 +210,7 @@ func main() {
 	mux.HandleFunc("/api/domains/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleSaveDomain)))
 	mux.HandleFunc("/api/domains/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleDeleteDomain)))
 	mux.HandleFunc("/api/domains/check-dns", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleCheckDNS)))
+	mux.HandleFunc("/api/domains/check-ssl", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleCheckSSL)))
 	mux.HandleFunc("/api/domains/deploy", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleDeployRoute)))
 	mux.HandleFunc("/api/domains/routes/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(domainHandler.HandleDeleteRoute)))
 

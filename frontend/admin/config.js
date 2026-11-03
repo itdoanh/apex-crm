@@ -42,7 +42,7 @@ window.APEX_ADMIN_CONFIG = (function() {
         ],
 
         // Server IP mục tiêu
-        TARGET_SERVER_IP: '103.173.226.15',
+        TARGET_SERVER_IP: '103.124.95.232',
 
         // Hàm cập nhật Endpoint tức thì
         setApiEndpoint: function(url) {

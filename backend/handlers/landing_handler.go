@@ -16,16 +16,18 @@ import (
 )
 
 type LandingHandler struct {
-	cfg   *config.Config
-	store *db.Store
-	cache *cache.LandingCache
+	cfg         *config.Config
+	store       *db.Store
+	cache       *cache.LandingCache
+	domainCache *cache.DomainCache
 }
 
-func NewLandingHandler(cfg *config.Config, store *db.Store, cache *cache.LandingCache) *LandingHandler {
+func NewLandingHandler(cfg *config.Config, store *db.Store, cache *cache.LandingCache, domainCache *cache.DomainCache) *LandingHandler {
 	return &LandingHandler{
-		cfg:   cfg,
-		store: store,
-		cache: cache,
+		cfg:         cfg,
+		store:       store,
+		cache:       cache,
+		domainCache: domainCache,
 	}
 }
 
@@ -176,6 +178,21 @@ func (h *LandingHandler) HandleGetLanding(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Lấy thông tin route (path_prefix) và domain hiện tại gắn với landing page này
+	if route, errRoute := h.store.GetRouteByLandingID(p.PageID); errRoute == nil && route != nil {
+		p.PathPrefix = route.PathPrefix
+		if p.Domain == "" && route.Domain != "" {
+			p.Domain = route.Domain
+		}
+	} else if p.Settings != nil {
+		if pref, ok := p.Settings["path_prefix"].(string); ok && pref != "" {
+			p.PathPrefix = pref
+		}
+	}
+	if p.PathPrefix == "" {
+		p.PathPrefix = "/"
+	}
+
 	// Lấy danh sách files của landing page
 	files, _ := h.store.ListLandingFiles(p.Domain, p.PageID)
 
@@ -209,16 +226,76 @@ func (h *LandingHandler) HandleSaveLanding(w http.ResponseWriter, r *http.Reques
 		req.Name = req.PageID
 	}
 
+	// Kiểm tra nếu là landing page mới chưa có mã HTML -> khởi tạo khung HTML sạch sẽ (không copy template cũ)
+	existingLanding, _ := h.store.GetLandingPage(req.Domain, req.PageID)
+	if existingLanding == nil {
+		existingLanding, _ = h.store.GetLandingPageByID(req.PageID)
+	}
+	if existingLanding == nil || existingLanding.CodeHTML == "" {
+		if req.CodeHTML == "" {
+			req.CodeHTML = "<!DOCTYPE html>\n<html lang=\"vi\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>" + html.EscapeString(req.Name) + "</title>\n</head>\n<body class=\"bg-slate-900 text-white min-h-screen\">\n    <!-- Landing Page: " + html.EscapeString(req.Name) + " -->\n</body>\n</html>"
+		}
+	} else if req.CodeHTML == "" && existingLanding != nil {
+		req.CodeHTML = existingLanding.CodeHTML
+	}
+
+	// Chuẩn hóa và bảo toàn path_prefix
+	cleanPrefix := strings.TrimSpace(req.PathPrefix)
+	if cleanPrefix == "" {
+		cleanPrefix = "/"
+	}
+	if !strings.HasPrefix(cleanPrefix, "/") {
+		cleanPrefix = "/" + cleanPrefix
+	}
+	if len(cleanPrefix) > 1 {
+		cleanPrefix = strings.TrimRight(cleanPrefix, "/")
+	}
+	req.PathPrefix = cleanPrefix
+	if req.Settings == nil {
+		req.Settings = make(map[string]interface{})
+	}
+	req.Settings["path_prefix"] = cleanPrefix
+
 	// Lưu vào CSDL PostgreSQL
 	if err := h.store.SaveLandingPage(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Lỗi lưu CSDL: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Tự động đồng bộ Route nếu có Domain và PathPrefix
+	targetDomain := strings.TrimSpace(req.Domain)
+	if targetDomain == "" {
+		if existingLanding != nil && existingLanding.Domain != "" {
+			targetDomain = existingLanding.Domain
+		} else if route, _ := h.store.GetRouteByLandingID(req.PageID); route != nil && route.Domain != "" {
+			targetDomain = route.Domain
+		}
+	}
+
+	if targetDomain != "" {
+		if d, err := h.store.GetDomainByName(targetDomain); err == nil && d != nil {
+			_, _ = h.store.DeployDomainRoute(d.ID, cleanPrefix, req.PageID, "")
+			if h.domainCache != nil {
+				_ = h.domainCache.Reload(r.Context())
+			}
+		}
+	}
+
+	// Nếu là landing mới tạo lần đầu, khởi tạo file index.html sạch sẽ
+	if existingLanding == nil {
+		_ = h.store.SaveLandingFile(req.Domain, req.PageID, "index.html", "html", req.CodeHTML)
+	}
+
 	// Làm mới Cache RAM (Pub/Sub Invalidation)
 	h.cache.Invalidate(req.Domain, req.PageID)
 	saved, _ := h.store.GetLandingPage(req.Domain, req.PageID)
 	if saved != nil {
+		// Gắn lại path_prefix trả về cho frontend
+		if req.PathPrefix != "" {
+			saved.PathPrefix = req.PathPrefix
+		} else {
+			saved.PathPrefix = "/"
+		}
 		h.cache.Set(saved)
 	}
 
