@@ -105,8 +105,6 @@ let isApplyingHistory = false;
                 selectedAstNodeId = null;
                 const gizmo = document.getElementById('csGizmoBox');
                 if (gizmo) gizmo.classList.add('hidden');
-                const gizmoToolbar = document.getElementById('csGizmoToolbar');
-                if (gizmoToolbar) gizmoToolbar.classList.add('hidden');
             }
 
             renderAstLayerTree();

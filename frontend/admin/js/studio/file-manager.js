@@ -395,8 +395,6 @@
             selectedAstNodeId = null;
             const gizmoBox = document.getElementById('csGizmoBox');
             if (gizmoBox) gizmoBox.classList.add('hidden');
-            const gizmoToolbar = document.getElementById('csGizmoToolbar');
-            if (gizmoToolbar) gizmoToolbar.classList.add('hidden');
             refreshStudioPreview();
         }
 

@@ -307,6 +307,14 @@
 
                             <!-- Selected Gizmo Box (Khung viền điều khiển kéo thả & 8 chốt biến đổi kích thước) -->
                             <div id="csGizmoBox" class="absolute hidden border-2 border-indigo-500 bg-indigo-500/10 z-30 select-none shadow-xl pointer-events-none">
+                                <!-- Tag Header & Drag-to-Move Grabber -->
+                                <div id="csGizmoHeader" onpointerdown="startGizmoMove(event)" class="absolute -top-7 left-0 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-[11px] font-bold px-2 py-0.5 rounded-t flex items-center gap-1.5 shadow pointer-events-auto cursor-grab active:cursor-grabbing whitespace-nowrap transition-colors" title="Bấm giữ chuột và kéo để di chuyển vị trí">
+                                    <i class="fa-solid fa-arrows-up-down-left-right text-[10px] text-indigo-200"></i>
+                                    <span id="csGizmoTag">div</span>
+                                    <span class="text-indigo-200 text-[10px]">|</span>
+                                    <span id="csGizmoSize" class="text-indigo-200 text-[10px]">0 × 0 px</span>
+                                </div>
+
                                 <!-- 8 Resize Handles (Chốt kéo co giãn kích thước bằng PointerCapture API) -->
                                 <div class="cs-gizmo-handle cs-handle-nw" onpointerdown="startGizmoResize(event, 'nw')"></div>
                                 <div class="cs-gizmo-handle cs-handle-n"  onpointerdown="startGizmoResize(event, 'n')"></div>
@@ -317,75 +325,67 @@
                                 <div class="cs-gizmo-handle cs-handle-sw" onpointerdown="startGizmoResize(event, 'sw')"></div>
                                 <div class="cs-gizmo-handle cs-handle-w"  onpointerdown="startGizmoResize(event, 'w')"></div>
 
-                                <!-- Floating Contextual Action Toolbar & Move Handle (Thanh công cụ tùy chọn & Nút di chuyển bám sát phần tử) -->
-                                <div id="csGizmoToolbar" class="absolute -top-11 left-0 flex items-center gap-1 bg-slate-900/95 backdrop-blur-md border border-indigo-500/80 rounded-xl px-2 py-1 shadow-2xl z-40 pointer-events-auto whitespace-nowrap select-none transition-all">
-                                    <!-- Nút Di Chuyển Chuyên Dụng (Prominent Drag-to-Move Button) -->
-                                    <button type="button" id="btnGizmoMove" onpointerdown="startGizmoMove(event)" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-grab active:cursor-grabbing shadow select-none transition-all" title="Bấm giữ chuột và kéo để di chuyển vị trí phần tử">
-                                        <i class="fa-solid fa-arrows-up-down-left-right text-[11px]"></i>
-                                        <span>Di chuyển</span>
+                                <!-- Floating Gizmo Quick Action Bar (Thao tác nhanh ngay trên canvas) -->
+                                <div id="csGizmoToolbar" class="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 rounded-xl px-2 py-1 flex items-center gap-1 shadow-2xl backdrop-blur-md pointer-events-auto whitespace-nowrap z-40">
+                                    <!-- Nút Kéo Di Chuyển -->
+                                    <button type="button" onpointerdown="startGizmoMove(event)" class="text-xs text-indigo-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1 cursor-grab active:cursor-grabbing" title="Bấm giữ chuột để kéo di chuyển phần tử">
+                                        <i class="fa-solid fa-arrows-up-down-left-right text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Kéo</span>
                                     </button>
 
-                                    <!-- Tag & Kích thước Header (Có thể kéo) -->
-                                    <div id="csGizmoHeader" onpointerdown="startGizmoMove(event)" class="flex items-center gap-1 px-2 py-1 bg-slate-800/90 hover:bg-slate-700/90 text-white rounded-lg text-xs font-mono font-bold cursor-grab active:cursor-grabbing select-none transition-colors border border-slate-700/60" title="Bấm giữ và kéo để di chuyển vị trí">
-                                        <span id="csGizmoTag" class="text-cyan-300">div</span>
-                                        <span class="text-slate-500">|</span>
-                                        <span id="csGizmoSize" class="text-slate-400 text-[10px]">0 × 0 px</span>
-                                    </div>
-
-                                    <div class="w-px h-4 bg-slate-700 mx-0.5"></div>
-
-                                    <!-- Nút Sửa Chữ -->
-                                    <button type="button" onclick="startInlineTextEdit()" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition" title="Sửa chữ trực tiếp tại chỗ">
-                                        <i class="fa-solid fa-pen-to-square text-[11px]"></i>
-                                        <span>Sửa Chữ</span>
+                                    <!-- Sửa Chữ Trực Tiếp -->
+                                    <button type="button" onclick="startInlineTextEdit()" class="text-xs text-cyan-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Sửa chữ trực tiếp tại chỗ">
+                                        <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Sửa Chữ</span>
                                     </button>
 
                                     <!-- Hoán đổi thứ tự DOM: Lên / Xuống -->
-                                    <div class="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
-                                        <button type="button" onclick="moveCurrentNodeUp()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển lên trước (Thẻ cùng cấp)">
+                                    <div class="flex items-center bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
+                                        <button type="button" onclick="moveCurrentNodeUp()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển lên trước thẻ cùng cấp">
                                             <i class="fa-solid fa-arrow-up"></i>
                                         </button>
-                                        <button type="button" onclick="moveCurrentNodeDown()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển xuống sau (Thẻ cùng cấp)">
+                                        <button type="button" onclick="moveCurrentNodeDown()" class="text-slate-300 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Di chuyển xuống sau thẻ cùng cấp">
                                             <i class="fa-solid fa-arrow-down"></i>
                                         </button>
                                     </div>
 
-                                    <!-- Căn Lề Nhanh -->
-                                    <div class="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                                    <!-- Căn Chỉnh Nhanh -->
+                                    <div class="flex items-center bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
                                         <button type="button" onclick="quickAlignNode('left')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn lề trái"><i class="fa-solid fa-align-left"></i></button>
                                         <button type="button" onclick="quickAlignNode('center')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn giữa khối (mx-auto)"><i class="fa-solid fa-align-center"></i></button>
                                         <button type="button" onclick="quickAlignNode('right')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Căn lề phải"><i class="fa-solid fa-align-right"></i></button>
+                                        <button type="button" onclick="quickAlignNode('full')" class="text-slate-400 hover:text-white px-1.5 py-0.5 rounded text-[10px] hover:bg-slate-700 transition" title="Kéo dài toàn chiều rộng (100%)"><i class="fa-solid fa-arrows-left-right"></i></button>
                                     </div>
 
-                                    <!-- Thao Tác Ngữ Cảnh Ảnh / Link -->
-                                    <button type="button" id="btnGizmoChangeImg" onclick="promptChangeImage()" class="hidden px-2 py-1 bg-purple-900/60 hover:bg-purple-800 text-purple-200 hover:text-white rounded-lg text-xs font-semibold items-center gap-1 transition" title="Thay đổi đường dẫn ảnh src">
-                                        <i class="fa-solid fa-image text-[10px]"></i>
-                                        <span>Đổi Ảnh</span>
-                                    </button>
-                                    <button type="button" id="btnGizmoChangeLink" onclick="promptChangeLink()" class="hidden px-2 py-1 bg-sky-900/60 hover:bg-sky-800 text-sky-200 hover:text-white rounded-lg text-xs font-semibold items-center gap-1 transition" title="Thay đổi liên kết href">
-                                        <i class="fa-solid fa-link text-[10px]"></i>
-                                        <span>Đổi Link</span>
-                                    </button>
-
                                     <!-- Class & Style Tabs -->
-                                    <button type="button" onclick="openVisualInspectorTab('classes')" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-white rounded-lg text-xs transition" title="Sửa class / Tailwind utilities">
-                                        <i class="fa-solid fa-tags"></i>
+                                    <button type="button" onclick="openVisualInspectorTab('classes')" class="text-xs text-emerald-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Sửa class / Tailwind utilities">
+                                        <i class="fa-solid fa-tags text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Class</span>
                                     </button>
-                                    <button type="button" onclick="openVisualInspectorTab('styles')" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-white rounded-lg text-xs transition" title="Mở bảng chỉnh sửa Style trực quan">
-                                        <i class="fa-solid fa-palette"></i>
+                                    <button type="button" onclick="openVisualInspectorTab('styles')" class="text-xs text-amber-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Mở bảng chỉnh sửa Style trực quan">
+                                        <i class="fa-solid fa-palette text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Style</span>
                                     </button>
 
-                                    <div class="w-px h-4 bg-slate-700 mx-0.5"></div>
+                                    <!-- Thao Tác Theo Ngữ Cảnh Thẻ -->
+                                    <button type="button" id="btnGizmoChangeImg" onclick="promptChangeImage()" class="hidden text-xs text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Thay đổi đường dẫn ảnh src">
+                                        <i class="fa-solid fa-image text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Đổi Ảnh</span>
+                                    </button>
+                                    <button type="button" id="btnGizmoChangeLink" onclick="promptChangeLink()" class="hidden text-xs text-sky-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition flex items-center gap-1" title="Thay đổi đường dẫn liên kết href">
+                                        <i class="fa-solid fa-link text-[10px]"></i>
+                                        <span class="text-[11px] font-semibold">Đổi Link</span>
+                                    </button>
 
-                                    <!-- Thao tác cấu trúc: Nhân bản, Thẻ cha, Xóa -->
-                                    <button type="button" onclick="duplicateCurrentNode()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-white rounded-lg text-xs transition" title="Nhân bản (Ctrl+D)">
-                                        <i class="fa-solid fa-copy"></i>
+                                    <!-- Thao tác cấu trúc -->
+                                    <button type="button" onclick="duplicateCurrentNode()" class="text-xs text-slate-300 hover:text-white px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Nhân bản phần tử này">
+                                        <i class="fa-solid fa-copy text-[10px]"></i>
                                     </button>
-                                    <button type="button" onclick="selectParentNode()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs transition" title="Chọn thẻ cha bao quanh">
-                                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                                    <button type="button" onclick="selectParentNode()" class="text-xs text-slate-300 hover:text-white px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Chọn thẻ cha bao quanh">
+                                        <i class="fa-solid fa-arrow-up text-[10px]"></i>
                                     </button>
-                                    <button type="button" onclick="deleteCurrentNode()" class="p-1.5 bg-rose-950/60 hover:bg-rose-800 text-rose-400 hover:text-rose-200 rounded-lg text-xs transition" title="Xóa phần tử khỏi mã nguồn (Delete)">
-                                        <i class="fa-solid fa-trash-can"></i>
+                                    <button type="button" onclick="deleteCurrentNode()" class="text-xs text-rose-400 hover:text-rose-200 px-1.5 py-1 rounded hover:bg-slate-800 transition" title="Xóa phần tử khỏi mã nguồn">
+                                        <i class="fa-solid fa-trash-can text-[10px]"></i>
                                     </button>
                                 </div>
                             </div>

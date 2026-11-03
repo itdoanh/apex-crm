@@ -253,10 +253,6 @@
             const gizmoBox = document.getElementById('csGizmoBox');
             const gizmoTag = document.getElementById('csGizmoTag');
             const gizmoSize = document.getElementById('csGizmoSize');
-            const toolbar = document.getElementById('csGizmoToolbar');
-            const contextTag = document.getElementById('csGizmoContextTag');
-            const contextSize = document.getElementById('csGizmoContextSize');
-            const contextId = document.getElementById('csGizmoContextId');
             const btnImg = document.getElementById('btnGizmoChangeImg');
             const btnLink = document.getElementById('btnGizmoChangeLink');
 
@@ -274,31 +270,6 @@
                 gizmoTag.innerHTML = `${isLocked ? '<i class="fa-solid fa-lock text-yellow-400 mr-1"></i>' : ''}${tag.toUpperCase()} ${classSummary}`;
             }
             if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)}px`;
-
-            // Định vị thông minh cho Contextual Toolbar bám sát phần tử:
-            // Nếu phần tử sát mép trên viewport (rect.top < 48px), lật toolbar xuống phía dưới đáy phần tử
-            if (toolbar) {
-                toolbar.classList.remove('hidden');
-                if (rect.top < 48) {
-                    toolbar.style.top = 'auto';
-                    toolbar.style.bottom = '-46px';
-                } else {
-                    toolbar.style.top = '-46px';
-                    toolbar.style.bottom = 'auto';
-                }
-                // Nếu phần tử ở quá sát mép phải, canh toolbar từ phải sang để không tràn khung
-                if (rect.left > 850) {
-                    toolbar.style.left = 'auto';
-                    toolbar.style.right = '0px';
-                } else {
-                    toolbar.style.left = '0px';
-                    toolbar.style.right = 'auto';
-                }
-            }
-
-            if (contextTag) contextTag.innerText = tag.toUpperCase();
-            if (contextSize) contextSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)} px`;
-            if (contextId) contextId.innerText = `#${selectedAstNodeId || ''}`;
 
             const handles = gizmoBox.querySelectorAll('.cs-gizmo-handle');
             handles.forEach(h => h.style.display = isLocked ? 'none' : '');

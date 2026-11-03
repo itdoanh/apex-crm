@@ -154,16 +154,18 @@ def run_tests():
             floating_toolbar = page.locator("#csGizmoBox #csGizmoToolbar")
             assert floating_toolbar.is_visible(), "Floating Toolbar phải hiển thị bám sát phần tử đang chọn"
 
-            # Kiểm tra Nút Di Chuyển chuyên dụng và các tùy chọn ngữ cảnh
-            btn_move = page.locator("#btnGizmoMove")
-            assert btn_move.is_visible(), "Nút Di Chuyển phải hiển thị rõ ràng trên Gizmo Toolbar"
-            btn_move_text = btn_move.inner_text()
-            assert "Di chuyển" in btn_move_text, "Nút Di Chuyển phải có nhãn 'Di chuyển'"
+            # Kiểm tra Nút Kéo di chuyển và Nút Sửa Chữ trên Gizmo Toolbar
+            btn_move = floating_toolbar.locator("button:has-text('Kéo')")
+            assert btn_move.is_visible(), "Nút Kéo phải hiển thị rõ ràng trên Gizmo Toolbar"
 
             btn_inline_edit = floating_toolbar.locator("button:has-text('Sửa Chữ')")
             assert btn_inline_edit.is_visible(), "Nút Sửa Chữ phải có mặt trên Floating Toolbar"
 
-            print("=> Floating Toolbar với Nút Di Chuyển và các tùy chọn hiển thị trực tiếp ngay tại phần tử đang chọn!")
+            # Kiểm tra Tag Header có khả năng kéo di chuyển
+            gizmo_header = page.locator("#csGizmoHeader")
+            assert gizmo_header.is_visible(), "Gizmo Header phải hiển thị"
+
+            print("=> Gizmo Toolbar nguyên bản với Nút Kéo, Sửa Chữ, Hoán đổi Lên/Xuống hiển thị chính xác!")
 
             # 1.2 Click chọn thẻ P #desc-apex nằm ngay bên dưới H1
             print("Thử chọn thẻ P #desc-apex nằm ngay bên dưới H1...")
