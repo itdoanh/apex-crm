@@ -768,6 +768,7 @@ func (h *LandingHandler) HandlePreviewLanding(w http.ResponseWriter, r *http.Req
 	rawHTML = strings.ReplaceAll(rawHTML, "window.location.replace(\"chucmung.html\"", "/* [PREVIEW_BYPASS] */ console.log('Bypass preview redirect chucmung:', 'chucmung.html'")
 	rawHTML = strings.ReplaceAll(rawHTML, "window.location.href = 'chucmung.html'", "/* [PREVIEW_BYPASS] */ console.log('Bypass preview redirect chucmung:', 'chucmung.html'")
 	rawHTML = strings.ReplaceAll(rawHTML, "window.location.href = \"chucmung.html\"", "/* [PREVIEW_BYPASS] */ console.log('Bypass preview redirect chucmung:', 'chucmung.html'")
+	rawHTML = strings.ReplaceAll(rawHTML, "redirectToChucMung()", "console.log('Bypass redirectToChucMung in preview')")
 
 	renderedHTML := h.InjectDynamicScripts(rawHTML, p)
 
@@ -777,6 +778,9 @@ func (h *LandingHandler) HandlePreviewLanding(w http.ResponseWriter, r *http.Req
 <script>
 window.__APEX_PREVIEW__ = true;
 window.IS_PREVIEW = true;
+window.__APEX_STUDIO__ = true;
+window.__APEX_BUILDER_ACTIVE__ = true;
+window.redirectToChucMung = function() { console.log('Bypass redirectToChucMung in preview'); };
 </script>
 `
 	if strings.Contains(strings.ToLower(renderedHTML), "<head>") {

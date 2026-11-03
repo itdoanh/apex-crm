@@ -221,6 +221,12 @@
 
                 result += this.rawHTML.substring(lastPos);
 
+                // Triệt để vô hiệu hóa mọi lệnh chuyển hướng sang chucmung.html trong Code Studio Live Preview
+                result = result.replace(/window\.location\.replace\s*\(\s*['"]chucmung\.html[^)]*\)/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
+                result = result.replace(/location\.replace\s*\(\s*['"]chucmung\.html[^)]*\)/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
+                result = result.replace(/window\.location\.href\s*=\s*['"]chucmung\.html[^;\n]*/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
+                result = result.replace(/location\.href\s*=\s*['"]chucmung\.html[^;\n]*/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
+
                 const helperScript = this.getHelperScript();
                 const headLower = result.toLowerCase().indexOf('<head>');
                 if (headLower !== -1) {
@@ -236,7 +242,11 @@
                 return `\n<base href="/">\n<script id="__APEX_BUILDER_HELPER_SCRIPT__">\n` +
                     `(function() {\n` +
                     `    window.__APEX_BUILDER_ACTIVE__ = true;\n` +
+                    `    window.__APEX_STUDIO__ = true;\n` +
+                    `    window.__APEX_PREVIEW__ = true;\n` +
+                    `    window.IS_PREVIEW = true;\n` +
                     `    window.__APEX_FREEZE_MODE__ = true;\n` +
+                    `    window.redirectToChucMung = function() { console.log('[Studio] Blocked redirectToChucMung call'); };\n` +
                     `    document.addEventListener('DOMContentLoaded', function() {\n` +
                     `        var observer = new MutationObserver(function(mutations) {\n` +
                     `            mutations.forEach(function(m) {\n` +

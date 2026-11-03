@@ -449,9 +449,34 @@
         } catch (_) {}
     }
 
+    function shouldBypassRedirect() {
+        try {
+            // 1. Chặn tuyệt đối khi chạy trong iframe (Code Studio, Admin Preview Modal, v.v.)
+            if (window.self !== window.top || window.frameElement !== null) return true;
+            // 2. Chế độ Studio / Builder / Preview cờ toàn cục
+            if (window.__APEX_PREVIEW__ || window.IS_PREVIEW || window.__APEX_BUILDER_ACTIVE__ || window.__APEX_STUDIO__ || window.__APEX_FREEZE_MODE__) return true;
+            // 3. Parent Window đang ở Admin / Studio / Preview
+            try {
+                if (window.parent && window.parent !== window) {
+                    if (window.parent.__APEX_BUILDER_ACTIVE__ || window.parent.__APEX_STUDIO__ || window.parent.__APEX_PREVIEW__ || window.parent.IS_PREVIEW || window.parent.__APEX_ADMIN__) return true;
+                }
+            } catch (_) {}
+            // 4. Tham số URL bypass
+            const s = window.location.search || '';
+            if (/[?&](reset|force|bypass|test|preview|draft|admin|studio)=1/i.test(s)) return true;
+            // 5. Đường dẫn Preview / Studio / Ads / Admin
+            const p = (window.location.pathname || '').toLowerCase();
+            if (p.indexOf('/preview') !== -1 || p.indexOf('/studio') !== -1 || p.indexOf('/admin') !== -1 || p.indexOf('/ads') !== -1) return true;
+            // 6. Quản trị viên đang đăng nhập
+            if (window.localStorage && (localStorage.getItem('apex_admin_token') || sessionStorage.getItem('apex_admin_token'))) return true;
+            if (document.cookie && document.cookie.indexOf('apex_admin_session=') !== -1) return true;
+        } catch (_) {}
+        return false;
+    }
+
     function isRegistered() {
-        if (/[?&](reset|force|bypass|test)=1/.test(window.location.search)) {
-            if (/[?&]reset=1/.test(window.location.search)) {
+        if (shouldBypassRedirect()) {
+            if (/[?&]reset=1/i.test(window.location.search)) {
                 clearRegistered();
             }
             return false;
@@ -488,12 +513,14 @@
     }
 
     function redirectToChucMung() {
+        if (shouldBypassRedirect()) return;
         const search = window.location.search || '';
         window.location.replace('chucmung.html' + search);
     }
 
     function checkAutoRedirectRegistered() {
         try {
+            if (shouldBypassRedirect()) return;
             const path = (window.location.pathname || '').toLowerCase();
             if (path.indexOf('chucmung') === -1 && isRegistered()) {
                 redirectToChucMung();

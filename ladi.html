@@ -5,9 +5,33 @@
     <!-- Kiểm tra Cookie 180 ngày: Khách đã đăng ký thành công sẽ tự động chuyển thẳng sang chucmung.html -->
     <script>
         (function() {
-            // Cho phép bypass khi kiểm thử hoặc xem trước preview: ?reset=1, ?test=1, ?force=1, ?bypass=1, ?preview=1
-            if (window.__APEX_PREVIEW__ || window.IS_PREVIEW || /[?&](reset|force|bypass|test|preview)=1/.test(window.location.search)) {
-                if (/[?&]reset=1/.test(window.location.search)) {
+            function shouldBypassRedirect() {
+                try {
+                    // 1. Chặn tuyệt đối khi chạy trong iframe (Code Studio, Admin Preview Modal, v.v.)
+                    if (window.self !== window.top || window.frameElement !== null) return true;
+                    // 2. Chế độ Studio / Builder / Preview cờ toàn cục
+                    if (window.__APEX_PREVIEW__ || window.IS_PREVIEW || window.__APEX_BUILDER_ACTIVE__ || window.__APEX_STUDIO__ || window.__APEX_FREEZE_MODE__) return true;
+                    // 3. Parent Window đang ở Admin / Studio / Preview
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            if (window.parent.__APEX_BUILDER_ACTIVE__ || window.parent.__APEX_STUDIO__ || window.parent.__APEX_PREVIEW__ || window.parent.IS_PREVIEW || window.parent.__APEX_ADMIN__) return true;
+                        }
+                    } catch (_) {}
+                    // 4. Tham số URL bypass
+                    var s = window.location.search || '';
+                    if (/[?&](reset|force|bypass|test|preview|draft|admin|studio)=1/i.test(s)) return true;
+                    // 5. Đường dẫn Preview / Studio / Ads / Admin
+                    var p = (window.location.pathname || '').toLowerCase();
+                    if (p.indexOf('/preview') !== -1 || p.indexOf('/studio') !== -1 || p.indexOf('/admin') !== -1 || p.indexOf('/ads') !== -1) return true;
+                    // 6. Quản trị viên đang đăng nhập
+                    if (window.localStorage && (localStorage.getItem('apex_admin_token') || sessionStorage.getItem('apex_admin_token'))) return true;
+                    if (document.cookie && document.cookie.indexOf('apex_admin_session=') !== -1) return true;
+                } catch (_) {}
+                return false;
+            }
+
+            if (shouldBypassRedirect()) {
+                if (/[?&]reset=1/i.test(window.location.search)) {
                     document.cookie = 'apex_lead_registered=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
                     document.cookie = 'apex_lead_phone=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
                     try {
