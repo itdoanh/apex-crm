@@ -227,6 +227,13 @@ func main() {
 	adminHandler := func(w http.ResponseWriter, r *http.Request) {
 		reqPath := r.URL.Path
 
+		// Nếu truy cập /ads hoặc /admin không có dấu gạch chéo cuối -> redirect về /ads/ hoặc /admin/
+		// Để trình duyệt hiểu đúng base path khi load các tài nguyên tương đối (js/, css/)
+		if reqPath == "/ads" || reqPath == "/admin" {
+			http.Redirect(w, r, reqPath+"/", http.StatusMovedPermanently)
+			return
+		}
+
 		// Kiểm tra nếu là yêu cầu file tài nguyên tĩnh con (css, js, map, png, svg...)
 		subPath := strings.TrimPrefix(reqPath, "/admin")
 		subPath = strings.TrimPrefix(subPath, "/ads")
@@ -242,13 +249,31 @@ func main() {
 			for _, target := range candidates {
 				cleanTarget := filepath.Clean(target)
 				if fi, err := os.Stat(cleanTarget); err == nil && !fi.IsDir() {
-					if filepath.Ext(cleanTarget) == ".html" {
+					ext := strings.ToLower(filepath.Ext(cleanTarget))
+					switch ext {
+					case ".html":
 						w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					case ".js":
+						w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+					case ".css":
+						w.Header().Set("Content-Type", "text/css; charset=utf-8")
+					case ".json":
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					case ".svg":
+						w.Header().Set("Content-Type", "image/svg+xml")
+					case ".png":
+						w.Header().Set("Content-Type", "image/png")
+					case ".webp":
+						w.Header().Set("Content-Type", "image/webp")
+					case ".jpg", ".jpeg":
+						w.Header().Set("Content-Type", "image/jpeg")
 					}
 					http.ServeFile(w, r, cleanTarget)
 					return
 				}
 			}
+			http.NotFound(w, r)
+			return
 		}
 
 		// Ưu tiên đọc từ frontend/admin/index.html nếu có trên đĩa
@@ -311,16 +336,30 @@ func main() {
 				return
 			}
 
-			// Nếu là yêu cầu sub-resource (tracker.js, style.css, chucmung.html, hình ảnh...)
+			// Nếu là yêu cầu sub-resource (tracker.js, style.css, chucmung.html, config.json, hình ảnh...)
 			if subPath != "" && subPath != "index.html" {
 				lowerSub := strings.ToLower(subPath)
-				if strings.HasSuffix(lowerSub, ".json") || strings.HasSuffix(lowerSub, ".env") || strings.HasSuffix(lowerSub, ".key") || strings.HasSuffix(lowerSub, ".sql") || strings.HasSuffix(lowerSub, ".exe") {
+				// Bảo vệ file nhạy cảm và binary thực thi, cho phép config.json và tài nguyên tĩnh
+				if strings.Contains(lowerSub, "service-account") || strings.Contains(lowerSub, ".env") || strings.HasSuffix(lowerSub, ".key") || strings.HasSuffix(lowerSub, ".sql") || strings.HasSuffix(lowerSub, ".exe") {
 					http.NotFound(w, r)
 					return
 				}
+
+				// Phục vụ trực tiếp trang chucmung.html, tuyệt đối không redirect vòng lặp vô tận
 				if subPath == "chucmung.html" {
-					http.Redirect(w, r, "/chucmung.html", http.StatusFound)
-					return
+					cmCandidates := []string{
+						filepath.Join("..", "frontend", "landing", "chucmung.html"),
+						filepath.Join("frontend", "landing", "chucmung.html"),
+						filepath.Join("..", "chucmung.html"),
+						"chucmung.html",
+					}
+					for _, cp := range cmCandidates {
+						if fi, err := os.Stat(cp); err == nil && !fi.IsDir() {
+							w.Header().Set("Content-Type", "text/html; charset=utf-8")
+							http.ServeFile(w, r, cp)
+							return
+						}
+					}
 				}
 
 				// Tìm trong landing_files DB
@@ -333,6 +372,8 @@ func main() {
 						w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 					case "html":
 						w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					case "json":
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
 					default:
 						w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 					}
@@ -340,13 +381,17 @@ func main() {
 					return
 				}
 
-				// Fallback sang các thư mục tĩnh của landing
+				// Fallback sang các thư mục tĩnh của landing và admin
 				cleanSub := filepath.Clean(filepath.Base(subPath))
 				candidates := []string{
 					filepath.Join("..", "frontend", "landing", subPath),
 					filepath.Join("frontend", "landing", subPath),
 					filepath.Join("..", "frontend", "landing", cleanSub),
 					filepath.Join("frontend", "landing", cleanSub),
+					filepath.Join("..", "frontend", "admin", subPath),
+					filepath.Join("frontend", "admin", subPath),
+					filepath.Join("static", subPath),
+					filepath.Join("..", "backend", "static", subPath),
 					filepath.Join("..", subPath),
 					subPath,
 					filepath.Join("..", cleanSub),
@@ -358,9 +403,35 @@ func main() {
 						continue
 					}
 					if fi, err := os.Stat(cleanTarget); err == nil && !fi.IsDir() {
+						ext := strings.ToLower(filepath.Ext(cleanTarget))
+						switch ext {
+						case ".html":
+							w.Header().Set("Content-Type", "text/html; charset=utf-8")
+						case ".js":
+							w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+						case ".css":
+							w.Header().Set("Content-Type", "text/css; charset=utf-8")
+						case ".json":
+							w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						case ".svg":
+							w.Header().Set("Content-Type", "image/svg+xml")
+						case ".png":
+							w.Header().Set("Content-Type", "image/png")
+						case ".webp":
+							w.Header().Set("Content-Type", "image/webp")
+						case ".jpg", ".jpeg":
+							w.Header().Set("Content-Type", "image/jpeg")
+						}
 						http.ServeFile(w, r, cleanTarget)
 						return
 					}
+				}
+
+				// QUAN TRỌNG: Nếu là tài nguyên tĩnh có đuôi mở rộng (.js, .css, .png, .jpg, .json, .ico...)
+				// mà không tìm thấy -> trả về 404 ngay, TUYỆT ĐỐI không fallback sang trang Landing HTML!
+				if filepath.Ext(subPath) != "" && filepath.Ext(subPath) != ".html" {
+					http.NotFound(w, r)
+					return
 				}
 			}
 
