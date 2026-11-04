@@ -119,6 +119,36 @@ chore(scope): mô tả
 ```
 Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
 
+**Commit chung với `itdoanh`** — luôn kết thúc message bằng:
+```
+Co-authored-by: itdoanh <itdoanh@users.noreply.github.com>
+Co-authored-by: Cursor <cursoragent@cursor.com>
+```
+
+### Ba quy luật bắt buộc cho AI agent
+
+**1. Đọc trước — sửa sau — đồng bộ**
+
+- Trước khi làm gì cũng phải đọc các file liên quan (mục 1).
+- Làm xong phải cập nhật lại và đồng bộ với các file liên quan: `docs/`, `AGENTS.md`,
+  `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*.mdc`, `CONTRIBUTING.md`, `.env.example`.
+  Đồng bộ tài liệu là **một phần của task**, không phải việc làm thêm cho sau.
+
+**2. AI không tự test vận hành**
+
+- *Được*: check lỗi code (`go build ./...`, `go vet ./...`, parse PowerShell), khởi động
+  lại service, báo cáo trạng thái.
+- *Không được* (trừ khi `itdoanh` nói rõ): submit lead thật, test luồng end-user
+  (đăng nhập CRM, tạo landing, deploy domain, đổi mật khẩu), sửa dữ liệu nghiệp vụ
+  chỉ để "kiểm tra xem có chạy không".
+- Báo cáo phải kết thúc bằng: `🧪 CHƯA TEST vận hành — anh itdoanh vào kiểm tra giúp em`
+
+**3. Không tự ý sửa lan sang**
+
+- Vấn đề ngoài phạm vi task → báo cáo, không tự sửa.
+- Không xoá code/dữ liệu production mà không hỏi `itdoanh`.
+- Deploy / restart production → báo trước khi làm.
+
 ---
 
 ## 5. Bất biến — không được phá
@@ -169,10 +199,14 @@ ssh Administrator@103.124.95.232 -p 22899
 |---|---|
 | Code | `C:\apex` (git clone) |
 | Binary | `C:\apex\backend\apex-server.exe` |
-| Caddy | `C:\caddy\` |
+| Caddy | `C:\caddy\` (v2.8.4 — không dùng `lb_try_count`) |
 | PostgreSQL | `C:\pgsql\bin\psql.exe` |
-| Logs | `C:\caddy\logs\` |
-| Task | `Apex_Backend_Server`, `Apex_Caddy_Server` |
+| Logs | `C:\caddy\logs\` + `C:\apex\backend\logs\server.log` |
+| Backup DB | `C:\backup\apex_leads\` (task hằng ngày 02:00) |
+| Task | `Apex_Backend_Server`, `Apex_Caddy_Server`, `Apex_DB_Backup`, `Apex_Disk_Cleanup` |
+
+> ⚠️ **Server KHÔNG có Go toolchain.** Build binary ở LOCAL rồi `scp` lên server.
+> Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 
 Chi tiết: `docs/DEPLOYMENT.md`.
 

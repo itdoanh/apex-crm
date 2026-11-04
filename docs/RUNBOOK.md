@@ -51,25 +51,34 @@ schtasks /Run /TN "Apex_Backend_Server"
 Chờ 3–5 giây rồi `curl http://127.0.0.1:8080/health`.
 
 ### Nếu backend crash ngay khi start
-Backend không có file log (Task Scheduler nuốt stdout/stderr) → phải chạy tay để xem lỗi:
-```cmd
-cd C:\apex\backend
-apex-server.exe
+Backend **đã có log** tại `C:\apex\backend\logs\server.log` (Task Scheduler được bọc
+`cmd /c ... >> logs\server.log 2>&1` từ 2026-11-04). Đọc log trước:
+```powershell
+Get-Content C:\apex\backend\logs\server.log -Tail 50 -Encoding UTF8
 ```
 Lỗi thường gặp: `không thể khởi tạo database PostgreSQL` → kiểm tra PostgreSQL service đã chạy chưa, `.env` đúng chưa.
+Lỗi `bind: Only one usage of each socket address` → process cũ chưa chết, kill rồi start lại:
+```powershell
+Get-Process -Name "apex-server" | Stop-Process -Force
+```
 
-### Phòng ngừa
-Thêm health check cho Caddy trong `C:\caddy\Caddyfile`:
+### Phòng ngừa ✅ (đã áp dụng)
+`C:\caddy\Caddyfile` đã có health check + retry:
 ```caddyfile
 reverse_proxy 127.0.0.1:8080 {
     header_up Host {host}
-    lb_try_duration 10s
-    lb_try_interval 500ms
-    lb_try_count 5
     health_uri /health
     health_interval 30s
+    health_timeout 5s
+    lb_try_duration 10s
+    lb_try_interval 500ms
 }
 ```
+> ⚠️ **Không dùng `lb_try_count`** — subdirective này chỉ có từ Caddy 2.9+,
+> production chạy 2.8.4 ⇒ `caddy validate` fail ⇒ Caddy không khởi động được.
+
+> ⚠️ **Server KHÔNG có Go toolchain.** Không chạy `build.bat` qua SSH (có `pause` ⇒ treo
+> phiên). Build ở local rồi `scp` binary lên. Xem `docs/DEPLOYMENT.md` mục 1.1.
 
 ---
 
@@ -235,7 +244,9 @@ Nguồn phình to nhất thường là log Caddy:
 ```powershell
 Get-ChildItem C:\caddy\logs -File | ForEach-Object { "{0} {1}MB" -f $_.Name, [math]::Round($_.Length/1MB,1) }
 ```
-Xoá log cũ hoặc chạy `deploy/windows/cleanup_disk_space.ps1`.
+Task `Apex_Disk_Cleanup` (Chủ Nhật 03:00) đã tự dọn: temp, Windows Update cache,
+WER, file `.log` > 50MB, và cắt bớt `server.log` còn 2000 dòng cuối.
+Chạy tay: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\cleanup_disk_space.ps1`
 
 ### RAM / process
 ```powershell
@@ -289,7 +300,21 @@ DELETE FROM admin_sessions WHERE expires_at < NOW() OR is_revoked = TRUE;
 
 ## 10. Khôi phục dữ liệu
 
-### Backup
+### Backup tự động ✅
+Task `Apex_DB_Backup` chạy hằng ngày 02:00 → `C:\backup\apex_leads\apex_leads_YYYYMMDD_HHmm.dump`,
+giữ 7 bản gần nhất. Log: `C:\backup\backup.log`.
+
+```cmd
+dir C:\backup\apex_leads
+powershell -c "Get-Content C:\backup\backup.log -Tail 20"
+```
+
+Chạy tay (không chờ lịch):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\backup_database.ps1
+```
+
+### Backup thủ công
 ```cmd
 set PGPASSWORD=postgres
 C:\pgsql\bin\pg_dump.exe -U postgres -h localhost -d apex_leads -F p -f C:\backup\apex_leads.dump
@@ -302,6 +327,8 @@ C:\pgsql\bin\psql.exe -U postgres -h localhost -d apex_leads -c "DROP SCHEMA pub
 C:\pgsql\bin\pg_restore.exe -U postgres -h localhost -d apex_leads --clean --if-exists C:\backup\apex_leads.dump
 ```
 Restart backend sau khi restore.
+
+> 🚨 **Restore ghi đè dữ liệu hiện tại.** Luôn `pg_dump` bản hiện tại trước khi restore.
 
 ### Lead bị xoá nhầm (chưa có backup)
 Không có cách nào khô ngoài backup — `leads` không dùng soft-delete. Nếu cần, dựng lại từ `analytics_sessions` (chỉ có session đã convert, không có tên/SĐT đầy đủ).
@@ -337,8 +364,13 @@ C:\pgsql\bin\psql.exe -U postgres -h localhost -d apex_leads -t -c "SELECT count
 | Health local | `curl http://127.0.0.1:8080/health` |
 | Health public | `curl https://crm.hanghoaphaisinh.net/health` |
 | Pull code | `cd C:\apex & git pull` |
-| Build | `cd C:\apex\backend & build.bat` |
+| Build (LOCAL, không phải server) | `cd backend & go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .` |
+| Log backend | `powershell -c "Get-Content C:\apex\backend\logs\server.log -Tail 50 -Encoding UTF8"` |
 | Log Caddy | `powershell -c "Get-Content C:\caddy\logs\caddy.log -Tail 50"` |
 | Lỗi Caddy | `powershell -c "Select-String -Path C:\caddy\logs\caddy.log -Pattern ERROR | Select -Last 10"` |
 | Query DB | `set PGPASSWORD=postgres & C:\pgsql\bin\psql.exe -U postgres -h localhost -d apex_leads` |
 | Disk | `powershell -c "Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\""` |
+| Validate Caddyfile | `C:\caddy\caddy.exe validate --config C:\caddy\Caddyfile` |
+| Backup DB (tay) | `powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\backup_database.ps1` |
+| Dọn disk (tay) | `powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\cleanup_disk_space.ps1` |
+| Task list | `schtasks /Query /FO LIST /V | findstr /C:"Apex_"` |
