@@ -182,9 +182,11 @@
         });
 
         function expandAncestorsInLayerTree(nodeId) {
-            if (!astMapper || !astMapper.astMap) return;
+            window.layerExpandedState = window.layerExpandedState || {};
+            if (!astMapper || !astMapper.astMap || !nodeId) return;
             let cur = astMapper.astMap[nodeId];
             while (cur && cur.parentId) {
+                window.layerExpandedState[cur.parentId] = true;
                 layerExpandedState[cur.parentId] = true;
                 cur = astMapper.astMap[cur.parentId];
             }
@@ -226,7 +228,7 @@
             // Cập nhật bảng thuộc tính Visual Inspector theo loại thẻ
             populateInspectorWithNode(data);
 
-            // Đồng bộ cây Layer DOM
+            // Đồng bộ cây Layer DOM: mở bung toàn bộ cây cha và cuộn đến dòng layer tương ứng
             expandAncestorsInLayerTree(data.nodeId);
             renderAstLayerTree();
             setTimeout(() => {
@@ -236,8 +238,10 @@
                 }
             }, 50);
 
-            // Tự động chuyển sang tab 'content' phù hợp với loại thẻ (nếu đang ở tab 'css' thì giữ nguyên và cập nhật)
-            if (currentInspTab === 'css') {
+            // Giữ nguyên tab nếu người dùng đang ở tab 'layers' hoặc 'css', ngược lại mới tự động chuyển sang 'content'
+            if (currentInspTab === 'layers') {
+                if (typeof renderAstLayerTree === 'function') renderAstLayerTree();
+            } else if (currentInspTab === 'css') {
                 if (typeof renderCssInspectorTab === 'function') renderCssInspectorTab();
             } else {
                 switchInspectorTab('content');
@@ -341,6 +345,27 @@
                     editorContainer.classList.remove('ring-1', 'ring-cyan-400');
                 }, 800);
             }
+        }
+
+        // Tìm node AST chính xác bao bọc vị trí con trỏ chuột trong Code Editor
+        function findNodeAtOffset(offset) {
+            if (!astMapper || !astMapper.astMap || offset === undefined || offset === null) return null;
+            let target = null;
+            let minLen = Infinity;
+            for (let id in astMapper.astMap) {
+                const node = astMapper.astMap[id];
+                if (node.startOffset !== undefined) {
+                    const end = node.endOffset !== undefined ? node.endOffset : (node.openTagEnd || (node.startOffset + 10));
+                    if (node.startOffset <= offset && offset <= end) {
+                        const len = end - node.startOffset;
+                        if (len < minLen) {
+                            minLen = len;
+                            target = node;
+                        }
+                    }
+                }
+            }
+            return target;
         }
 
         // Chuyển đổi 3 chế độ xem Studio: Code Only | Split 2-Way | Visual Builder
@@ -463,7 +488,16 @@
             });
 
             if (tab === 'layers') {
+                if (selectedAstNodeId && typeof expandAncestorsInLayerTree === 'function') {
+                    expandAncestorsInLayerTree(selectedAstNodeId);
+                }
                 renderAstLayerTree();
+                if (selectedAstNodeId) {
+                    setTimeout(() => {
+                        const row = document.getElementById('layer-row-' + selectedAstNodeId);
+                        if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }, 50);
+                }
             } else if (tab === 'css') {
                 renderCssInspectorTab();
             }
@@ -1411,6 +1445,128 @@
             renderActiveCssProperties();
         }
 
+        // Trích xuất toàn bộ CSS thực tế đang áp dụng trên thẻ (Từ Responsive AST, Inline Style, StyleSheet Rules & Live Computed Styles)
+        function extractAppliedCssForNode(nodeId) {
+            const activeStyles = {};
+            if (!nodeId) return activeStyles;
+
+            // 1. Responsive Styles (AST Mapper PC / Mobile)
+            if (typeof studioDeviceMode !== 'undefined' && studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles) {
+                Object.assign(activeStyles, astMapper.getMobileStyles(nodeId) || {});
+            } else if (typeof astMapper !== 'undefined' && astMapper.getPCStyles) {
+                Object.assign(activeStyles, astMapper.getPCStyles(nodeId) || {});
+            }
+
+            // 2. Inline Style attribute trên thẻ
+            const node = (typeof astMapper !== 'undefined' && astMapper.astMap) ? astMapper.astMap[nodeId] : null;
+            if (node && node.attrs && node.attrs['style']) {
+                const inlineStr = node.attrs['style'].value || '';
+                inlineStr.split(';').forEach(pair => {
+                    const idx = pair.indexOf(':');
+                    if (idx > -1) {
+                        const prop = pair.substring(0, idx).trim().toLowerCase();
+                        const val = pair.substring(idx + 1).trim();
+                        if (prop && val && !activeStyles[prop]) {
+                            activeStyles[prop] = val;
+                        }
+                    }
+                });
+            }
+
+            // 3. Truy xuất phần tử DOM thực trong preview Iframe
+            const iframe = document.getElementById('csPreviewIframe');
+            let el = null;
+            let computed = null;
+            try {
+                if (iframe && iframe.contentDocument) {
+                    el = iframe.contentDocument.querySelector('[data-ve-id="' + nodeId + '"]');
+                    if (el && iframe.contentWindow) {
+                        computed = iframe.contentWindow.getComputedStyle(el);
+                    }
+                }
+            } catch(e) {}
+
+            // A. Quét rules từ styleSheets (Tailwind, <style>, stylesheets)
+            if (el && iframe && iframe.contentDocument) {
+                try {
+                    const sheets = iframe.contentDocument.styleSheets;
+                    for (let s = 0; s < sheets.length; s++) {
+                        try {
+                            const rules = sheets[s].cssRules || sheets[s].rules;
+                            if (!rules) continue;
+                            for (let r = 0; r < rules.length; r++) {
+                                const rule = rules[r];
+                                if (rule.selectorText) {
+                                    let isMatch = false;
+                                    try {
+                                        isMatch = el.matches(rule.selectorText);
+                                    } catch(eSel) {}
+
+                                    if (isMatch) {
+                                        const st = rule.style;
+                                        if (st && st.length) {
+                                            for (let p = 0; p < st.length; p++) {
+                                                const propName = st[p];
+                                                if (!propName || propName.startsWith('--tw-')) continue;
+                                                if (!activeStyles[propName]) {
+                                                    let v = st.getPropertyValue(propName);
+                                                    if (v && v.includes('var(') && computed) {
+                                                        const cv = computed.getPropertyValue(propName);
+                                                        if (cv) v = cv;
+                                                    }
+                                                    if (v) activeStyles[propName] = v.trim();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch(eSheet) {}
+                    }
+                } catch(e) {}
+            }
+
+            // B. Quét và bổ sung các thuộc tính thị giác trực quan thực tế từ getComputedStyle
+            if (computed) {
+                const visualProps = [
+                    'color', 'background-color', 'background-image',
+                    'font-size', 'font-weight', 'font-family', 'line-height', 'letter-spacing', 'text-align',
+                    'display', 'flex-direction', 'justify-content', 'align-items', 'gap',
+                    'width', 'height', 'max-width', 'min-width',
+                    'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                    'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+                    'border-width', 'border-style', 'border-color', 'border-radius',
+                    'box-shadow', 'opacity', 'position', 'top', 'right', 'bottom', 'left', 'z-index',
+                    'overflow', 'cursor', 'transform', 'transition'
+                ];
+
+                visualProps.forEach(prop => {
+                    if (activeStyles[prop]) return;
+                    const val = computed.getPropertyValue(prop);
+                    if (!val) return;
+
+                    const isDefault = (
+                        (val === 'none' && ['box-shadow', 'background-image', 'transform', 'transition'].includes(prop)) ||
+                        (val === 'normal' && ['letter-spacing'].includes(prop)) ||
+                        (val === 'auto' && ['z-index', 'top', 'right', 'bottom', 'left', 'cursor'].includes(prop)) ||
+                        (val === 'static' && prop === 'position') ||
+                        (val === 'visible' && prop === 'overflow') ||
+                        (val === '1' && prop === 'opacity') ||
+                        ((val === 'rgba(0, 0, 0, 0)' || val === 'transparent') && prop === 'background-color') ||
+                        ((val === '0px' || val === '0') && (prop.startsWith('border') || prop.startsWith('margin') || prop.startsWith('padding') || prop === 'gap')) ||
+                        (val === 'none' && prop === 'border-style')
+                    );
+
+                    const coreProps = ['color', 'font-size', 'font-weight', 'display'];
+                    if (coreProps.includes(prop) || !isDefault) {
+                        activeStyles[prop] = val.trim();
+                    }
+                });
+            }
+
+            return activeStyles;
+        }
+
         function renderActiveCssProperties() {
             const listEl = document.getElementById('inspActiveCssList');
             const countEl = document.getElementById('cssActivePropsCount');
@@ -1422,45 +1578,30 @@
                 return;
             }
 
-            // Lấy toàn bộ CSS từ:
-            // 1. Responsive Styles (AST Mapper PC / Mobile)
-            let activeStyles = {};
-            if (studioDeviceMode === 'mobile' && astMapper.getMobileStyles) {
-                Object.assign(activeStyles, astMapper.getMobileStyles(selectedAstNodeId) || {});
-            } else if (astMapper.getPCStyles) {
-                Object.assign(activeStyles, astMapper.getPCStyles(selectedAstNodeId) || {});
-            }
-
-            // 2. Inline Style attribute trên thẻ
-            const node = astMapper.astMap[selectedAstNodeId];
-            if (node && node.attrs && node.attrs['style']) {
-                const inlineStr = node.attrs['style'].value || '';
-                inlineStr.split(';').forEach(pair => {
-                    const idx = pair.indexOf(':');
-                    if (idx > -1) {
-                        const prop = pair.substring(0, idx).trim();
-                        const val = pair.substring(idx + 1).trim();
-                        if (prop && val && !activeStyles[prop]) {
-                            activeStyles[prop] = val;
-                        }
-                    }
-                });
-            }
-
+            const activeStyles = extractAppliedCssForNode(selectedAstNodeId);
             const propKeys = Object.keys(activeStyles);
             if (countEl) countEl.innerText = `${propKeys.length} thuộc tính`;
 
             if (propKeys.length === 0) {
-                listEl.innerHTML = '<div class="text-[10px] text-slate-500 italic py-2 text-center">Chưa có thuộc tính CSS riêng. Thêm thuộc tính hoặc chọn hiệu ứng phía trên.</div>';
+                listEl.innerHTML = '<div class="text-[10px] text-slate-500 italic py-2 text-center">Chưa có thuộc tính CSS riêng biệt</div>';
                 return;
+            }
+
+            let customProps = {};
+            if (typeof studioDeviceMode !== 'undefined' && studioDeviceMode === 'mobile' && typeof astMapper !== 'undefined' && astMapper.getMobileStyles) {
+                customProps = astMapper.getMobileStyles(selectedAstNodeId) || {};
+            } else if (typeof astMapper !== 'undefined' && astMapper.getPCStyles) {
+                customProps = astMapper.getPCStyles(selectedAstNodeId) || {};
             }
 
             let html = '';
             propKeys.forEach(prop => {
                 const val = activeStyles[prop];
+                const isCustom = (customProps[prop] !== undefined && customProps[prop] !== null);
                 html += `
-                    <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1.5 hover:border-slate-700 transition">
+                    <div class="flex items-center gap-1.5 bg-slate-900 border ${isCustom ? 'border-cyan-500/50 bg-slate-900/90' : 'border-slate-800'} rounded-lg p-1.5 hover:border-slate-700 transition">
                         <span class="text-[11px] font-mono text-cyan-400 font-semibold w-28 truncate" title="${prop}">${prop}</span>
+                        ${isCustom ? '<span class="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex-shrink-0" title="Tùy biến riêng cho thiết bị này">Tùy biến</span>' : ''}
                         <input type="text" value="${escapeHTML(val)}" onchange="onCssPropertyEdit('${prop}', this.value)" class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
                         <button type="button" onclick="removeCssProperty('${prop}')" class="text-slate-500 hover:text-rose-400 p-1 rounded transition" title="Xóa thuộc tính CSS">
                             <i class="fa-solid fa-trash-can text-[10px]"></i>
@@ -1478,9 +1619,21 @@
 
         function removeCssProperty(prop) {
             if (!selectedAstNodeId || !prop) return;
+            // 1. Xóa khỏi AST responsive styles
             const styleObj = {};
             styleObj[prop] = null;
             applyAstStyleChange(selectedAstNodeId, styleObj, `Xóa CSS ${prop}`);
+
+            // 2. Xóa khỏi inline style nếu có
+            const node = (typeof astMapper !== 'undefined' && astMapper.astMap) ? astMapper.astMap[selectedAstNodeId] : null;
+            if (node && node.attrs && node.attrs['style']) {
+                const sVal = node.attrs['style'].value || '';
+                const reg = new RegExp('(^|;)\\s*' + prop.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '\\s*:[^;]*(;|$)', 'ig');
+                const newStyle = sVal.replace(reg, '$1').replace(/^;\s*/, '').replace(/;\s*;+/g, ';').trim();
+                const updated = astMapper.spliceAttribute(selectedAstNodeId, 'style', newStyle);
+                syncCodeEditorFromAst(updated);
+            }
+
             renderActiveCssProperties();
         }
 

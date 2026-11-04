@@ -159,21 +159,27 @@
         }
 
         function toggleAllLayers(expanded) {
+            window.layerExpandedState = window.layerExpandedState || {};
             for (let id in astMapper.astMap) {
-                layerExpandedState[id] = !!expanded;
+                window.layerExpandedState[id] = !!expanded;
+                if (typeof layerExpandedState !== 'undefined') layerExpandedState[id] = !!expanded;
             }
             renderAstLayerTree();
         }
 
         function toggleNodeExpand(nodeId, e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
-            layerExpandedState[nodeId] = !isNodeExpanded(nodeId);
+            window.layerExpandedState = window.layerExpandedState || {};
+            const nextVal = !isNodeExpanded(nodeId);
+            window.layerExpandedState[nodeId] = nextVal;
+            if (typeof layerExpandedState !== 'undefined') layerExpandedState[nodeId] = nextVal;
             renderAstLayerTree();
         }
 
         function isNodeExpanded(nodeId, depth = 0) {
             if (layerFilterKeyword) return true; // Bung hết khi search
-            if (layerExpandedState[nodeId] !== undefined) return layerExpandedState[nodeId];
+            const state = window.layerExpandedState || (typeof layerExpandedState !== 'undefined' ? layerExpandedState : {});
+            if (state[nodeId] !== undefined) return state[nodeId];
             return depth <= 3; // Mặc định mở 3 cấp đầu tiên
         }
 
@@ -259,7 +265,7 @@
                          onclick="selectAstNode('${node.id}', true)"
                          oncontextmenu="event.preventDefault(); event.stopPropagation(); selectAstNode('${node.id}', true); openContextMenu(event.clientX, event.clientY, '${node.id}');"
                          style="padding-left: ${indentPx}px;"
-                         class="group py-1 px-1.5 rounded-lg cursor-pointer transition select-none flex items-center justify-between gap-1 text-[11px] ${isSelected ? 'layer-row-active bg-cyan-950/90 text-cyan-100 border border-cyan-500 shadow-md ring-1 ring-cyan-500/50' : 'hover:bg-slate-850/80 text-slate-300'} ${isHidden ? 'opacity-50' : ''}">
+                         class="group py-1 px-1.5 rounded-lg cursor-pointer transition select-none flex items-center justify-between gap-1 text-[11px] ${isSelected ? 'layer-row-active bg-cyan-600/30 text-white border-2 border-cyan-400 shadow-lg shadow-cyan-950/80 ring-2 ring-cyan-400/50 font-bold' : 'hover:bg-slate-850/80 text-slate-300'} ${isHidden ? 'opacity-50' : ''}">
 
                         <!-- Cột Trái: Toggle Chevron, Icon Loại, Tên Thẻ, Preview, Badges -->
                         <div class="flex items-center gap-1.5 truncate flex-1 min-w-0">
@@ -274,7 +280,10 @@
                             <i class="${info.icon} text-[10px] flex-shrink-0"></i>
 
                             <!-- Tên thẻ Tag Name -->
-                            <span class="font-bold text-[11px] ${isSelected ? 'text-white' : 'text-slate-200'} ${isHidden ? 'line-through' : ''}">${node.tag}</span>
+                            <span class="font-bold text-[11px] ${isSelected ? 'text-cyan-300 font-extrabold' : 'text-slate-200'} ${isHidden ? 'line-through' : ''}">${node.tag}</span>
+
+                            <!-- Badge ĐANG CHỌN khi active -->
+                            ${isSelected ? '<span class="px-1.5 py-0.2 rounded bg-cyan-500 text-slate-950 font-black text-[8px] uppercase tracking-wider flex-shrink-0 shadow-sm"><i class="fa-solid fa-check text-[7px] mr-0.5"></i>CHỌN</span>' : ''}
 
                             <!-- Preview trích đoạn text hoặc class/id -->
                             ${info.preview ? `<span class="text-[10px] text-slate-400 truncate flex-shrink min-w-0">${escapeHTML(info.preview)}</span>` : ''}

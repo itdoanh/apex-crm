@@ -523,6 +523,23 @@
             }
         }
 
+        // Bắt sự kiện click chuột hoặc di chuyển con trỏ trong Code Editor để đồng bộ ngược chọn Layer và Gizmo
+        function onCodeEditorClick(e) {
+            const editor = document.getElementById('csCodeEditor');
+            if (!editor || typeof findNodeAtOffset !== 'function' || typeof selectAstNode !== 'function') return;
+            const offset = editor.selectionStart;
+            const node = findNodeAtOffset(offset);
+            if (node && node.id && node.id !== selectedAstNodeId) {
+                selectAstNode(node.id, true);
+            }
+        }
+
+        function onCodeEditorKeyUp(e) {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                onCodeEditorClick(e);
+            }
+        }
+
         // Lưu mã nguồn (100% nguyên bản từ Shadow Source / AST, KHÔNG lấy từ DOM outerHTML)
         async function saveStudioCode() {
             if (!currentStudioLanding) return;
