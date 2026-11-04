@@ -265,6 +265,29 @@ Thêm vào `ast-mapper.getHelperScript()` (inject vào preview iframe):
 `__APEX_STUDIO_LANDING_ID__`, `__APEX_STUDIO_DOMAIN__`, `__APEX_STUDIO_LANDING_NAME__` —
 dùng để ghi đè `window.APEX_LANDING_CONFIG` của template gốc.
 
+> ⚠️ **Bẫy ghi đè config (đã fix 2026-11-05, commit `897f57a`):**
+> Helper script của Studio được inject ở **đầu** `<head>`, nhưng script trong HTML
+> template thường gán `window.APEX_LANDING_CONFIG = { landing_id: 'mxv_080_online', ... }`
+> ở **phía sau** → ghi đè mất giá trị đã ép ⇒ preview hiển thị sai landing.
+>
+> Cách sửa: dùng `Object.defineProperty(window, 'APEX_LANDING_CONFIG', { get, set })`
+> với setter mỗi lần HTML gán lại config thì tự ép lại `landing_id` / `domain` / `name`
+> của landing đang mở trong Studio. **Không được** quay lại cách gán thẳng
+> `window.APEX_LANDING_CONFIG = Object.assign(...)` vì sẽ tái diễn lỗi trên.
+
+### Upload file trong File Manager
+
+| Bước | API | Ghi chú |
+|---|---|---|
+| Chọn thư mục đích | — | Dropdown `studioUploadFolder` được populate từ `populateFolderDropdowns()` |
+| Upload | `POST /api/landings/files/upload` | FormData: `page_id`, `domain`, `folder`, `files[]` (multi-file) |
+| Lưu / Deploy | `POST /api/landings/files/save` | Batch toàn bộ cây file |
+| Deploy lên domain | `POST /api/landings/deploy` | Kèm `files[]` → đồng bộ asset nhị phân lên domain đích |
+
+> ⚠️ `populateFolderDropdowns()` phải populate **cả** `studioUploadFolder`.
+> Bỏ sót → dropdown thư mục đích chỉ có "(Thư mục gốc /)" ⇒ không upload được
+> vào thư mục con. Xem `docs/API.md` mục upload + `docs/LANDING.md` mục 6.
+
 ---
 
 ## 6. Quy trình sửa UI (quan trọng)

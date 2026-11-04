@@ -258,6 +258,12 @@ Deploy landing lên domain/path. Body:
 >
 > Response bổ sung field `deployed_files` (số file đã deploy).
 
+> 💡 **Upload nhị phân không đi qua `/files/save`**: file ảnh/video/audio đã lưu sẵn
+> trong `landing_files` lúc upload (dạng `data:<mime>;base64,...`), nên frontend
+> loại chúng khỏi payload batch (`isBinaryStudioPath()`) để tránh gửi base64
+> khổng lồ lên DB. Deploy vẫn giữ được các file này vì
+> `SyncLandingFilesToDomain()` copy từ bản gốc sang domain đích.
+
 ### `GET /api/landing/config` — **Public**
 Trả config của landing mặc định (dùng để inject script & feature flag):
 ```json

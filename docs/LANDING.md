@@ -264,6 +264,17 @@ Mỗi landing có một cây file riêng trong bảng `landing_files`, quản l�
 > 💡 Upload vào domain rỗng (bản gốc) sẽ tự động tạo bản sao cho domain hiện tại.
 > Deploy sang domain mới sẽ copy toàn bộ cây file sang domain đó.
 
+> ⚠️ **Lỗi đã gặp & đã fix (2026-11-05)**:
+> - `populateFolderDropdowns()` bỏ sót `studioUploadFolder` ⇒ dropdown thư mục đích
+>   chỉ có "(Thư mục gốc /)" ⇒ **không upload được vào thư mục con**. Đã sửa ở
+>   `frontend/admin/js/studio/file-manager.js` (commit `5185228`).
+> - `reloadStudioFilesAfterMutation()` không gán lại `currentStudioFiles` ⇒ cây file
+>   hiển thị dữ liệu cũ sau upload. Đã sửa (commit `b006f59`).
+> - Preview Code Studio hiện sai landing (`mxv_080_online` thay vì landing đang mở)
+>   do script template gán `window.APEX_LANDING_CONFIG` **sau** helper script của
+>   Studio trong `<head>`. Đã sửa bằng `Object.defineProperty` setter
+>   (commit `897f57a`, xem `docs/FRONTEND.md` mục "Code Studio preview — cách ly").
+
 ### UTM chuẩn
 
 | Tham số | Ý nghĩa | Ví dụ |
