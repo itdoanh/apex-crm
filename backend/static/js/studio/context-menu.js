@@ -236,7 +236,7 @@
             try {
                 const iframe = document.getElementById('csPreviewIframe');
                 if (iframe && iframe.contentDocument) {
-                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    const el = iframe.contentDocument.querySelector(`[data-ve-id="${node ? node.id : ''}"]`);
                     if (el && el.parentNode && el.parentNode.firstElementChild !== el) {
                         el.parentNode.insertBefore(el, el.parentNode.firstElementChild);
                     }
@@ -265,7 +265,7 @@
             try {
                 const iframe = document.getElementById('csPreviewIframe');
                 if (iframe && iframe.contentDocument) {
-                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    const el = iframe.contentDocument.querySelector(`[data-ve-id="${node ? node.id : ''}"]`);
                     if (el && el.parentNode) {
                         el.parentNode.appendChild(el);
                     }

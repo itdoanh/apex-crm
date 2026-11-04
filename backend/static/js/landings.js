@@ -798,6 +798,32 @@
                             const el = pDoc.getElementById('infoDurationBottom') || pDoc.querySelector('[data-config*="box_3_bottom"]');
                             if (el && el.textContent.trim()) document.getElementById('cfgBox3Bottom').value = el.textContent.trim();
                         }
+                        if (!document.getElementById('cfgTargetDate').value) {
+                            const matchTd = currentHtmlForExtract.match(/(?:let|const|var)\s+targetDate\s*=\s*new\s*Date\s*\(\s*["']([^"']+)["']\s*\)/i) ||
+                                            currentHtmlForExtract.match(/targetDate\s*=\s*new\s*Date\s*\(\s*["']([^"']+)["']\s*\)/i);
+                            if (matchTd && matchTd[1]) {
+                                document.getElementById('cfgTargetDate').value = matchTd[1].trim();
+                            } else {
+                                const matchConfig = currentHtmlForExtract.match(/(?:["']?target_date["']?|["']?targetDate["']?)\s*:\s*["']([^"']+)["']/i);
+                                if (matchConfig && matchConfig[1]) {
+                                    document.getElementById('cfgTargetDate').value = matchConfig[1].trim();
+                                } else {
+                                    const tdEl = pDoc.querySelector('[data-target-date]') || pDoc.querySelector('[data-countdown]');
+                                    if (tdEl) {
+                                        const val = tdEl.getAttribute('data-target-date') || tdEl.getAttribute('data-countdown');
+                                        if (val) document.getElementById('cfgTargetDate').value = val.trim();
+                                    }
+                                }
+                            }
+                        }
+                        if (!document.getElementById('cfgEventTitle').value) {
+                            const el = pDoc.getElementById('modalEventCourse') || pDoc.querySelector('[data-config*="khoa_hoc.ten"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgEventTitle').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgEventQuota').value) {
+                            const el = pDoc.getElementById('infoEventQuota') || pDoc.querySelector('[data-config*="khoa_hoc.suat_hoc"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgEventQuota').value = el.textContent.trim();
+                        }
                     } catch(ex) {}
                 }
 
@@ -1466,9 +1492,35 @@
                         } catch (e) {}
                     });
 
+                    // 5. Áp dụng Khóa học & Suất học
+                    const valEvTitle = document.getElementById('cfgEventTitle')?.value?.trim();
+                    if (valEvTitle) {
+                        const el = doc.getElementById('modalEventCourse') || doc.querySelector('[data-config*="khoa_hoc.ten"]');
+                        if (el) { el.textContent = valEvTitle; hasModified = true; }
+                    }
+                    const valEvQuota = document.getElementById('cfgEventQuota')?.value?.trim();
+                    if (valEvQuota) {
+                        const el = doc.getElementById('infoEventQuota') || doc.querySelector('[data-config*="khoa_hoc.suat_hoc"]');
+                        if (el) { el.textContent = valEvQuota; hasModified = true; }
+                    }
+
+                    // 6. Áp dụng Countdown Target Date
+                    const valTargetDate = document.getElementById('cfgTargetDate')?.value?.trim();
+                    if (valTargetDate) {
+                        hasModified = true;
+                    }
+
                     if (hasModified) {
-                        const updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-                        await fetch('/api/landings/save-code', {
+                        let updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+                        // Đồng bộ trực tiếp biến đếm ngược targetDate và window.APEX_LANDING_CONFIG trong mã HTML
+                        if (valTargetDate) {
+                            updatedHtml = updatedHtml.replace(/(let|const|var)\s+targetDate\s*=\s*new\s*Date\s*\(\s*["'][^"']+["']\s*\)/gi, `$1 targetDate = new Date("${valTargetDate}")`);
+                            updatedHtml = updatedHtml.replace(/(["']?target_date["']?\s*:\s*["'])[^"']+(["'])/gi, `$1${valTargetDate}$2`);
+                            updatedHtml = updatedHtml.replace(/(data-target-date\s*=\s*["'])[^"']+(["'])/gi, `$1${valTargetDate}$2`);
+                        }
+
+                        await fetch('/api/landings/code', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -1477,7 +1529,7 @@
                                 code_html: updatedHtml
                             })
                         });
-                        await fetch('/api/landings/file/save', {
+                        await fetch('/api/landings/file', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -1489,7 +1541,7 @@
                         });
                         if (typeof studioFileContents !== 'undefined') {
                             studioFileContents['index.html'] = updatedHtml;
-                            if (typeof activeStudioFile !== 'undefined' && activeStudioFile === 'index.html') {
+                            if (typeof activeStudioFile === 'undefined' || activeStudioFile === 'index.html') {
                                 const ed = document.getElementById('csCodeEditor');
                                 if (ed) ed.value = updatedHtml;
                             }

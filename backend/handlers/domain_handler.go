@@ -383,6 +383,11 @@ func (h *DomainHandler) HandleDeployRoute(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Đồng bộ toàn bộ tệp tin, hình ảnh và thư mục của landing page sang tên miền đích
+	if d, err := h.store.GetDomain(req.DomainID); err == nil && d != nil && d.Domain != "" {
+		_ = h.store.SyncLandingFilesToDomain("", d.Domain, req.LandingID)
+	}
+
 	// Làm mới RAM Cache ngay lập tức
 	_ = h.domainCache.Reload(context.Background())
 

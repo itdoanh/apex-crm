@@ -193,6 +193,50 @@
 
             <!-- Center Panel: Code Editor (Surgical Non-Destructive Source Editor) -->
             <div id="csEditorContainer" class="flex-1 flex flex-col bg-slate-950 overflow-hidden relative transition-all duration-200">
+                <!-- Floating In-Editor Search & Replace Controller (Ctrl + F / Ctrl + H) -->
+                <div id="csSearchReplaceWidget" class="hidden absolute top-3 right-6 z-30 bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl p-2.5 flex flex-col gap-2 backdrop-blur-md text-xs font-sans w-84 select-none transition-all">
+                    <!-- Row 1: Search Input & Controls -->
+                    <div class="flex items-center gap-1.5">
+                        <button type="button" id="btnToggleReplacePanel" onclick="toggleStudioReplace()" class="p-1.5 text-slate-400 hover:text-cyan-400 rounded hover:bg-slate-800 transition" title="Mở/Đóng phần thay thế (Ctrl + H)">
+                            <i id="iconToggleReplace" class="fa-solid fa-chevron-right text-[10px]"></i>
+                        </button>
+                        <div class="relative flex-1 flex items-center">
+                            <input type="text" id="csSearchInput" placeholder="Tìm kiếm... (Enter / Shift+Enter)"
+                                oninput="runStudioSearch(0)"
+                                onkeydown="handleSearchInputKeyDown(event)"
+                                class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-2.5 pr-14 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 placeholder-slate-500">
+                            <span id="csSearchCount" class="absolute right-2 text-[10px] text-slate-400 font-mono select-none">0/0</span>
+                        </div>
+                        <button type="button" id="btnSearchMatchCase" onclick="toggleSearchMatchCase()" class="px-1.5 py-1 text-slate-400 hover:text-slate-200 border border-transparent rounded hover:bg-slate-800 text-[11px] font-mono transition" title="Khớp chữ hoa/thường (Match Case)">
+                            Aa
+                        </button>
+                        <button type="button" id="btnSearchPrev" onclick="navigateSearchResult(-1)" class="p-1.5 text-slate-400 hover:text-cyan-400 rounded hover:bg-slate-800 transition" title="Kết quả trước (Shift + Enter)">
+                            <i class="fa-solid fa-arrow-up text-[11px]"></i>
+                        </button>
+                        <button type="button" id="btnSearchNext" onclick="navigateSearchResult(1)" class="p-1.5 text-slate-400 hover:text-cyan-400 rounded hover:bg-slate-800 transition" title="Kết quả kế tiếp (Enter)">
+                            <i class="fa-solid fa-arrow-down text-[11px]"></i>
+                        </button>
+                        <button type="button" id="btnSearchClose" onclick="closeStudioSearch()" class="p-1.5 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition ml-1" title="Đóng tìm kiếm (Esc)">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+
+                    <!-- Row 2: Replace Input & Action Buttons (Ctrl+H) -->
+                    <div id="csReplaceRow" class="hidden flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
+                        <div class="relative flex-1">
+                            <input type="text" id="csReplaceInput" placeholder="Thay thế bằng..."
+                                onkeydown="handleReplaceInputKeyDown(event)"
+                                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 placeholder-slate-500">
+                        </div>
+                        <button type="button" id="btnReplaceOne" onclick="executeReplaceCurrent()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-[11px] font-medium border border-slate-700 transition" title="Thay thế kết quả hiện tại">
+                            Thay thế
+                        </button>
+                        <button type="button" id="btnReplaceAll" onclick="executeReplaceAll()" class="px-2.5 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 hover:text-white rounded-lg text-[11px] font-semibold border border-cyan-800 transition" title="Thay thế toàn bộ trong file">
+                            Tất cả
+                        </button>
+                    </div>
+                </div>
+
                 <div class="flex-1 flex overflow-hidden">
                     <!-- Line Numbers gutter -->
                     <div id="csLineNumbers" class="w-12 bg-slate-900/60 border-r border-slate-800/80 py-3 px-2 text-right text-slate-600 font-mono text-xs select-none overflow-hidden leading-6">
@@ -773,7 +817,7 @@
                             <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 space-y-2">
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn đích (href)</label>
-                                    <input type="text" id="inspAttrHref" onchange="onInspectorAttrChange('href', this.value)" placeholder="https://... hoặc #lien-he" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    <input type="text" id="inspAttrHref" oninput="onInspectorAttrChange('href', this.value)" onchange="onInspectorAttrChange('href', this.value)" placeholder="https://... hoặc #lien-he" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
                                 </div>
                                 <div class="grid grid-cols-2 gap-2">
                                     <div>
@@ -812,11 +856,11 @@
                             <div class="space-y-2">
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn ảnh (src)</label>
-                                    <input type="text" id="inspAttrSrc" onchange="onInspectorAttrChange('src', this.value); updateImagePreviewThumbnail(this.value);" placeholder="/assets/img/... hoặc URL" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400">
+                                    <input type="text" id="inspAttrSrc" oninput="onInspectorAttrChange('src', this.value); updateImagePreviewThumbnail(this.value);" onchange="onInspectorAttrChange('src', this.value); updateImagePreviewThumbnail(this.value);" placeholder="/assets/img/... hoặc URL" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Mô tả thay thế (alt)</label>
-                                    <input type="text" id="inspAttrAlt" onchange="onInspectorAttrChange('alt', this.value)" placeholder="Mô tả nội dung ảnh..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-400">
+                                    <input type="text" id="inspAttrAlt" oninput="onInspectorAttrChange('alt', this.value)" onchange="onInspectorAttrChange('alt', this.value)" placeholder="Mô tả nội dung ảnh..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-400">
                                 </div>
                             </div>
 
@@ -860,12 +904,12 @@
                                     </div>
                                     <div>
                                         <label class="block text-[10px] text-slate-400 mb-0.5">Tên trường (name)</label>
-                                        <input type="text" id="inspInputName" onchange="onInspectorAttrChange('name', this.value)" placeholder="phone / fullname..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                        <input type="text" id="inspInputName" oninput="onInspectorAttrChange('name', this.value)" onchange="onInspectorAttrChange('name', this.value)" placeholder="phone / fullname..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
                                     </div>
                                 </div>
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Gợi ý mờ (Placeholder)</label>
-                                    <input type="text" id="inspInputPlaceholder" onchange="onInspectorAttrChange('placeholder', this.value)" placeholder="Nhập số điện thoại..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <input type="text" id="inspInputPlaceholder" oninput="onInspectorAttrChange('placeholder', this.value)" onchange="onInspectorAttrChange('placeholder', this.value)" placeholder="Nhập số điện thoại..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
                                 </div>
                                 <div class="flex items-center justify-between pt-1">
                                     <label class="text-[11px] text-slate-300 font-semibold flex items-center gap-2 cursor-pointer">
@@ -882,7 +926,7 @@
                                 <span class="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Cấu Hình Video &amp; Nhúng:</span>
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Đường dẫn Video / Iframe (src)</label>
-                                    <input type="text" id="inspVideoSrc" onchange="onInspectorVideoSrcChange(this.value)" placeholder="https://www.youtube.com/embed/... hoặc .mp4" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-rose-400">
+                                    <input type="text" id="inspVideoSrc" oninput="onInspectorVideoSrcChange(this.value)" onchange="onInspectorVideoSrcChange(this.value)" placeholder="https://www.youtube.com/embed/... hoặc .mp4" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-rose-400">
                                 </div>
                                 <div class="grid grid-cols-2 gap-2 text-[10px]">
                                     <button type="button" onclick="applyQuickTypographyClass('aspect-video')" class="p-1.5 rounded bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 text-center">Tỷ lệ 16:9 Chuẩn</button>
@@ -931,11 +975,11 @@
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Mã id</label>
-                                    <input type="text" id="inspAttrId" onchange="onInspectorAttrChange('id', this.value)" placeholder="id-phan-tu" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
+                                    <input type="text" id="inspAttrId" oninput="onInspectorAttrChange('id', this.value)" onchange="onInspectorAttrChange('id', this.value)" placeholder="id-phan-tu" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] text-slate-400 mb-0.5">Chú thích title</label>
-                                    <input type="text" id="inspAttrTitle" onchange="onInspectorAttrChange('title', this.value)" placeholder="Tooltip text..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <input type="text" id="inspAttrTitle" oninput="onInspectorAttrChange('title', this.value)" onchange="onInspectorAttrChange('title', this.value)" placeholder="Tooltip text..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
                                 </div>
                             </div>
                         </div>

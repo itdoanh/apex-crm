@@ -587,6 +587,30 @@ func (s *Store) SaveLandingFile(domain string, pageID string, filePath string, f
 	return err
 }
 
+// SyncLandingFilesToDomain đồng bộ toàn bộ file và thư mục từ sourceDomain (hoặc domain rỗng mặc định) sang targetDomain
+func (s *Store) SyncLandingFilesToDomain(sourceDomain, targetDomain, pageID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if targetDomain == "" || pageID == "" {
+		return nil
+	}
+
+	query := `
+		INSERT INTO landing_files (page_id, domain, file_path, file_type, content, updated_at)
+		SELECT DISTINCT ON (file_path) page_id, $2, file_path, file_type, content, NOW()
+		FROM landing_files
+		WHERE (domain = $1 OR domain = '') AND page_id = $3
+		ORDER BY file_path, (CASE WHEN domain = $1 AND $1 != '' THEN 0 ELSE 1 END) ASC, updated_at DESC
+		ON CONFLICT (domain, page_id, file_path) DO UPDATE SET
+			file_type = EXCLUDED.file_type,
+			content = EXCLUDED.content,
+			updated_at = NOW()
+	`
+	_, err := s.pool.Exec(ctx, query, sourceDomain, targetDomain, pageID)
+	return err
+}
+
 // DeleteLandingFile xóa 1 tệp tin khỏi landing page
 func (s *Store) DeleteLandingFile(domain string, pageID string, filePath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

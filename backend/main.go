@@ -100,11 +100,13 @@ func main() {
 	mux.HandleFunc("/api/landings/get", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleGetLanding)))
 	mux.HandleFunc("/api/landings/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveLanding)))
 	mux.HandleFunc("/api/landings/code", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveCode)))
+	mux.HandleFunc("/api/landings/save-code", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveCode)))
 	mux.HandleFunc("/api/landings/deploy", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeployLanding)))
 	mux.HandleFunc("/api/landings/toggle", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleToggleActive)))
 	mux.HandleFunc("/api/landings/duplicate", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDuplicateLanding)))
 	mux.HandleFunc("/api/landings/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeleteLanding)))
 	mux.HandleFunc("/api/landings/files", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleListFiles)))
+	mux.HandleFunc("/api/landings/file/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveFile)))
 	mux.HandleFunc("/api/landings/file", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			landingHandler.HandleGetFile(w, r)

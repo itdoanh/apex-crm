@@ -583,6 +583,18 @@
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
                     `            if (el) el.className = m.className;\n` +
                     `        }\n` +
+                    `        if (m.type === 'APEX_CMD_UPDATE_ATTR_TEMP') {\n` +
+                    `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
+                    `            if (el) {\n` +
+                    `                if (m.val === null || m.val === undefined || m.val === '') {\n` +
+                    `                    el.removeAttribute(m.attr);\n` +
+                    `                } else {\n` +
+                    `                    el.setAttribute(m.attr, m.val);\n` +
+                    `                    if (m.attr === 'src' && el.tagName === 'IMG') el.src = m.val;\n` +
+                    `                    if (m.attr === 'href' && el.tagName === 'A') el.href = m.val;\n` +
+                    `                }\n` +
+                    `            }\n` +
+                    `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_TEXT_TEMP') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +
                     `            if (el) el.innerText = m.text;\n` +

@@ -14,8 +14,13 @@
             const isInputActive = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
             const isCodeEditor = activeEl && activeEl.id === 'csCodeEditor';
 
-            // Escape: Đóng Context Menu / History hoặc chọn thẻ cha
+            // Escape: Đóng Tìm kiếm / Context Menu / History hoặc chọn thẻ cha
             if (e.key === 'Escape') {
+                const searchWidget = document.getElementById('csSearchReplaceWidget');
+                if (searchWidget && !searchWidget.classList.contains('hidden')) {
+                    closeStudioSearch();
+                    return;
+                }
                 const ctxMenu = document.getElementById('csContextMenu');
                 if (ctxMenu && !ctxMenu.classList.contains('hidden')) {
                     closeContextMenu();
@@ -29,6 +34,22 @@
                 if (!isInputActive) {
                     selectParentNode();
                 }
+                return;
+            }
+
+            // Ctrl/Cmd + F: Tìm kiếm trong Code Editor (chặn tìm kiếm mặc định của trình duyệt)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                e.stopPropagation();
+                openStudioSearch(false);
+                return;
+            }
+
+            // Ctrl/Cmd + H: Tìm kiếm và Thay thế (chặn mở lịch sử trình duyệt)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
+                e.preventDefault();
+                e.stopPropagation();
+                openStudioSearch(true);
                 return;
             }
 
@@ -172,15 +193,21 @@
             }
         });
 
-        // Đồng bộ chuỗi nguồn vào Code Editor
+        // Đồng bộ chuỗi nguồn vào Code Editor (Bảo vệ Isolated Scope: Không ghi đè HTML vào file CSS/JS)
         function syncCodeEditorFromAst(newSource) {
-            studioFileContents[activeStudioFile] = newSource;
-            const editor = document.getElementById('csCodeEditor');
-            if (editor) editor.value = newSource;
-            studioEditorDirty = true;
-            document.getElementById('csSaveStatus').innerText = 'Chưa lưu thay đổi';
-            document.getElementById('csSaveStatus').className = 'text-[11px] text-amber-400 font-mono ml-2';
-            updateEditorStats(false);
+            let targetHtmlFile = 'index.html';
+            if (activeStudioFile && (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm'))) {
+                targetHtmlFile = activeStudioFile;
+            }
+            studioFileContents[targetHtmlFile] = newSource;
+            if (activeStudioFile === targetHtmlFile) {
+                const editor = document.getElementById('csCodeEditor');
+                if (editor) editor.value = newSource;
+                studioEditorDirty = true;
+                document.getElementById('csSaveStatus').innerText = 'Chưa lưu thay đổi';
+                document.getElementById('csSaveStatus').className = 'text-[11px] text-amber-400 font-mono ml-2';
+                updateEditorStats(false);
+            }
         }
 
         // ============================================================
@@ -530,6 +557,22 @@
                 deployCodeLive();
             }
 
+            // Ctrl + F: Tìm kiếm trong Code Editor
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                e.stopPropagation();
+                openStudioSearch(false);
+                return;
+            }
+
+            // Ctrl + H: Tìm kiếm và Thay thế
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
+                e.preventDefault();
+                e.stopPropagation();
+                openStudioSearch(true);
+                return;
+            }
+
             // Alt + Z: Toggle Word Wrap
             if (e.altKey && (e.key === 'z' || e.key === 'Z')) {
                 e.preventDefault();
@@ -579,8 +622,275 @@
             }
         }
 
+        // ============================================================
+        // IN-EDITOR SEARCH & REPLACE (Ctrl + F / Ctrl + H)
+        // ============================================================
+        let studioSearchResults = [];
+        let studioSearchIndex = -1;
+        let studioSearchMatchCase = false;
+
+        function openStudioSearch(showReplace = false) {
+            const widget = document.getElementById('csSearchReplaceWidget');
+            const searchInput = document.getElementById('csSearchInput');
+            const replaceRow = document.getElementById('csReplaceRow');
+            const iconToggle = document.getElementById('iconToggleReplace');
+            if (!widget || !searchInput) return;
+
+            widget.classList.remove('hidden');
+
+            if (showReplace) {
+                if (replaceRow) replaceRow.classList.remove('hidden');
+                if (iconToggle) {
+                    iconToggle.classList.remove('fa-chevron-right');
+                    iconToggle.classList.add('fa-chevron-down');
+                }
+            }
+
+            // Lấy văn bản đang được bôi đen trong Code Editor (nếu có) để điền vào ô tìm kiếm
+            const editor = document.getElementById('csCodeEditor');
+            if (editor && editor.selectionStart !== editor.selectionEnd) {
+                const selectedText = editor.value.substring(editor.selectionStart, editor.selectionEnd).trim();
+                if (selectedText && selectedText.indexOf('\n') === -1) {
+                    searchInput.value = selectedText;
+                }
+            }
+
+            if (showReplace && document.getElementById('csReplaceInput') && searchInput.value) {
+                document.getElementById('csReplaceInput').focus();
+                document.getElementById('csReplaceInput').select();
+            } else {
+                searchInput.focus();
+                searchInput.select();
+            }
+
+            runStudioSearch(0);
+        }
+
+        function closeStudioSearch() {
+            const widget = document.getElementById('csSearchReplaceWidget');
+            if (widget) widget.classList.add('hidden');
+            const editor = document.getElementById('csCodeEditor');
+            if (editor) editor.focus();
+        }
+
+        function toggleStudioReplace(show) {
+            const replaceRow = document.getElementById('csReplaceRow');
+            const iconToggle = document.getElementById('iconToggleReplace');
+            if (!replaceRow) return;
+
+            const isHidden = replaceRow.classList.contains('hidden');
+            const shouldShow = (show !== undefined) ? show : isHidden;
+
+            if (shouldShow) {
+                replaceRow.classList.remove('hidden');
+                if (iconToggle) {
+                    iconToggle.classList.remove('fa-chevron-right');
+                    iconToggle.classList.add('fa-chevron-down');
+                }
+                const replaceInput = document.getElementById('csReplaceInput');
+                if (replaceInput) {
+                    replaceInput.focus();
+                    replaceInput.select();
+                }
+            } else {
+                replaceRow.classList.add('hidden');
+                if (iconToggle) {
+                    iconToggle.classList.remove('fa-chevron-down');
+                    iconToggle.classList.add('fa-chevron-right');
+                }
+            }
+        }
+
+        function toggleSearchMatchCase() {
+            studioSearchMatchCase = !studioSearchMatchCase;
+            const btn = document.getElementById('btnSearchMatchCase');
+            if (btn) {
+                if (studioSearchMatchCase) {
+                    btn.className = 'px-1.5 py-1 text-cyan-300 bg-cyan-950/80 border border-cyan-800 rounded text-[11px] font-mono font-bold transition';
+                } else {
+                    btn.className = 'px-1.5 py-1 text-slate-400 hover:text-slate-200 border border-transparent rounded hover:bg-slate-800 text-[11px] font-mono transition';
+                }
+            }
+            runStudioSearch(0);
+        }
+
+        function runStudioSearch(navDirection = 0) {
+            const searchInput = document.getElementById('csSearchInput');
+            const countEl = document.getElementById('csSearchCount');
+            const editor = document.getElementById('csCodeEditor');
+            if (!searchInput || !countEl || !editor) return;
+
+            const query = searchInput.value;
+            if (!query) {
+                studioSearchResults = [];
+                studioSearchIndex = -1;
+                countEl.innerText = '0/0';
+                countEl.className = 'absolute right-2 text-[10px] text-slate-400 font-mono select-none';
+                return;
+            }
+
+            const text = editor.value;
+            const textToSearch = studioSearchMatchCase ? text : text.toLowerCase();
+            const queryToSearch = studioSearchMatchCase ? query : query.toLowerCase();
+            const qLen = query.length;
+
+            const results = [];
+            let pos = 0;
+            while ((pos = textToSearch.indexOf(queryToSearch, pos)) !== -1) {
+                results.push({ start: pos, end: pos + qLen });
+                pos += qLen;
+            }
+
+            studioSearchResults = results;
+
+            if (results.length === 0) {
+                studioSearchIndex = -1;
+                countEl.innerText = '0/0';
+                countEl.className = 'absolute right-2 text-[10px] text-rose-400 font-mono select-none font-semibold';
+                return;
+            }
+
+            countEl.className = 'absolute right-2 text-[10px] text-cyan-400 font-mono select-none font-bold';
+
+            if (navDirection === 0) {
+                const curStart = editor.selectionStart || 0;
+                let closestIdx = 0;
+                for (let i = 0; i < results.length; i++) {
+                    if (results[i].start >= curStart) {
+                        closestIdx = i;
+                        break;
+                    }
+                }
+                studioSearchIndex = closestIdx;
+            } else {
+                navigateSearchResult(navDirection);
+                return;
+            }
+
+            highlightAndScrollMatch(studioSearchIndex);
+        }
+
+        function navigateSearchResult(direction) {
+            if (studioSearchResults.length === 0) return;
+            const total = studioSearchResults.length;
+            studioSearchIndex = (studioSearchIndex + direction + total) % total;
+            highlightAndScrollMatch(studioSearchIndex);
+        }
+
+        function highlightAndScrollMatch(index) {
+            const editor = document.getElementById('csCodeEditor');
+            const countEl = document.getElementById('csSearchCount');
+            if (!editor || index < 0 || index >= studioSearchResults.length) return;
+
+            const match = studioSearchResults[index];
+            if (countEl) {
+                countEl.innerText = `${index + 1}/${studioSearchResults.length}`;
+            }
+
+            editor.focus();
+            try {
+                editor.setSelectionRange(match.start, match.end);
+            } catch(e) {}
+
+            const textBefore = editor.value.substring(0, match.start);
+            const line = (textBefore.match(/\n/g) || []).length;
+            const lineHeight = 24;
+            const targetScroll = Math.max(0, line * lineHeight - (editor.clientHeight / 2) + 24);
+            editor.scrollTop = targetScroll;
+            syncEditorScroll();
+        }
+
+        function handleSearchInputKeyDown(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.shiftKey) {
+                    navigateSearchResult(-1);
+                } else {
+                    navigateSearchResult(1);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeStudioSearch();
+            }
+        }
+
+        function handleReplaceInputKeyDown(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                executeReplaceCurrent();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeStudioSearch();
+            }
+        }
+
+        function executeReplaceCurrent() {
+            const editor = document.getElementById('csCodeEditor');
+            const replaceInput = document.getElementById('csReplaceInput');
+            if (!editor || !replaceInput || studioSearchIndex < 0 || studioSearchIndex >= studioSearchResults.length) return;
+
+            const replaceVal = replaceInput.value;
+            const match = studioSearchResults[studioSearchIndex];
+
+            const before = editor.value.substring(0, match.start);
+            const after = editor.value.substring(match.end);
+            editor.value = before + replaceVal + after;
+            studioFileContents[activeStudioFile] = editor.value;
+
+            if (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm')) {
+                astMapper.parse(editor.value);
+            }
+            onCodeEditorInput();
+            pushStudioHistory(`Thay thế '${document.getElementById('csSearchInput')?.value || ''}'`, editor.value);
+
+            runStudioSearch(0);
+        }
+
+        function executeReplaceAll() {
+            const editor = document.getElementById('csCodeEditor');
+            const searchInput = document.getElementById('csSearchInput');
+            const replaceInput = document.getElementById('csReplaceInput');
+            if (!editor || !searchInput || !replaceInput) return;
+
+            const query = searchInput.value;
+            const replaceVal = replaceInput.value;
+            if (!query) return;
+
+            const totalMatches = studioSearchResults.length;
+            if (totalMatches === 0) return;
+
+            let updatedText = '';
+            if (studioSearchMatchCase) {
+                updatedText = editor.value.split(query).join(replaceVal);
+            } else {
+                const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                updatedText = editor.value.replace(regex, replaceVal);
+            }
+
+            editor.value = updatedText;
+            studioFileContents[activeStudioFile] = updatedText;
+
+            if (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm')) {
+                astMapper.parse(updatedText);
+            }
+            onCodeEditorInput();
+            pushStudioHistory(`Thay thế tất cả (${totalMatches} chỗ) '${query}'`, updatedText);
+            refreshStudioPreview();
+
+            runStudioSearch(0);
+            if (typeof showToastNotification === 'function') {
+                showToastNotification(`Đã thay thế thành công ${totalMatches} kết quả`);
+            }
+        }
+
         // Bắt sự kiện click chuột hoặc di chuyển con trỏ trong Code Editor để đồng bộ ngược chọn Layer và Gizmo
         function onCodeEditorClick(e) {
+            // Chỉ đồng bộ ngược AST khi đang mở file HTML (tránh offset nhảy bừa bãi khi đang xem CSS / JS)
+            if (activeStudioFile && !activeStudioFile.endsWith('.html') && !activeStudioFile.endsWith('.htm')) return;
             const editor = document.getElementById('csCodeEditor');
             if (!editor || typeof findNodeAtOffset !== 'function' || typeof selectAstNode !== 'function') return;
             const offset = editor.selectionStart;

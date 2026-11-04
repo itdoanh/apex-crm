@@ -275,6 +275,7 @@ func (h *LandingHandler) HandleSaveLanding(w http.ResponseWriter, r *http.Reques
 	if targetDomain != "" {
 		if d, err := h.store.GetDomainByName(targetDomain); err == nil && d != nil {
 			_, _ = h.store.DeployDomainRoute(d.ID, cleanPrefix, req.PageID, "")
+			_ = h.store.SyncLandingFilesToDomain("", targetDomain, req.PageID)
 			if h.domainCache != nil {
 				_ = h.domainCache.Reload(r.Context())
 			}
@@ -428,6 +429,7 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		isCustomDomain = true
 		_ = h.store.UpdateLandingCode(targetDomain, payload.PageID, payload.CodeHTML, "published")
 		_ = h.store.SaveLandingFile(targetDomain, payload.PageID, "index.html", "html", payload.CodeHTML)
+		_ = h.store.SyncLandingFilesToDomain("", targetDomain, payload.PageID)
 		_ = h.store.ToggleLandingActive(targetDomain, payload.PageID, true)
 		h.cache.Invalidate(targetDomain, payload.PageID)
 

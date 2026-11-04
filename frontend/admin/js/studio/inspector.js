@@ -300,6 +300,10 @@
 
         // Tự động nhảy và highlight vùng code chính xác của thẻ trong Code Editor
         function syncAndHighlightCodeForNode(nodeId) {
+            // Chỉ highlight khi đang xem file HTML (tránh lệch offset khi đang xem CSS / JS)
+            if (typeof activeStudioFile !== 'undefined' && activeStudioFile && !activeStudioFile.endsWith('.html') && !activeStudioFile.endsWith('.htm')) {
+                return;
+            }
             const editor = document.getElementById('csCodeEditor');
             if (!editor) return;
             const node = (typeof astMapper !== 'undefined' && astMapper.astMap) ? astMapper.astMap[nodeId] : null;
@@ -816,7 +820,7 @@
             try {
                 const iframe = document.getElementById('csPreviewIframe');
                 if (iframe && iframe.contentDocument) {
-                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    const el = iframe.contentDocument.querySelector(`[data-ve-id="${node ? node.id : ''}"]`);
                     if (el && el.previousElementSibling) {
                         el.parentNode.insertBefore(el, el.previousElementSibling);
                     }
@@ -844,7 +848,7 @@
             try {
                 const iframe = document.getElementById('csPreviewIframe');
                 if (iframe && iframe.contentDocument) {
-                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    const el = iframe.contentDocument.querySelector(`[data-ve-id="${node ? node.id : ''}"]`);
                     if (el && el.nextElementSibling) {
                         el.parentNode.insertBefore(el.nextElementSibling, el);
                     }
@@ -927,13 +931,31 @@
             renderAstLayerTree();
         }
 
+        let attrChangeDebounceTimer = null;
         function onInspectorAttrChange(attrName, val) {
             if (!selectedAstNodeId) return;
             const updated = astMapper.spliceAttribute(selectedAstNodeId, attrName, val);
             syncCodeEditorFromAst(updated);
             pushStudioHistory(`Sửa thuộc tính ${attrName}`, updated, selectedAstNodeId);
-            refreshStudioPreview();
-            renderAstLayerTree();
+
+            // Gửi lệnh cập nhật trực tiếp vào DOM iframe preview để thấy thay đổi ngay lập tức (không cần chờ blur hay reload)
+            const iframe = document.getElementById('csPreviewIframe');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({
+                    type: 'APEX_CMD_UPDATE_ATTR_TEMP',
+                    nodeId: selectedAstNodeId,
+                    attr: attrName,
+                    val: val
+                }, '*');
+            }
+            requestNodeRect(selectedAstNodeId);
+
+            // Debounce nhẹ để cập nhật lại AST & Layer tree mà không gây giật lag khi gõ nhanh
+            clearTimeout(attrChangeDebounceTimer);
+            attrChangeDebounceTimer = setTimeout(() => {
+                refreshStudioPreview(true);
+                renderAstLayerTree();
+            }, 350);
         }
 
         function onInspectorStyleChange(prop, val) {
