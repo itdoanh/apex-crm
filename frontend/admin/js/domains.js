@@ -734,7 +734,10 @@ window.ensureLandingsLoaded = ensureLandingsLoaded;
                     })
                 });
 
-                if (!res.ok) throw new Error('Không thể triển khai');
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || ('Lỗi máy chủ HTTP ' + res.status));
+                }
                 const json = await res.json();
                 if (!json || !json.success) throw new Error(json.error || 'Triển khai thất bại');
 
@@ -760,7 +763,10 @@ window.ensureLandingsLoaded = ensureLandingsLoaded;
                     body: JSON.stringify({ route_id: routeId })
                 });
 
-                if (!res.ok) throw new Error('Không thể gỡ bỏ route');
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || ('Lỗi máy chủ HTTP ' + res.status));
+                }
                 const json = await res.json();
                 if (!json || !json.success) throw new Error(json.error || 'Gỡ bỏ thất bại');
 
@@ -808,7 +814,10 @@ window.ensureLandingsLoaded = ensureLandingsLoaded;
                     })
                 });
 
-                if (!res.ok) throw new Error('Không thể triển khai');
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || ('Lỗi máy chủ HTTP ' + res.status));
+                }
                 const json = await res.json();
                 if (!json || !json.success) throw new Error(json.error || 'Triển khai thất bại');
 

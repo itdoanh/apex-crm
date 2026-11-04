@@ -343,39 +343,99 @@ func (h *DomainHandler) HandleDeployRoute(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req struct {
-		DomainID    int    `json:"domain_id"`
-		Domain      string `json:"domain"`
-		PathPrefix  string `json:"path_prefix"`
-		LandingID   string `json:"landing_id"`
-		RedirectURL string `json:"redirect_url"`
+	// Đọc payload với kiểu linh hoạt (chấp nhận domain_id là int, string, null hoặc domain name)
+	var rawReq struct {
+		DomainID    interface{} `json:"domain_id"`
+		Domain      string      `json:"domain"`
+		PathPrefix  string      `json:"path_prefix"`
+		LandingID   string      `json:"landing_id"`
+		RedirectURL string      `json:"redirect_url"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&rawReq); err != nil {
 		http.Error(w, "Payload JSON không hợp lệ", http.StatusBadRequest)
 		return
 	}
 
-	if req.DomainID <= 0 && req.Domain != "" {
-		dom, err := h.store.GetDomainByName(req.Domain)
-		if err == nil && dom != nil {
-			req.DomainID = dom.ID
+	domainID := 0
+	domainName := strings.TrimSpace(rawReq.Domain)
+
+	if rawReq.DomainID != nil {
+		switch v := rawReq.DomainID.(type) {
+		case float64:
+			domainID = int(v)
+		case int:
+			domainID = v
+		case string:
+			v = strings.TrimSpace(v)
+			if parsed, err := strconv.Atoi(v); err == nil {
+				domainID = parsed
+			} else if domainName == "" && strings.Contains(v, ".") {
+				// Nếu domain_id được truyền nhầm là tên miền (vd "ads.domain.com")
+				domainName = v
+			}
 		}
 	}
 
-	if req.DomainID <= 0 {
+	// Chuẩn hóa tên miền: loại bỏ giao thức http://, https://, dấu gạch chéo cuối và cổng
+	if domainName != "" {
+		domainName = strings.ToLower(domainName)
+		domainName = strings.TrimPrefix(domainName, "https://")
+		domainName = strings.TrimPrefix(domainName, "http://")
+		if idx := strings.Index(domainName, "/"); idx != -1 {
+			domainName = domainName[:idx]
+		}
+		if idx := strings.Index(domainName, ":"); idx != -1 {
+			domainName = domainName[:idx]
+		}
+		domainName = strings.TrimSpace(domainName)
+	}
+
+	// Tra cứu theo domainName nếu domainID chưa xác định
+	if domainID <= 0 && domainName != "" {
+		dom, err := h.store.GetDomainByName(domainName)
+		if err == nil && dom != nil {
+			domainID = dom.ID
+		} else {
+			// Tự động khởi tạo tên miền trong CSDL nếu chưa có trước đó (tránh lỗi 400 Bad Request)
+			newDom := &models.Domain{
+				Domain:           domainName,
+				NS1:              "ns1.hanghoaphaisinh.net",
+				NS2:              "ns2.hanghoaphaisinh.net",
+				TargetIP:         "103.124.95.232",
+				DefaultLandingID: rawReq.LandingID,
+				DNSStatus:        "pending",
+				SSLStatus:        "pending",
+			}
+			saved, saveErr := h.store.SaveDomain(newDom)
+			if saveErr == nil && saved != nil {
+				domainID = saved.ID
+			}
+		}
+	}
+
+	if domainID <= 0 {
 		http.Error(w, "Không tìm thấy tên miền để triển khai", http.StatusBadRequest)
 		return
 	}
 
-	if req.LandingID == "" {
-		req.LandingID = "mxv_080_online"
-	}
-	if req.PathPrefix == "" {
-		req.PathPrefix = "/"
+	landingID := strings.TrimSpace(rawReq.LandingID)
+	if landingID == "" {
+		landingID = "mxv_080_online"
 	}
 
-	route, err := h.store.DeployDomainRoute(req.DomainID, req.PathPrefix, req.LandingID, req.RedirectURL)
+	pathPrefix := strings.TrimSpace(rawReq.PathPrefix)
+	if pathPrefix == "" {
+		pathPrefix = "/"
+	}
+	if !strings.HasPrefix(pathPrefix, "/") {
+		pathPrefix = "/" + pathPrefix
+	}
+	if len(pathPrefix) > 1 {
+		pathPrefix = strings.TrimRight(pathPrefix, "/")
+	}
+
+	route, err := h.store.DeployDomainRoute(domainID, pathPrefix, landingID, rawReq.RedirectURL)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -384,8 +444,8 @@ func (h *DomainHandler) HandleDeployRoute(w http.ResponseWriter, r *http.Request
 	}
 
 	// Đồng bộ toàn bộ tệp tin, hình ảnh và thư mục của landing page sang tên miền đích
-	if d, err := h.store.GetDomain(req.DomainID); err == nil && d != nil && d.Domain != "" {
-		_ = h.store.SyncLandingFilesToDomain("", d.Domain, req.LandingID)
+	if d, err := h.store.GetDomain(domainID); err == nil && d != nil && d.Domain != "" {
+		_ = h.store.SyncLandingFilesToDomain("", d.Domain, landingID)
 	}
 
 	// Làm mới RAM Cache ngay lập tức
@@ -406,9 +466,9 @@ func (h *DomainHandler) HandleDeployRoute(w http.ResponseWriter, r *http.Request
 		Username:   username,
 		Action:     "DEPLOY_DOMAIN_ROUTE",
 		Resource:   "domain_routes",
-		ResourceID: req.PathPrefix,
+		ResourceID: pathPrefix,
 		Status:     "success",
-		Details:    map[string]interface{}{"domain_id": req.DomainID, "path_prefix": req.PathPrefix, "landing_id": req.LandingID, "redirect_url": req.RedirectURL},
+		Details:    map[string]interface{}{"domain_id": domainID, "path_prefix": pathPrefix, "landing_id": landingID, "redirect_url": rawReq.RedirectURL},
 		IPAddress:  clientIP,
 		UserAgent:  ua,
 		DeviceType: deviceType,

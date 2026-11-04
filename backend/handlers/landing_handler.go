@@ -433,8 +433,21 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		_ = h.store.ToggleLandingActive(targetDomain, payload.PageID, true)
 		h.cache.Invalidate(targetDomain, payload.PageID)
 
-		// Kích hoạt route trong bảng domain_routes nếu tìm thấy domain trong CSDL
-		if dom, err := h.store.GetDomainByName(targetDomain); err == nil && dom != nil {
+		// Kích hoạt route trong bảng domain_routes nếu tìm thấy domain trong CSDL (hoặc tự tạo mới nếu chưa có)
+		dom, err := h.store.GetDomainByName(targetDomain)
+		if err != nil || dom == nil {
+			newDom := &models.Domain{
+				Domain:           targetDomain,
+				NS1:              "ns1.hanghoaphaisinh.net",
+				NS2:              "ns2.hanghoaphaisinh.net",
+				TargetIP:         "103.124.95.232",
+				DefaultLandingID: payload.PageID,
+				DNSStatus:        "pending",
+				SSLStatus:        "pending",
+			}
+			dom, _ = h.store.SaveDomain(newDom)
+		}
+		if dom != nil {
 			_, _ = h.store.DeployDomainRoute(dom.ID, cleanPrefix, payload.PageID, "")
 		}
 	}

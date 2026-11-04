@@ -118,9 +118,6 @@
                         continue;
                     }
 
-                    this.nodeCounter++;
-                    const nodeId = 'node-' + this.nodeCounter;
-
                     const attrs = {};
                     const attrList = [];
                     const attrRegex = /([a-zA-Z0-9_:\-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
@@ -143,6 +140,19 @@
                         };
                         attrs[attrName] = attrObj;
                         attrList.push(attrObj);
+                    }
+
+                    // Tái sử dụng data-ve-id sẵn có trong mã HTML để duy trì đồng bộ 100% giữa Code, Preview và Deploy
+                    let nodeId = (attrs['data-ve-id'] && attrs['data-ve-id'].value) ? attrs['data-ve-id'].value : null;
+                    if (!nodeId) {
+                        this.nodeCounter++;
+                        nodeId = 'node-' + this.nodeCounter;
+                    } else {
+                        const m = nodeId.match(/^node-(\d+)$/);
+                        if (m) {
+                            const num = parseInt(m[1], 10);
+                            if (num > this.nodeCounter) this.nodeCounter = num;
+                        }
                     }
 
                     const node = {
@@ -218,11 +228,13 @@
                 for (const node of sortedNodes) {
                     result += this.rawHTML.substring(lastPos, node.openTagStart);
                     let openTag = node.openTagRaw;
-                    const insertIdStr = ` data-ve-id="${node.id}"`;
-                    if (openTag.endsWith('/>')) {
-                        openTag = openTag.substring(0, openTag.length - 2) + insertIdStr + '/>';
-                    } else if (openTag.endsWith('>')) {
-                        openTag = openTag.substring(0, openTag.length - 1) + insertIdStr + '>';
+                    if (!node.attrs['data-ve-id']) {
+                        const insertIdStr = ` data-ve-id="${node.id}"`;
+                        if (openTag.endsWith('/>')) {
+                            openTag = openTag.substring(0, openTag.length - 2) + insertIdStr + '/>';
+                        } else if (openTag.endsWith('>')) {
+                            openTag = openTag.substring(0, openTag.length - 1) + insertIdStr + '>';
+                        }
                     }
                     result += openTag;
                     lastPos = node.openTagEnd;
@@ -230,11 +242,11 @@
 
                 result += this.rawHTML.substring(lastPos);
 
-                // Triệt để vô hiệu hóa mọi lệnh chuyển hướng sang chucmung.html trong Code Studio Live Preview
-                result = result.replace(/window\.location\.replace\s*\(\s*['"]chucmung\.html[^)]*\)/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
-                result = result.replace(/location\.replace\s*\(\s*['"]chucmung\.html[^)]*\)/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
-                result = result.replace(/window\.location\.href\s*=\s*['"]chucmung\.html[^;\n]*/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
-                result = result.replace(/location\.href\s*=\s*['"]chucmung\.html[^;\n]*/g, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirect to chucmung.html')");
+                // Triệt để vô hiệu hóa mọi lệnh chuyển hướng sang chucmung.html trong Code Studio Live Preview (không để sót ngoặc thừa)
+                result = result.replace(/(?:window\.|origLocation\.)?location\.replace\s*\(\s*['"]chucmung\.html[^;\r\n]*;?/gi, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked location.replace to chucmung.html');");
+                result = result.replace(/(?:window\.|origLocation\.)?location\.href\s*=\s*['"]chucmung\.html[^;\r\n]*;?/gi, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked location.href to chucmung.html');");
+                result = result.replace(/origReplace\s*\(\s*['"]chucmung\.html[^;\r\n]*;?/gi, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked origReplace to chucmung.html');");
+                result = result.replace(/window\.redirectToChucMung\s*\([^;\r\n]*;?/gi, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirectToChucMung call');");
 
                 const helperScript = this.getHelperScript();
                 const headLower = result.toLowerCase().indexOf('<head>');
@@ -783,6 +795,12 @@
 
                 if (Object.keys(this.pcStylesMap[nodeId]).length === 0) {
                     delete this.pcStylesMap[nodeId];
+                } else {
+                    // Đảm bảo node sở hữu data-ve-id cố định trong mã HTML gốc để selector [data-ve-id="..."] khớp 100% trên trang live deploy
+                    const node = this.astMap[nodeId];
+                    if (node && !node.attrs['data-ve-id']) {
+                        this.spliceAttribute(nodeId, 'data-ve-id', nodeId);
+                    }
                 }
 
                 return this.generateAndInjectResponsiveStyles();
@@ -807,6 +825,12 @@
 
                 if (Object.keys(this.mobileStylesMap[nodeId]).length === 0) {
                     delete this.mobileStylesMap[nodeId];
+                } else {
+                    // Đảm bảo node sở hữu data-ve-id cố định trong mã HTML gốc để selector [data-ve-id="..."] khớp 100% trên trang live deploy
+                    const node = this.astMap[nodeId];
+                    if (node && !node.attrs['data-ve-id']) {
+                        this.spliceAttribute(nodeId, 'data-ve-id', nodeId);
+                    }
                 }
 
                 return this.generateAndInjectResponsiveStyles();

@@ -37,12 +37,17 @@
                     totalLeads += (p.leads_count || 0);
                 });
 
-                document.getElementById('kpiLadiTotal').innerText = allLandingsList.length;
-                document.getElementById('kpiLadiActive').innerText = activeCount;
-                document.getElementById('kpiLadiDraft').innerText = draftCount;
-                document.getElementById('kpiLadiViews').innerText = totalViews.toLocaleString('vi-VN');
-                document.getElementById('kpiLadiLeads').innerText = totalLeads.toLocaleString('vi-VN');
-                document.getElementById('badgeLadiTotal').innerText = allLandingsList.length;
+                const setElText = (id, text) => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerText = text;
+                };
+
+                setElText('kpiLadiTotal', allLandingsList.length);
+                setElText('kpiLadiActive', activeCount);
+                setElText('kpiLadiDraft', draftCount);
+                setElText('kpiLadiViews', totalViews.toLocaleString('vi-VN'));
+                setElText('kpiLadiLeads', totalLeads.toLocaleString('vi-VN'));
+                setElText('badgeLadiTotal', allLandingsList.length);
 
                 filterLandingsGrid();
             } catch (e) {
@@ -52,10 +57,12 @@
 
         // 17.2. Lọc danh sách theo từ khóa và trạng thái
         function filterLandingsGrid() {
-            const query = (document.getElementById('filterLadiSearch').value || '').toLowerCase().trim();
-            const statusFilter = document.getElementById('filterLadiStatus').value;
+            const searchInput = document.getElementById('filterLadiSearch');
+            const statusSelect = document.getElementById('filterLadiStatus');
+            const query = (searchInput && searchInput.value ? searchInput.value : '').toLowerCase().trim();
+            const statusFilter = statusSelect && statusSelect.value ? statusSelect.value : 'all';
 
-            const filtered = allLandingsList.filter(p => {
+            const filtered = (allLandingsList || []).filter(p => {
                 const matchQuery = !query ||
                     p.page_id.toLowerCase().includes(query) ||
                     p.name.toLowerCase().includes(query) ||
@@ -70,7 +77,8 @@
                 return matchQuery && matchStatus;
             });
 
-            document.getElementById('ladiDisplayCount').innerText = filtered.length;
+            const displayCountEl = document.getElementById('ladiDisplayCount');
+            if (displayCountEl) displayCountEl.innerText = filtered.length;
             renderLandingsGrid(filtered);
         }
 
