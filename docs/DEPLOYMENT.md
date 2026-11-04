@@ -58,6 +58,41 @@ Start-ScheduledTask -TaskName "Apex_Backend_Server"
 > ℹ️ Nếu muốn build ngay trên server, cài Go 1.26.3+ trước rồi thêm vào PATH.
 > Hiện chưa làm vì mỗi lần deploy đều build ở local nhanh và không rủi ro hơn.
 
+### 1.2. Deploy static files (admin UI) — phải copy vào **2 vị trí**
+
+`backend/main.go` phục vụ file tĩnh theo thứ tự ưu tiên (xem `main.go` khoảng dòng 285):
+
+```
+../frontend/admin/<path>   ← ưu tiên 1
+frontend/admin/<path>      ← ưu tiên 2
+...
+static/<path>              ← ưu tiên 5
+../backend/static/<path>   ← ưu tiên 6
+```
+
+⚠️ Vì `../frontend/admin` được tra **trước**, nếu chỉ copy vào `backend/static/` thì
+production vẫn serve file cũ ⇒ thay đổi UI **không hiện ra**.
+
+```cmd
+REM SERVER — sau khi git pull thì cả 2 vị trí đã đúng tự động.
+REM Nếu deploy thủ công bằng SCP thì phải copy vào cả hai:
+copy /Y C:\Windows\Temp\index.html C:\apex\frontend\admin\index.html
+copy /Y C:\Windows\Temp\index.html C:\apex\backend\static\index.html
+copy /Y C:\Windows\Temp\sheets.js C:\apex\frontend\admin\js\sheets.js
+copy /Y C:\Windows\Temp\sheets.js C:\apex\backend\static\js\sheets.js
+```
+
+**Cách kiểm tra nhanh** (so kích thước file local vs server):
+
+```cmd
+powershell -Command "(Get-Item 'C:\apex\frontend\admin\js\sheets.js').Length"
+powershell -Command "(Get-Item 'C:\apex\backend\static\js\sheets.js').Length"
+```
+
+> ⚠️ Nếu dùng `git checkout --` trên server để dọn working tree cũ, static files sẽ bị
+> revert về bản cũ. Phải `git pull origin main` lại ngay sau đó (mạng GitHub đôi lúc
+> bị "Empty reply from server" → retry 1-2 lần).
+
 ---
 
 ## 2. Kết nối SSH
