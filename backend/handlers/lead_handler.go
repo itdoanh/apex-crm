@@ -343,6 +343,31 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 
 	adInfo := security.ResolveAdPlacement(entryURL, referrer, utmSource, utmMedium, utmCampaign, utmContent)
 
+	// 9. URL TRANG KHÁCH VỪA GỬI FORM — trường quan trọng để truy ngược lead về đúng landing page.
+	// tracker.js gửi kèm `url` (URL đầy đủ kèm query string UTM). Nếu thiếu thì fallback theo thứ tự:
+	// entry_url → referrer → Origin header → scheme + Host của request hiện tại.
+	pageURL := sanitizeInput(extractFirstString(rawData, "url", "page_url", "entry_url", "landing_url"), 1000)
+	if pageURL == "" {
+		pageURL = sanitizeInput(r.Referer(), 1000)
+	}
+	if pageURL == "" {
+		if origin := sanitizeInput(r.Header.Get("Origin"), 500); origin != "" && origin != "null" {
+			pageURL = origin
+		}
+	}
+	if pageURL == "" {
+		if host := r.Host; host != "" {
+			scheme := "https"
+			if r.TLS == nil {
+				scheme = "http"
+			}
+			if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
+				scheme = forwardedProto
+			}
+			pageURL = scheme + "://" + host + r.URL.Path
+		}
+	}
+
 	// Bổ sung các thông tin máy chủ (Server Enrichment) vào tracking JSON
 	rawData["server_ip"] = clientIP
 	rawData["server_user_agent"] = r.UserAgent()
@@ -358,6 +383,7 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	rawData["ad_platform"] = adInfo.Platform
 	rawData["ad_placement"] = adInfo.Placement
 	rawData["ad_source_tag"] = adInfo.SourceTag
+	rawData["url"] = pageURL
 
 	trackingBytes, err := json.Marshal(rawData)
 	if err != nil {
@@ -365,7 +391,7 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Lưu vào CSDL PostgreSQL với kiểm tra deduplication 24h tự động
-	lead, err := h.store.SaveLead(landingID, nguon, phone, trackingBytes, city, region, country, isp, adInfo.Platform, adInfo.Placement)
+	lead, err := h.store.SaveLead(landingID, nguon, phone, pageURL, trackingBytes, city, region, country, isp, adInfo.Platform, adInfo.Placement)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -398,6 +424,7 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 		"landing_id":    lead.LandingID,
 		"nguon":         lead.Nguon,
 		"so_dien_thoai": lead.Phone,
+		"url":           lead.URL,
 		"carrier":       carrier,
 		"city":          city,
 		"region":        region,
@@ -622,6 +649,7 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		"Số Điện Thoại",
 		"Nhà Mạng",
 		"Landing ID",
+		"URL Trang Đăng Ký",
 		"Nguồn Traffic",
 		"Ghi Chú Sales",
 		"Người Phụ Trách",
@@ -655,6 +683,14 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		if utmCamp == "<nil>" {
 			utmCamp = ""
 		}
+		// URL trang khách gửi form: ưu tiên cột `url` trong DB, fallback về tracking JSON
+		pageURL := lead.URL
+		if pageURL == "" {
+			pageURL = fmt.Sprintf("%v", trMap["url"])
+			if pageURL == "<nil>" {
+				pageURL = ""
+			}
+		}
 		isAf := "Gõ tay"
 		if trMap["is_autofill"] == true || fmt.Sprintf("%v", trMap["is_autofill"]) == "1" || fmt.Sprintf("%v", trMap["autofill_source"]) != "" {
 			isAf = "Tự động điền (" + fmt.Sprintf("%v", trMap["autofill_source"]) + ")"
@@ -671,6 +707,7 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 			lead.Phone,
 			carrier,
 			lead.LandingID,
+			pageURL,
 			lead.Nguon,
 			lead.GhiChu,
 			lead.AssignedTo,

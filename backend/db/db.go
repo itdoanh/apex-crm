@@ -79,6 +79,9 @@ func (s *Store) initSchema(ctx context.Context) error {
 	ALTER TABLE leads ADD COLUMN IF NOT EXISTS isp VARCHAR(100) NOT NULL DEFAULT '';
 	ALTER TABLE leads ADD COLUMN IF NOT EXISTS ad_platform VARCHAR(50) NOT NULL DEFAULT '';
 	ALTER TABLE leads ADD COLUMN IF NOT EXISTS ad_placement VARCHAR(100) NOT NULL DEFAULT '';
+	-- URL trang khách vừa gửi form (landing + query string). Tách riêng khỏi tracking JSONB
+	-- để đồng bộ sang Google Sheets bằng 1 field mapping cố định ("url").
+	ALTER TABLE leads ADD COLUMN IF NOT EXISTS url VARCHAR(1000) NOT NULL DEFAULT '';
 
 	CREATE INDEX IF NOT EXISTS idx_leads_landing_id ON leads (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_leads_nguon ON leads (nguon);
@@ -349,9 +352,9 @@ func (s *Store) Close() error {
 	return nil
 }
 
-// SaveLead lưu 1 lead mới vào PostgreSQL kèm thông tin landing_id, nguồn và tracking JSONB.
+// SaveLead lưu 1 lead mới vào PostgreSQL kèm thông tin landing_id, nguồn, URL trang gửi form và tracking JSONB.
 // Hỗ trợ kiểm tra trùng lặp 24h: Nếu cùng SĐT đăng ký lại trong vòng 24h, cập nhật tracking và trả về lead hiện có.
-func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJSON []byte, city, region, country, isp, adPlatform, adPlacement string) (*models.Lead, error) {
+func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL string, trackingJSON []byte, city, region, country, isp, adPlatform, adPlacement string) (*models.Lead, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -392,6 +395,14 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 				adPlacement = v
 			}
 		}
+		if pageURL == "" {
+			for _, k := range []string{"url", "entry_url", "page_url"} {
+				if v, ok := trackMap[k].(string); ok && strings.TrimSpace(v) != "" {
+					pageURL = strings.TrimSpace(v)
+					break
+				}
+			}
+		}
 	}
 	if country == "" {
 		country = "Việt Nam"
@@ -403,7 +414,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 		       COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
-		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''),
+		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       tracking::text
 		FROM leads
 		WHERE so_dien_thoai = $1 AND (landing_id = $2 OR $2 = '') AND thoi_gian >= NOW() - INTERVAL '24 hours'
@@ -427,6 +438,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 		&existing.ISP,
 		&existing.AdPlatform,
 		&existing.AdPlacement,
+		&existing.URL,
 		&existingTrackingStr,
 	)
 	if err == nil {
@@ -440,10 +452,11 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 			    isp = CASE WHEN $5 != '' THEN $5 ELSE leads.isp END,
 			    ad_platform = CASE WHEN $6 != '' THEN $6 ELSE leads.ad_platform END,
 			    ad_placement = CASE WHEN $7 != '' THEN $7 ELSE leads.ad_placement END,
+			    url = CASE WHEN $8 != '' THEN $8 ELSE leads.url END,
 			    cap_nhat_luc = NOW()
-			WHERE id = $8;
+			WHERE id = $9;
 		`
-		_, _ = s.pool.Exec(ctx, updateQuery, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement, existing.ID)
+		_, _ = s.pool.Exec(ctx, updateQuery, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement, pageURL, existing.ID)
 		existing.Tracking = json.RawMessage(existingTrackingStr)
 		if city != "" {
 			existing.City = city
@@ -460,25 +473,28 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 		if adPlacement != "" {
 			existing.AdPlacement = adPlacement
 		}
+		if pageURL != "" {
+			existing.URL = pageURL
+		}
 		return &existing, nil
 	}
 
 	// 2. Lead mới hoàn toàn
 	query := `
-		INSERT INTO leads (landing_id, nguon, so_dien_thoai, tracking, trang_thai, ghi_chu, nguoi_phu_trach, city, region, country, isp, ad_platform, ad_placement, thoi_gian, cap_nhat_luc)
-		VALUES ($1, $2, $3, $4::jsonb, 'moi', '', '', $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		INSERT INTO leads (landing_id, nguon, so_dien_thoai, url, tracking, trang_thai, ghi_chu, nguoi_phu_trach, city, region, country, isp, ad_platform, ad_placement, thoi_gian, cap_nhat_luc)
+		VALUES ($1, $2, $3, $4, $5::jsonb, 'moi', '', '', $6, $7, $8, $9, $10, $11, NOW(), NOW())
 		RETURNING id, TO_CHAR(thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'), landing_id, nguon, so_dien_thoai,
 		          COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
 		          TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		          COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
-		          COALESCE(ad_platform, ''), COALESCE(ad_placement, ''),
+		          COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		          tracking::text;
 	`
 
 	var lead models.Lead
 	var trackingStr string
 
-	err = s.pool.QueryRow(ctx, query, landingID, nguon, phone, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement).Scan(
+	err = s.pool.QueryRow(ctx, query, landingID, nguon, phone, pageURL, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement).Scan(
 		&lead.ID,
 		&lead.CreatedAt,
 		&lead.LandingID,
@@ -494,6 +510,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, trackingJ
 		&lead.ISP,
 		&lead.AdPlatform,
 		&lead.AdPlacement,
+		&lead.URL,
 		&trackingStr,
 	)
 	if err != nil {
@@ -599,7 +616,7 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 		       COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
-		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''),
+		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       tracking::text
 		FROM leads
 		%s
@@ -633,6 +650,7 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 			&lead.ISP,
 			&lead.AdPlatform,
 			&lead.AdPlacement,
+			&lead.URL,
 			&trackingStr,
 		); err != nil {
 			return nil, 0, fmt.Errorf("lỗi đọc dòng lead: %w", err)
@@ -660,7 +678,7 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 		       COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
-		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''),
+		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       tracking::text
 		FROM leads
 		%s
@@ -693,6 +711,7 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 			&lead.ISP,
 			&lead.AdPlatform,
 			&lead.AdPlacement,
+			&lead.URL,
 			&trackingStr,
 		); err != nil {
 			return nil, fmt.Errorf("lỗi đọc dữ liệu export CSV: %w", err)

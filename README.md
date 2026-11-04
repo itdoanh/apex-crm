@@ -198,9 +198,9 @@ apex-crm/
 
 ---
 
-## 📋 MA TRẬN ÁNH XẠ DỮ LIỆU GOOGLE SHEETS (14 TRƯỜNG CHUẨN)
+## 📋 MA TRẬN ÁNH XẠ DỮ LIỆU GOOGLE SHEETS (15 TRƯỜNG CHUẨN)
 
-Hệ thống hỗ trợ ánh xạ tự động hoặc tùy biến 14 trường thông tin chuẩn từ Lead vào các cột tương ứng trên Google Sheet:
+Hệ thống hỗ trợ ánh xạ tự động hoặc tùy biến 15 trường thông tin chuẩn từ Lead vào các cột tương ứng trên Google Sheet:
 
 | STT | Khóa Dữ Liệu | Tiêu Đề Cột Mẫu | Ví Dụ Dữ Liệu Thực Tế | Mô Tả Chi Tiết |
 | :---: | :--- | :--- | :--- | :--- |
@@ -209,15 +209,19 @@ Hệ thống hỗ trợ ánh xạ tự động hoặc tùy biến 14 trường t
 | **3** | `so_dien_thoai` | Số Điện Thoại | `0984386538` | Số điện thoại đã được chuẩn hóa |
 | **4** | `nha_mang` | Nhà Mạng | `Viettel` | Viettel, Vinaphone, Mobifone, Vietnamobile... |
 | **5** | `landing_id` | Mã Landing | `mxv_080_online` | Định danh trang landing page phát sinh lead |
-| **6** | `nguon` | Nguồn Chiến Dịch | `facebook_ads` | Nguồn lưu lượng truy cập |
-| **7** | `vi_tri_qc` | Vị Trí Quảng Cáo | `Facebook_Reels` | Feed, Story, Reels, Audience Network, Search |
-| **8** | `ip` | Địa Chỉ IP | `113.161.72.45` | Địa chỉ IP của người dùng |
-| **9** | `tinh_thanh` | Tỉnh / Thành Phố | `Hà Nội` | Vị trí địa lý giải mã qua GeoIP |
-| **10** | `thiet_bi` | Loại Thiết Bị | `Mobile (iPhone)` | Phân loại thiết bị truy cập |
-| **11** | `trinh_duyet`| Trình Duyệt | `Safari Mobile 18.2` | Tên và phiên bản trình duyệt |
-| **12** | `utm_campaign`| Chiến Dịch UTM | `KhoaHoc_MXV_T11` | Tên chiến dịch Marketing |
-| **13** | `thoi_gian_xem`| Thời Gian Xem Trang| `45 giây` | Tổng thời gian khách đọc nội dung trước khi gửi |
-| **14** | `ghi_chu` | Ghi Chú / Nhu Cầu | `Cần tư vấn hợp đồng Ngô & Dầu đậu tương` | Nội dung tùy chọn của khách |
+| **6** ⭐ | `url` | URL Trang Đăng Ký | `https://hanghoaphaisinh.net/?utm_source=facebook&utm_campaign=KhoaHoc_MXV_T11` | **URL đầy đủ của trang khách vừa gửi form** (kèm query string UTM) — truy ngược lead về đúng landing page / campaign |
+| **7** | `nguon` | Nguồn Chiến Dịch | `facebook_ads` | Nguồn lưu lượng truy cập |
+| **8** | `vi_tri_qc` | Vị Trí Quảng Cáo | `Facebook_Reels` | Feed, Story, Reels, Audience Network, Search |
+| **9** | `ip` | Địa Chỉ IP | `113.161.72.45` | Địa chỉ IP của người dùng |
+| **10** | `tinh_thanh` | Tỉnh / Thành Phố | `Hà Nội` | Vị trí địa lý giải mã qua GeoIP |
+| **11** | `thiet_bi` | Loại Thiết Bị | `Mobile (iPhone)` | Phân loại thiết bị truy cập |
+| **12** | `trinh_duyet`| Trình Duyệt | `Safari Mobile 18.2` | Tên và phiên bản trình duyệt |
+| **13** | `utm_campaign`| Chiến Dịch UTM | `KhoaHoc_MXV_T11` | Tên chiến dịch Marketing |
+| **14** | `thoi_gian_xem`| Thời Gian Xem Trang| `45 giây` | Tổng thời gian khách đọc nội dung trước khi gửi |
+| **15** | `ghi_chu` | Ghi Chú / Nhu Cầu | `Cần tư vấn hợp đồng Ngô & Dầu đậu tương` | Nội dung tùy chọn của khách |
+
+> Ngoài 15 trường chuẩn còn có thể ánh xạ: `fill_duration_ms`, `max_scroll`, `utm_source`,
+> `utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
 
 ---
 

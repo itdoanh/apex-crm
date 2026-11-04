@@ -236,6 +236,7 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 		Phone:     "0984386538",
 		TrangThai: "moi",
 		GhiChu:    "Dòng kiểm tra kết nối từ Admin Apex CRM",
+		URL:       "https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test",
 	}
 
 	mockTracking := map[string]interface{}{
@@ -254,6 +255,8 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 		"utm_source":       "google",
 		"utm_medium":       "cpc",
 		"session_id":       "test_sess_abc123",
+		"url":              "https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test",
+		"referrer":         "https://www.facebook.com/",
 	}
 
 	if req.TestLead != nil {
@@ -633,6 +636,7 @@ func (h *GoogleSheetHandler) HandleGetDefaultMappings(w http.ResponseWriter, r *
 		{"key": "so_dien_thoai", "label": "Số Điện Thoại"},
 		{"key": "carrier", "label": "Nhà Mạng Viễn Thông"},
 		{"key": "landing_id", "label": "ID Trang Landing"},
+		{"key": "url", "label": "URL Trang Khách Đăng Ký"},
 		{"key": "nguon", "label": "Nguồn Traffic (Kênh)"},
 		{"key": "trang_thai", "label": "Trạng Thái Lead (Pipeline)"},
 		{"key": "ghi_chu", "label": "Ghi Chú Tư Vấn"},
@@ -648,6 +652,7 @@ func (h *GoogleSheetHandler) HandleGetDefaultMappings(w http.ResponseWriter, r *
 		{"key": "utm_content", "label": "UTM Content"},
 		{"key": "utm_term", "label": "UTM Term"},
 		{"key": "session_id", "label": "Mã Phiên (Session ID)"},
+		{"key": "referrer", "label": "Referrer (Trang Trước)"},
 		{"key": "tracking_json", "label": "Toàn Bộ JSON Tracking"},
 		{"key": "custom_text", "label": "Văn Bản Tùy Chọn Cố Định"},
 	}

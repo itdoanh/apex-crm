@@ -503,6 +503,21 @@ let currentOpenLead = null;
             const refEl = document.getElementById('drawerReferrer');
             if (refEl) refEl.innerText = referrer;
 
+            // URL trang khách đã đăng ký (ưu tiên cột `url` trong DB, fallback tracking JSON)
+            const leadURL = lead.url || tr.url || tr.entry_url || '';
+            const leadURLElement = document.getElementById('drawerLeadURL');
+            if (leadURLElement) {
+                if (leadURL) {
+                    leadURLElement.innerText = leadURL;
+                    leadURLElement.href = leadURL;
+                    leadURLElement.title = leadURL;
+                } else {
+                    leadURLElement.innerText = 'Không ghi nhận';
+                    leadURLElement.removeAttribute('href');
+                    leadURLElement.title = 'Không ghi nhận';
+                }
+            }
+
             document.getElementById('drawerLanding').innerText = lead.landing_id || 'default_landing';
             document.getElementById('drawerSource').innerText = lead.nguon || 'direct';
             document.getElementById('drawerUTM').innerText = tr.utm_campaign || tr.utm_source || 'Không có UTM';

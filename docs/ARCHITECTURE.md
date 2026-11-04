@@ -167,7 +167,7 @@ SPA thuần HTML + Tailwind CDN + Alpine.js + Chart.js. **Không có build step*
 
 ```
 Người dùng điền form
-  └→ tracker.js thu thập: name, phone, UTM, device, fingerprint, time_on_page
+  └→ tracker.js thu thập: name, phone, UTM, url (URL trang đăng ký), device, fingerprint, time_on_page
       └→ GET /api/auth/challenge → nhận challenge_id, salt, difficulty
           └→ client brute-force SHA-256 tới khi hash bắt đầu bằng "000"
               └→ POST /api/leads (kèm challenge_solution + signature)
@@ -176,6 +176,7 @@ Người dùng điền form
                   ├→ Rate limit check
                   ├→ Phone normalize + carrier detect (Viettel/Vinaphone/...)
                   ├→ GeoIP resolve (city/region/isp)
+                  ├→ Trích xuất `url` (fallback: Referer → Origin → Host)
                   ├→ db.SaveLead()  (dedupe 24h: cùng SĐT → merge tracking)
                   ├→ analytics_sessions upsert + converted_lead = TRUE
                   └→ Google Sheets append (async, không chặn response)
@@ -187,7 +188,7 @@ Người dùng điền form
 - File `service-account.json` được auto-detect qua `config.Load()` (nhiều candidate path).
 - Quy trình 1-click: user share Sheet cho bot → dán link → hệ thống tự parse `spreadsheet_id` bằng regex → đọc tabs + headers → lưu mapping.
 - Mỗi landing có thể gửi lead tới nhiều sheet, có filter theo `landing_id` / `nguon`.
-- 14 trường chuẩn ánh xạ: xem bảng trong `README.md`.
+- 15 trường chuẩn ánh xạ (trong đó có `url` — URL trang khách đăng ký): xem bảng trong `README.md`.
 
 ## 7. Cơ chế phân tầng bảo mật
 

@@ -4,7 +4,7 @@ package models
 type FieldMapping struct {
 	Column     string `json:"column"`      // Ký hiệu cột: A, B, C... hoặc tên tiêu đề
 	Header     string `json:"header"`      // Tên tiêu đề trên Google Sheet (vd: "Họ và tên", "Số điện thoại")
-	Field      string `json:"field"`       // Tên trường Lead: thoi_gian, fullName, so_dien_thoai, carrier, landing_id, nguon, trang_thai, ghi_chu, is_autofill, fill_duration_ms, time_on_page, max_scroll, device_type, ip_address, utm_source, utm_campaign, utm_content, session_id, tracking_json, custom_text
+	Field      string `json:"field"`       // Tên trường Lead: thoi_gian, fullName, so_dien_thoai, carrier, landing_id, url, nguon, trang_thai, ghi_chu, is_autofill, fill_duration_ms, time_on_page, max_scroll, device_type, ip_address, utm_source, utm_campaign, utm_content, session_id, referrer, tracking_json, custom_text
 	CustomText string `json:"custom_text"` // Giá trị văn bản cố định (nếu field == 'custom_text')
 }
 

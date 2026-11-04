@@ -108,7 +108,7 @@ cd backend && go run main.go
 
 | File | Nội dung |
 |---|---|
-| [`README.md`](README.md) | Tổng quan tính năng, ma trận 14 trường Google Sheets |
+| [`README.md`](README.md) | Tổng quan tính năng, ma trận 15 trường Google Sheets |
 | [`SECURITY_PLAN.md`](SECURITY_PLAN.md) | Kế hoạch bảo mật đầy đủ |
 | [`DEPLOY_WINDOWS_SERVER_2025.md`](DEPLOY_WINDOWS_SERVER_2025.md) | Deploy Windows chi tiết |
 | [`DEPLOY_SERVER_GUIDE.md`](DEPLOY_SERVER_GUIDE.md) | Deploy Ubuntu/Docker/Nginx |

@@ -13,6 +13,7 @@
             { key: "so_dien_thoai", label: "Số Điện Thoại" },
             { key: "carrier", label: "Nhà Mạng Viễn Thông" },
             { key: "landing_id", label: "ID Trang Landing" },
+            { key: "url", label: "URL Trang Khách Đăng Ký" },
             { key: "nguon", label: "Nguồn Traffic (Kênh)" },
             { key: "trang_thai", label: "Trạng Thái Lead (Pipeline)" },
             { key: "ghi_chu", label: "Ghi Chú Tư Vấn" },
@@ -28,6 +29,7 @@
             { key: "utm_content", label: "UTM Content" },
             { key: "utm_term", label: "UTM Term" },
             { key: "session_id", label: "Mã Phiên (Session ID)" },
+            { key: "referrer", label: "Referrer (Trang Trước)" },
             { key: "tracking_json", label: "Toàn Bộ JSON Tracking" },
             { key: "custom_text", label: "Văn Bản Cố Định" }
         ];
@@ -487,6 +489,8 @@
 
         function guessFieldFromHeader(header) {
             const h = header.toLowerCase().trim();
+            // URL phải được kiểm tra TRƯỚC "landing"/"trang" để không bị nuốt nhầm
+            if (h.includes("url") || h.includes("đường dẫn") || h.includes("duong dan") || h.includes("link")) return "url";
             if (h.includes("thời gian") || h.includes("ngày") || h.includes("time") || h.includes("date")) return "thoi_gian";
             if (h.includes("họ tên") || h.includes("họ và tên") || h.includes("tên") || h.includes("name")) return "fullName";
             if (h.includes("sđt") || h.includes("điện thoại") || h.includes("phone") || h.includes("tel")) return "so_dien_thoai";
@@ -520,7 +524,8 @@
                 { column: "K", header: "Thiết Bị", field: "device_type", custom_text: "" },
                 { column: "L", header: "Thời Gian Xem Trang", field: "time_on_page", custom_text: "" },
                 { column: "M", header: "Tỷ Lệ Cuộn", field: "max_scroll", custom_text: "" },
-                { column: "N", header: "Ghi Chú", field: "ghi_chu", custom_text: "" }
+                { column: "N", header: "Ghi Chú", field: "ghi_chu", custom_text: "" },
+                { column: "O", header: "URL Trang Đăng Ký", field: "url", custom_text: "" }
             ];
         }
 

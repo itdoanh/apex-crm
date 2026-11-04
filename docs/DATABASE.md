@@ -44,9 +44,21 @@ CREATE TABLE leads (
     country         VARCHAR(100) NOT NULL DEFAULT 'Việt Nam',
     isp             VARCHAR(100) NOT NULL DEFAULT '',
     ad_platform     VARCHAR(50)  NOT NULL DEFAULT '',
-    ad_placement    VARCHAR(100) NOT NULL DEFAULT ''
+    ad_placement    VARCHAR(100) NOT NULL DEFAULT '',
+    url             VARCHAR(1000) NOT NULL DEFAULT ''
 );
 ```
+
+> ⭐ **Cột `url`** — URL trang khách đã đăng ký (landing + query string UTM).
+> Tách riêng khỏi `tracking` JSONB để:
+> 1. Đồng bộ Google Sheets bằng field mapping `url` (1 cột cố định).
+> 2. Lọc / xuất CSV nhanh không cần parse JSONB.
+> 3. Truy ngược lead về đúng landing page khi campaign bị trộn.
+>
+> Migration tự động (idempotent) trong `backend/db/db.go`:
+> ```sql
+> ALTER TABLE leads ADD COLUMN IF NOT EXISTS url VARCHAR(1000) NOT NULL DEFAULT '';
+> ```
 
 ### Trạng thái CRM (`trang_thai`)
 
@@ -75,6 +87,8 @@ CREATE TABLE leads (
   "server_user_agent": "Mozilla/5.0 ...",
   "server_referer": "https://...",
   "entry_url": "https://ads.giaodichhanghoatuonglai.com/landing",
+  "url": "https://ads.giaodichhanghoatuonglai.com/landing?utm_source=facebook&utm_campaign=KhoaHoc_MXV_T11",
+  "referrer": "https://www.facebook.com/",
   "session_id": "sess_88573x64_mw1kdrn3",
   "visitor_id": "v_bh2k8njl_mw1kdrn2",
   "ad_platform": "Meta Ads",
@@ -111,6 +125,8 @@ idx_leads_tracking_gin  ON leads USING gin (tracking)
 ### Deduplication 24h
 
 `SaveLead()` kiểm tra: cùng `so_dien_thoai` (+ `landing_id` nếu có) trong 24h → **không insert**, mà `UPDATE` merge tracking mới vào bản ghi cũ và trả về lead cũ.
+
+Khi merge, cột `url` cũng được cập nhật nếu lead mới có URL khác (`url = CASE WHEN $8 != '' THEN $8 ELSE leads.url END`).
 
 ---
 

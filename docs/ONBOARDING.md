@@ -218,7 +218,7 @@ Chi tiết: `docs/DEPLOYMENT.md`.
 
 | File | Nội dung |
 |---|---|
-| `README.md` | Tổng quan tính năng, kiến trúc, ma trận 14 trường Sheets |
+| `README.md` | Tổng quan tính năng, kiến trúc, ma trận 15 trường Sheets |
 | `SECURITY_PLAN.md` | Kế hoạch bảo mật đầy đủ |
 | `DEPLOY_WINDOWS_SERVER_2025.md` | Deploy Windows chi tiết |
 | `DEPLOY_SERVER_GUIDE.md` | Deploy Ubuntu/Docker/Nginx |

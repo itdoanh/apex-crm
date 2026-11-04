@@ -186,6 +186,18 @@ Backend tự inject vào HTML khi render (`InjectDynamicScripts`).
 
 Backend tự parse `ad_platform` / `ad_placement` từ UTM + referrer.
 
+### URL lead (`url`)
+
+Tracker gửi kèm `url: window.location.href` — **URL đầy đủ của trang đang đăng ký** kèm query string.
+Server lưu vào cột `leads.url` và đồng bộ sang Google Sheets bằng field mapping `url`.
+
+| Nguồn | Thứ tự ưu tiên |
+|---|---|
+| Payload client | `url` → `page_url` → `entry_url` → `landing_url` |
+| Fallback server | `Referer` → `Origin` → `X-Forwarded-Proto` + `Host` + path |
+
+> Landing page mới **không cần làm gì thêm** — `tracker.js` đã gửi sẵn.
+
 ---
 
 ## 6. Quy trình tạo landing mới (checklist)

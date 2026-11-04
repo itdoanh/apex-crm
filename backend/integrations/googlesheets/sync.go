@@ -163,6 +163,26 @@ func ExtractLeadValue(fieldName string, customText string, lead *models.Lead, tr
 		}
 		return ""
 
+	case "url", "page_url", "entry_url", "landing_url":
+		// URL trang khách vừa gửi form — trường quan trọng để truy ngược lead về đúng landing page
+		if lead != nil && lead.URL != "" {
+			return lead.URL
+		}
+		for _, k := range []string{"url", "page_url", "entry_url", "landing_url"} {
+			if v, ok := trackingData[k]; ok && v != nil && fmt.Sprintf("%v", v) != "" {
+				return fmt.Sprintf("%v", v)
+			}
+		}
+		return ""
+
+	case "referrer", "referer":
+		for _, k := range []string{"referrer", "server_referer"} {
+			if v, ok := trackingData[k]; ok && v != nil && fmt.Sprintf("%v", v) != "" {
+				return fmt.Sprintf("%v", v)
+			}
+		}
+		return ""
+
 	case "session_id":
 		for _, k := range []string{"session_id", "sessionId", "apex_session_id"} {
 			if v, ok := trackingData[k]; ok && v != nil {
@@ -217,5 +237,6 @@ func GetStandardDefaultMappings() []models.FieldMapping {
 		{Column: "L", Header: "Thời Gian Trên Trang", Field: "time_on_page"},
 		{Column: "M", Header: "Cuộn Sâu Nhất", Field: "max_scroll"},
 		{Column: "N", Header: "Ghi Chú", Field: "ghi_chu"},
+		{Column: "O", Header: "URL Trang Đăng Ký", Field: "url"},
 	}
 }

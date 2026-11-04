@@ -143,6 +143,7 @@ Toàn bộ quá trình theo dõi được thực thi ngầm bởi `tracker.js`, 
 | **`utm_content`** | Mẫu nội dung / video / hình ảnh A/B test | Bóc tách từ Query Parameter trên URL. |
 | **`utm_term`** | Từ khóa tìm kiếm | Bóc tách từ Query Parameter trên URL. |
 | **`referrer`** | Đường dẫn trang trước chuyển tiếp sang | `document.referrer` |
+| **`url`** | **URL đầy đủ của trang khách đang đăng ký** (kèm query string UTM) — trường quan trọng để truy ngược lead về đúng landing page | `window.location.href` |
 | **`time_on_page`** | Tổng thời gian khách đã ở lại trên trang (giây) | `performance.now()` hoặc bộ đếm thời gian thực. |
 | **`scroll_depth`** | Độ sâu cuộn trang tối đa (25%, 50%, 75%, 100%) | Lắng nghe sự kiện `window.addEventListener('scroll')` throttling. |
 | **`clicks_count`** | Tổng số lượt click/tương tác trên trang | Lắng nghe sự kiện `document.addEventListener('click')`. |
@@ -197,10 +198,15 @@ Toàn bộ quá trình theo dõi được thực thi ngầm bởi `tracker.js`, 
   "utm_content": "video_chuyen_gia_mxv",
   "utm_term": "phai_sinh_hang_hoa",
   "referrer": "https://m.facebook.com/",
+  "url": "https://hanghoaphaisinh.net/?utm_source=facebook&utm_medium=cpc&utm_campaign=dau_tu_hang_hoa_t11",
   "_hp_check": "",
   "_client_ts": 1730554800000
 }
 ```
+
+> ⭐ Trường **`url`** là URL trang đăng ký. Backend lưu vào cột `leads.url` và đồng bộ
+> sang Google Sheets bằng field mapping `url`. Nếu thiếu, server fallback theo
+> `Referer` → `Origin` → `Host`.
 
 #### Response Thành Công (`200 OK`):
 ```json

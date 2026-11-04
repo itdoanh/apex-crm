@@ -81,6 +81,7 @@ Gửi lead mới. **Đây là endpoint quan trọng nhất của hệ thống.**
   "phone": "0984386538",
   "nguon": "landing_chinh",
   "landing_id": "mxv_080_online",
+  "url": "https://hanghoaphaisinh.net/?utm_source=facebook&utm_medium=paid&utm_campaign=KhoaHoc_MXV_T11",
   "session_id": "sess_88573x64_mw1kdrn3",
   "challenge_id": "ch_4585712799a4405c09db91027f8099fd",
   "challenge_salt": "732721a5a7c71469ba38d3a5b126332b",
@@ -104,9 +105,25 @@ Gửi lead mới. **Đây là endpoint quan trọng nhất của hệ thống.**
   "success": true,
   "lead_id": 2,
   "message": "Đăng ký thành công",
-  "redirect_url": "chucmung.html"
+  "redirect_url": "chucmung.html",
+  "url": "https://hanghoaphaisinh.net/?utm_source=facebook&utm_medium=paid"
 }
 ```
+
+#### Trường `url` — URL trang khách đăng ký ⭐
+
+`url` là **URL đầy đủ của trang landing mà khách vừa gửi form** (kèm query string UTM).
+Đây là trường **quan trọng** để truy ngược lead về đúng landing page / campaign.
+
+| Nguồn | Thứ tự ưu tiên |
+|---|---|
+| Payload client | `url` → `page_url` → `entry_url` → `landing_url` |
+| Fallback server | `Referer` → `Origin` → `X-Forwarded-Proto` + `Host` + path |
+
+Server lưu vào **cột `leads.url`** (VARCHAR 1000) *và* trong `tracking.url` (JSONB).
+Cột riêng cho phép đồng bộ sang Google Sheets bằng **field mapping `url`** và xuất CSV dễ dàng.
+
+> `tracker.js` đã gửi kèm `url: window.location.href` — landing page không cần thay đổi gì.
 
 **Mã lỗi:**
 
@@ -127,7 +144,7 @@ Query: `?page=1&limit=50&search=&landing_id=&nguon=&status=&from_date=&to_date=&
 Response:
 ```json
 {
-  "leads": [ { "id": 2, "thoi_gian": "...", "so_dien_thoai": "...", "trang_thai": "moi", "tracking": {...} } ],
+  "leads": [ { "id": 2, "thoi_gian": "...", "so_dien_thoai": "...", "trang_thai": "moi", "url": "https://...", "tracking": {...} } ],
   "total": 2,
   "page": 1, "limit": 50
 }
@@ -135,6 +152,10 @@ Response:
 
 ### `GET /api/leads/export.csv` — Admin
 Query giống `/api/leads` + `?landing_id=&nguon=`. Trả CSV **UTF-8 có BOM** (để Excel đọc tiếng Việt đúng).
+
+Cột CSV: `ID, Thời Gian, Trạng Thái CRM, Họ Tên, Số Điện Thoại, Nhà Mạng, Landing ID,
+**URL Trang Đăng Ký**, Nguồn Traffic, Ghi Chú Sales, Người Phụ Trách, Cập Nhật Lúc,
+Thiết Bị, Tự Động Điền, UTM Campaign, Tracking Raw`.
 
 ### `POST /api/leads/update` — Admin
 ```json
@@ -273,7 +294,7 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 
 ---
 
-## 9. Ma trận ánh xạ 14 trường Google Sheets
+## 9. Ma trận ánh xạ 15 trường Google Sheets
 
 | # | Key | Tiêu đề cột | Ví dụ |
 |---|---|---|---|
@@ -282,15 +303,21 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 | 3 | `so_dien_thoai` | Số Điện Thoại | `0984386538` |
 | 4 | `nha_mang` | Nhà Mạng | `Viettel` |
 | 5 | `landing_id` | Mã Landing | `mxv_080_online` |
-| 6 | `nguon` | Nguồn Chiến Dịch | `facebook_ads` |
-| 7 | `vi_tri_qc` | Vị Trí Quảng Cáo | `Facebook_Reels` |
-| 8 | `ip` | Địa Chỉ IP | `113.161.72.45` |
-| 9 | `tinh_thanh` | Tỉnh / Thành Phố | `Hà Nội` |
-| 10 | `thiet_bi` | Loại Thiết Bị | `Mobile (iPhone)` |
-| 11 | `trinh_duyet` | Trình Duyệt | `Safari Mobile 18.2` |
-| 12 | `utm_campaign` | Chiến Dịch UTM | `KhoaHoc_MXV_T11` |
-| 13 | `thoi_gian_xem` | Thời Gian Xem Trang | `45 giây` |
-| 14 | `ghi_chu` | Ghi Chú / Nhu Cầu | `Cần tư vấn hợp đồng` |
+| 6 ⭐ | `url` | URL Trang Đăng Ký | `https://hanghoaphaisinh.net/?utm_source=facebook&utm_campaign=KhoaHoc_MXV_T11` |
+| 7 | `nguon` | Nguồn Chiến Dịch | `facebook_ads` |
+| 8 | `vi_tri_qc` | Vị Trí Quảng Cáo | `Facebook_Reels` |
+| 9 | `ip` | Địa Chỉ IP | `113.161.72.45` |
+| 10 | `tinh_thanh` | Tỉnh / Thành Phố | `Hà Nội` |
+| 11 | `thiet_bi` | Loại Thiết Bị | `Mobile (iPhone)` |
+| 12 | `trinh_duyet` | Trình Duyệt | `Safari Mobile 18.2` |
+| 13 | `utm_campaign` | Chiến Dịch UTM | `KhoaHoc_MXV_T11` |
+| 14 | `thoi_gian_xem` | Thời Gian Xem Trang | `45 giây` |
+| 15 | `ghi_chu` | Ghi Chú / Nhu Cầu | `Cần tư vấn hợp đồng` |
+
+**Ngoài 15 trường chuẩn** còn map được: `fill_duration_ms`, `max_scroll`, `utm_source`,
+`utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
+
+Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/default-mappings` (`available_fields`).
 
 ---
 

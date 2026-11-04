@@ -1007,6 +1007,9 @@
             session_id: sessionId,
             visitor_id: visitorId,
             entry_url: window.location.href,
+            // URL trang khách đang đăng ký (kèm query string UTM) — trường quan trọng để
+            // truy ngược lead về đúng landing page trong CRM & Google Sheets.
+            url: window.location.href,
             referrer: document.referrer || '',
             utm_source: urlParams.utm_source || '',
             utm_medium: urlParams.utm_medium || '',

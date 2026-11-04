@@ -192,8 +192,12 @@ studio.html
 | Hành vi | `time_on_page`, `max_scroll`, `clicks_count`, `fill_duration_ms` |
 | Autofill | `is_autofill`, `autofill_source` |
 | UTM | `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` |
+| URL | `url` (URL đầy đủ trang đăng ký kèm query string), `entry_url`, `referrer` |
 | Fingerprint | `visitor_id`, `session_id`, `device_type`, `browser`, `os`, `screen_res` |
 | PoW | `challenge_id`, `challenge_salt`, `challenge_difficulty`, `challenge_signature`, `challenge_solution` |
+
+> ⭐ **`url` là trường quan trọng** — server lưu vào cột `leads.url` và đồng bộ Google Sheets
+> bằng field mapping `url`. Xem `docs/API.md` mục 3 & `docs/DATABASE.md` mục 2.
 
 ### Bất biến
 - **Không** được gỡ field honeypot (`website`, `fax_company_prefix`, `user_email_verify`, `company_website_url`) khỏi DOM.
