@@ -8,11 +8,11 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 
 ```
 1. Sửa code ở LOCAL (C:\code\apex_moi\landing)
-2. Test local (go build + E2E tests)
+2. Test local (go build + go vet)
 3. git commit + git push
 4. SSH vào server
 5. cd C:\apex && git pull
-6. cd backend && build.bat          (hoặc build_linux.bat nếu build trên Linux)
+6. Build binary  ← xem mục 3.1 (server KHÔNG có Go toolchain)
 7. Restart Task Scheduler:
    schtasks /End /TN "Apex_Backend_Server"
    schtasks /Run /TN "Apex_Backend_Server"
@@ -21,6 +21,42 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 ```
 
 > 🚨 **TUYỆT ĐỐI KHÔNG sửa file trực tiếp trên server.** Mọi thay đổi phải đi qua git để có thể rollback. Chỉ sửa tay trong trường hợp emergency hotfix — và phải ghi lại vào commit sau.
+
+---
+
+## 1.1. Build binary — server KHÔNG có Go toolchain
+
+⚠️ **Production server KHÔNG cài Go.** Đã kiểm tra 2026-11-04: không có `C:\Go`,
+không có `C:\Program Files\Go`, `go.exe` không tồn tại trên toàn hệ thống.
+
+⇒ **Phải build ở LOCAL rồi upload binary:**
+
+```powershell
+# LOCAL
+cd C:\code\apex_moi\landing\backend
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+# → apex-server.exe (~22 MB)
+
+# Upload
+scp -i C:\Users\doanh\.ssh\id_ed25519 -P 22899 `
+    backend\apex-server.exe `
+    Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe
+```
+
+```powershell
+# SERVER — swap + restart
+Stop-ScheduledTask -TaskName "Apex_Backend_Server"
+Get-Process -Name "apex-server" | Stop-Process -Force
+Copy-Item C:\apex\backend\apex-server.exe C:\apex\backend\apex-server.exe.bak_<timestamp>
+Copy-Item C:\Windows\Temp\apex-server-new.exe C:\apex\backend\apex-server.exe -Force
+Start-ScheduledTask -TaskName "Apex_Backend_Server"
+```
+
+> 🚨 **Không chạy `build.bat` qua SSH.** Script có lệnh `pause` ở cuối ⇒ sẽ treo
+> phiên SSH vô thời hạn chờ nhấn phím. Dùng `go build` trực tiếp ở local.
+
+> ℹ️ Nếu muốn build ngay trên server, cài Go 1.26.3+ trước rồi thêm vào PATH.
+> Hiện chưa làm vì mỗi lần deploy đều build ở local nhanh và không rủi ro hơn.
 
 ---
 

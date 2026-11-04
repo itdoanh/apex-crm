@@ -54,9 +54,9 @@ crm.hanghoaphaisinh.net {
         health_timeout 5s
 
         # Retry: cho thêm thời gian backend restart trước khi trả 502
+        # Lưu ý: lb_try_count chỉ có từ Caddy 2.9+ — server production chạy 2.8.4 nên không dùng.
         lb_try_duration 10s
         lb_try_interval 500ms
-        lb_try_count 5
     }
 }
 
@@ -91,8 +91,8 @@ crm.hanghoaphaisinh.net {
         health_timeout 5s
 
         # Retry: cho thêm thời gian backend restart trước khi trả 502
+        # Lưu ý: lb_try_count chỉ có từ Caddy 2.9+ — server production chạy 2.8.4 nên không dùng.
         lb_try_duration 10s
         lb_try_interval 500ms
-        lb_try_count 5
     }
 }

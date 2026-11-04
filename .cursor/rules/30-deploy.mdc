@@ -51,42 +51,71 @@ Cũng vậy: deploy chỉ copy thư mục `backend/` mà không copy `frontend/`
 2. git commit + git push
 3. SSH vào server
 4. cd C:\apex && git pull
-5. cd backend && build.bat
-6. schtasks /End /TN "Apex_Backend_Server"
-   schtasks /Run /TN "Apex_Backend_Server"
+5. BUILD BINARY Ở LOCAL rồi upload (server KHÔNG có Go — xem mục 3.1)
+6. Swap binary + restart task
 7. Verify: curl http://127.0.0.1:8080/health
 8. Kiểm tra log Caddy không có 502 mới
 ```
 
 🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi qua git để rollback được.
 
+### 3.1. Server KHÔNG có Go toolchain
+
+Đã kiểm tra 2026-11-04: không có `C:\Go`, không có `C:\Program Files\Go`, `go.exe`
+không tồn tại trên toàn hệ thống server. ⇒ **Build ở LOCAL rồi `scp` binary lên.**
+
+```powershell
+# LOCAL
+cd C:\code\apex_moi\landing\backend
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+
+# Upload
+scp -i C:\Users\doanh\.ssh\id_ed25519 -P 22899 `
+    backend\apex-server.exe `
+    Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe
+```
+
+> 🚨 **KHÔNG chạy `build.bat` qua SSH** — script có `pause` ở cuối sẽ treo phiên SSH
+> vô thời hạn. Dùng `go build` trực tiếp ở local.
+
+### 3.2. Caddy trên production là 2.8.4
+
+`lb_try_count` **chỉ có từ Caddy 2.9+**. Server chạy `v2.8.4` ⇒ dùng `lb_try_count`
+sẽ khiến Caddy **không validate được** và từ chối khởi động. Chỉ dùng:
+```caddyfile
+lb_try_duration 10s
+lb_try_interval 500ms
+```
+
+Luôn kiểm tra trước khi restart Caddy:
+```powershell
+C:\caddy\caddy.exe validate --config C:\caddy\Caddyfile
+```
+
 ---
 
-## 4. Backend KHÔNG ghi log — phải bọc action
+## 4. Backend KHÔNG ghi log — đã bọc action ✅
 
 Task Scheduler nuốt stdout/stderr ⇒ mọi lỗi Go **bị mất hoàn toàn**.
 
-Action hiện tại:
+Action hiện tại (đã áp dụng 2026-11-04):
 ```
-C:\apex\backend\apex-server.exe
-```
-
-Action nên dùng (ghi log + xoay vòng):
-```
-cmd /c "C:\apex\backend\apex-server.exe >> C:\apex\backend\logs\server.log 2>&1"
+cmd.exe /c "C:\apex\backend\apex-server.exe >> C:\apex\backend\logs\server.log 2>&1"
 ```
 
-Phải tạo sẵn `C:\apex\backend\logs\`.
+Script: `deploy/windows/setup_logging.ps1` (idempotent).
+Log nằm ở `C:\apex\backend\logs\server.log` — xoay vòng bởi
+`deploy/windows/cleanup_disk_space.ps1` (cắt còn 2000 dòng cuối khi > 10MB).
 
 ---
 
-## 5. Firewall
+## 5. Firewall ✅ đã chặn
 
-| Port | Yêu cầu |
-|---|---|
-| 80, 443 | Allow Any ✅ |
-| 8080 | **Phải chặn từ internet** ⚠️ hiện đang mở |
-| 5432 | Chỉ localhost ✅ (Postgres đã listen loopback) |
+| Port | Yêu cầu | Trạng thái |
+|---|---|---|
+| 80, 443 | Allow Any ✅ | Đã có |
+| 8080 | **Phải chặn từ internet** | ✅ Rule `Apex_Block_External_8080` (2026-11-04) |
+| 5432 | Chỉ localhost | ✅ Rule `Apex_Block_External_5432` |
 
 ```powershell
 New-NetFirewallRule -DisplayName "Apex_Block_External_8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -RemoteAddress Any -Action Block -Profile Public,Private
@@ -99,6 +128,8 @@ Verify:
 Invoke-WebRequest -Uri "http://103.124.95.232:8080/health" -UseBasicParsing -TimeoutSec 10
 # Phải FAIL
 ```
+
+Script: `deploy/windows/setup_firewall.ps1` (idempotent).
 
 ---
 
@@ -127,17 +158,19 @@ crm.hanghoaphaisinh.net {
 
 **Bắt buộc:** `header_up Host {host}` — backend dùng Host header để định tuyến multi-domain. Thiếu → mọi request về `/`.
 
-**Nên thêm** (đang thiếu, gây 502 khi backend restart):
+**Đã thêm** (2026-11-04) — tránh 502 khi backend restart:
 ```caddyfile
 reverse_proxy 127.0.0.1:8080 {
     header_up Host {host}
-    lb_try_duration 10s
-    lb_try_interval 500ms
-    lb_try_count 5
     health_uri /health
     health_interval 30s
+    health_timeout 5s
+    lb_try_duration 10s
+    lb_try_interval 500ms
 }
 ```
+
+> ⚠️ **Không dùng `lb_try_count`** — chỉ có từ Caddy 2.9+, production chạy 2.8.4.
 
 **Cấu hình Caddy cho Linux** (`deploy/caddy/Caddyfile`) phải tương đương bản Windows.
 
@@ -162,10 +195,13 @@ Domain mới → trỏ A record hoặc đổi NS → đăng ký trong CRM → SS
 | Script | Nền tảng | Trạng thái |
 |---|---|---|
 | `deploy/windows/setup_services.ps1` | Windows | ✅ Mặc định `-Method task` (khớp production). Action đã bọc `cmd /c ... >> logs\server.log 2>&1` để có log. Truyền `-Method nssm` nếu muốn Windows Service. |
+| `deploy/windows/setup_logging.ps1` | Windows | ✅ Cấu hình lại action Task Scheduler để ghi `logs\server.log` |
+| `deploy/windows/setup_scheduled_tasks.ps1` | Windows | ✅ Đăng ký `Apex_DB_Backup` (02:00 hằng ngày) + `Apex_Disk_Cleanup` (Chủ Nhật 03:00) |
+| `deploy/windows/backup_database.ps1` | Windows | ✅ `pg_dump` + xoay vòng giữ 7 bản |
 | `deploy/windows/install_postgres_native.ps1` | Windows | ✅ OK |
 | `deploy/windows/install_caddy.ps1` | Windows | ✅ OK |
-| `deploy/windows/setup_firewall.ps1` | Windows | ✅ OK — cần chạy thật (port 8080 hiện chưa chặn) |
-| `deploy/windows/cleanup_disk_space.ps1` | Windows | ✅ OK — chưa có task, cần đăng ký vào Task Scheduler |
+| `deploy/windows/setup_firewall.ps1` | Windows | ✅ OK — port 8080 đã chặn |
+| `deploy/windows/cleanup_disk_space.ps1` | Windows | ✅ OK — có thêm xoay vòng `server.log` |
 | `deploy/windows/health_check.ps1` | Windows | ✅ **Script chẩn đoán tổng hợp** — dùng khi có sự cố |
 | `deploy/windows/start_all.bat` / `stop_all.bat` / `restart_all.bat` | Windows | ✅ Tự phát hiện Task Scheduler vs Windows Service |
 | `deploy/scripts/deploy.sh` | Linux | ✅ OK |
