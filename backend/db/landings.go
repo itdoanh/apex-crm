@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -609,6 +610,84 @@ func (s *Store) SyncLandingFilesToDomain(sourceDomain, targetDomain, pageID stri
 	`
 	_, err := s.pool.Exec(ctx, query, sourceDomain, targetDomain, pageID)
 	return err
+}
+
+// SyncSharedStaticFilesToDB đồng bộ các file tĩnh dùng chung (tracker.js, config.json...)
+// từ đĩa server vào bảng `landing_files` cho MỌI landing đang tồn tại.
+//
+// BỐI CẢNH (bug đã gặp 2026-11-04):
+// Khi landing được deploy, toàn bộ file của landing được copy vào bảng `landing_files`.
+// Edge Router phục vụ file theo thứ tự: `landing_files` (DB) TRƯỚC, rồi mới fallback tới đĩa.
+// ⇒ Khi sửa `tracker.js` trong git rồi deploy, file trên đĩa đã mới nhưng bản trong DB vẫn cũ
+// ⇒ production vẫn serve bản cũ, thay đổi "không có tác dụng".
+//
+// Hàm này chạy khi backend khởi động: đọc file tĩnh dùng chung từ đĩa và ghi đè vào DB
+// cho tất cả landing, đảm bảo code trong git là nguồn sự thật duy nhất.
+func (s *Store) SyncSharedStaticFilesToDB(ctx context.Context, diskRoot string) error {
+	// Danh sách file tĩnh dùng chung cần đồng bộ từ đĩa → DB
+	sharedFiles := []struct {
+		relPath  string
+		fileType string
+	}{
+		{"tracker.js", "js"},
+		{"config.json", "json"},
+	}
+
+	// Thư mục chứa file tĩnh dùng chung (ưu tiên frontend/landing)
+	searchDirs := []string{
+		filepath.Join(diskRoot, "frontend", "landing"),
+		filepath.Join(diskRoot, "..", "frontend", "landing"),
+		diskRoot,
+		filepath.Join(diskRoot, ".."),
+	}
+
+	// Lấy danh sách landing hiện có (domain, page_id)
+	rows, err := s.pool.Query(ctx, "SELECT DISTINCT domain, page_id FROM landing_pages")
+	if err != nil {
+		return err
+	}
+	type landingKey struct{ domain, pageID string }
+	var landings []landingKey
+	for rows.Next() {
+		var k landingKey
+		if err := rows.Scan(&k.domain, &k.pageID); err == nil {
+			landings = append(landings, k)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	updated := 0
+	for _, sf := range sharedFiles {
+		var content string
+		found := false
+		for _, dir := range searchDirs {
+			p := filepath.Join(dir, sf.relPath)
+			data, err := os.ReadFile(p)
+			if err == nil && len(data) > 0 {
+				content = string(data)
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Printf("[WARN] SyncStatic: không tìm thấy %s trên đĩa, bỏ qua", sf.relPath)
+			continue
+		}
+
+		for _, lk := range landings {
+			if err := s.SaveLandingFile(lk.domain, lk.pageID, sf.relPath, sf.fileType, content); err == nil {
+				updated++
+			}
+		}
+	}
+
+	if updated > 0 {
+		log.Printf("[INFO] SyncStatic: đã đồng bộ %d bản ghi landing_files từ đĩa (tracker.js, config.json)", updated)
+	}
+	return nil
 }
 
 // DeleteLandingFile xóa 1 tệp tin khỏi landing page

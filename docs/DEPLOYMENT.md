@@ -93,6 +93,40 @@ powershell -Command "(Get-Item 'C:\apex\backend\static\js\sheets.js').Length"
 > revert về bản cũ. Phải `git pull origin main` lại ngay sau đó (mạng GitHub đôi lúc
 > bị "Empty reply from server" → retry 1-2 lần).
 
+### 1.3. Landing resources (`tracker.js`, `chucmung.html`, ...) — nguồn serve là DB
+
+⚠️ **Khác với admin UI**: tài nguyên của landing page được phục vụ theo thứ tự:
+
+```
+1. Bảng `landing_files` (PostgreSQL)   ← ưu tiên cao nhất
+2. Thư mục tĩnh trên đĩa (frontend/landing, backend/static, ...)
+```
+
+Khi landing được deploy, toàn bộ file (kể cả `tracker.js`) được **copy vào
+`landing_files`**. ⇒ `git pull` xong **chưa đủ**: bản trong DB vẫn cũ và tiếp tục
+được serve ⇒ "sửa code xong mà không có tác dụng".
+
+> ✅ **Đã xử lý (2026-11-04)**: `SyncSharedStaticFilesToDB()` trong
+> `backend/db/landings.go` chạy mỗi lần backend khởi động, đọc `tracker.js` +
+> `config.json` từ đĩa rồi ghi đè vào `landing_files` cho **mọi landing**.
+> ⇒ restart backend sau khi deploy là đủ cho 2 file này.
+
+**Với các file khác** (`chucmung.html`, `assets/**`): sửa qua CRM → File Manager
+(ghi thẳng vào `landing_files`), hoặc đồng bộ thủ công trên server:
+
+```cmd
+C:\pgsql\bin\psql.exe -U postgres -d apex_leads -c ^
+"UPDATE landing_files SET content = pg_read_file('C:/apex/frontend/landing/chucmung.html', true), updated_at = NOW() WHERE file_path = 'chucmung.html';"
+```
+
+**Kiểm tra nhanh** file nào đang được serve (DB hay đĩa):
+
+```cmd
+C:\Windows\System32\curl.exe -s -o C:\Windows\Temp\chk.js http://127.0.0.1:8080/tracker.js
+powershell -Command "(Get-Item C:\Windows\Temp\chk.js).Length"
+REM Nếu khác kích thước file trên đĩa ⇒ đang serve bản DB cũ
+```
+
 ---
 
 ## 2. Kết nối SSH

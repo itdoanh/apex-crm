@@ -76,6 +76,13 @@ func main() {
 		log.Printf("[WARN] Không thể seed landing page mặc định: %v", err)
 	}
 
+	// Đồng bộ file tĩnh dùng chung (tracker.js, config.json) từ đĩa vào bảng landing_files.
+	// Edge Router phục vụ file theo thứ tự: landing_files (DB) TRƯỚC, rồi mới tới đĩa.
+	// Nếu không sync, bản DB cũ sẽ "che" bản đĩa mới ⇒ sửa code trong git không có tác dụng.
+	if err := store.SyncSharedStaticFilesToDB(context.Background(), "."); err != nil {
+		log.Printf("[WARN] Không thể đồng bộ file tĩnh dùng chung vào landing_files: %v", err)
+	}
+
 	// Tự động seed tên miền mặc định (hanghoaphaisinh.net, dautuhanghoa.vn)
 	if err := store.SeedDefaultDomains(context.Background()); err != nil {
 		log.Printf("[WARN] Không thể seed tên miền mặc định: %v", err)

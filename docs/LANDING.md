@@ -193,6 +193,34 @@ bằng giá trị trên.
 > cập nhật `settings.zalo_link` cho khớp — hoặc chỉ sửa `settings.zalo_link` nếu muốn áp dụng
 > cho toàn bộ link Zalo trên landing.
 
+### Nguồn phục vụ file: `landing_files` (DB) TRƯỚC, đĩa SAU
+
+Edge Router phục vụ tài nguyên tĩnh của landing theo thứ tự:
+
+```
+1. Bảng `landing_files` (PostgreSQL)   ← ưu tiên cao nhất
+2. Fallback tới thư mục tĩnh trên đĩa (frontend/landing, backend/static, ...)
+```
+
+Khi landing được deploy, toàn bộ file của landing (kể cả `tracker.js`) được **copy vào
+bảng `landing_files`**. Vì vậy sửa `tracker.js` trong git rồi `git pull` trên server
+**chưa đủ** — bản trong DB vẫn cũ và tiếp tục được serve.
+
+> ⚠️ **Đã xử lý (2026-11-04)**: `SyncSharedStaticFilesToDB()` trong
+> `backend/db/landings.go` chạy mỗi lần backend khởi động, đọc `tracker.js` và
+> `config.json` từ đĩa rồi ghi đè vào `landing_files` cho **mọi landing**. Nhờ vậy code
+> trong git là nguồn sự thật duy nhất, không còn tình trạng "sửa code mà không có tác dụng".
+>
+> **Vẫn cần làm khi sửa file khác** (vd: `assets/css/style.css`, `chucmung.html`):
+> dùng CRM → File Manager để sửa (ghi thẳng vào `landing_files`), **hoặc** chạy lệnh
+> đồng bộ thủ công:
+>
+> ```sql
+> UPDATE landing_files
+> SET content = pg_read_file('C:/apex/frontend/landing/<file>', true), updated_at = NOW()
+> WHERE file_path = '<file>';
+> ```
+
 ### UTM chuẩn
 
 | Tham số | Ý nghĩa | Ví dụ |
