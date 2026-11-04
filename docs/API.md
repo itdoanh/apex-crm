@@ -317,7 +317,7 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 **Ngoài 15 trường chuẩn** còn map được: `fill_duration_ms`, `max_scroll`, `utm_source`,
 `utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
 
-Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/default-mappings` (`available_fields`).
+Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/defaults` (`available_fields`).
 
 ---
 
