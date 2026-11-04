@@ -110,7 +110,8 @@
                     ? `<span class="bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono truncate max-w-[140px]" title="${escapeHTML(p.domain)}"><i class="fa-solid fa-globe mr-1"></i>${escapeHTML(p.domain)}</span>`
                     : `<span class="text-slate-500 text-[10px] font-mono">Chung Domain</span>`;
 
-                const publicUrl = `/p/${encodeURIComponent(p.page_id)}`;
+                const domainUrl = (p.domain && (p.domain.startsWith('localhost') || p.domain.startsWith('127.0.0.1'))) ? ('http://' + p.domain) : (p.domain ? ('https://' + p.domain) : '');
+                const publicUrl = p.domain ? `${domainUrl}${p.path_prefix || '/'}` : `/p/${encodeURIComponent(p.page_id)}`;
 
                 const s = p.settings || {};
                 const sheetMode = s.google_sheet_sync_mode || 'selected';
@@ -270,11 +271,14 @@
                 const resDeploy = await fetch('/api/landings/deploy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain: domain, page_id: pageId, code_html: codeHTML })
+                    body: JSON.stringify({ domain: domain || '', page_id: pageId, code_html: codeHTML })
                 });
                 if (!resDeploy.ok) throw new Error('Xuất bản thất bại');
                 const deployResult = await resDeploy.json();
-                alert(`🚀 ${deployResult.message}\nLink trang: ${window.location.origin}${deployResult.public_url}`);
+                const targetUrl = (deployResult.public_url && deployResult.public_url.startsWith('http'))
+                    ? deployResult.public_url
+                    : `${window.location.origin}${deployResult.public_url || ('/p/' + pageId)}`;
+                alert(`🚀 ${deployResult.message}\nLink trang hoạt động: ${targetUrl}`);
                 loadLandingPages();
             } catch (e) {
                 alert('Lỗi Deploy: ' + e.message);
@@ -696,57 +700,117 @@
                 document.getElementById('cfgCustomHead').value = s.custom_head_scripts || '';
                 document.getElementById('cfgCustomBody').value = s.custom_body_scripts || '';
 
-                // PHÂN BIỆT RÕ RÀNG: TEMPLATE GỐC (mxv_080_online) VS LANDING MỚI ĐỘC LẬP
+                // CẤU HÌNH GIAO DIỆN & NỘI DUNG HERO CHO MỌI LANDING PAGE
                 const secOriginal = document.getElementById('cfgSecOriginalTemplate');
                 const secDynamic = document.getElementById('cfgSecDynamicContent');
+                if (secOriginal) secOriginal.classList.remove('hidden');
+                if (secDynamic) secDynamic.classList.remove('hidden');
 
-                if (p.page_id === 'mxv_080_online') {
-                    // Mẫu gốc MXV 080: Hiển thị bộ cài đặt đặc thù của template này
-                    if (secOriginal) secOriginal.classList.remove('hidden');
-                    if (secDynamic) secDynamic.classList.add('hidden');
+                const bh = s.brand_header || {};
+                const td = s.tieu_de || {};
+                const mb = s.metric_boxes || {};
+                const b1 = mb.box_1 || {};
+                const b2 = mb.box_2 || {};
+                const b3 = mb.box_3 || {};
 
-                    const bh = s.brand_header || {};
-                    const td = s.tieu_de || {};
-                    const mb = s.metric_boxes || {};
-                    const b1 = mb.box_1 || {};
-                    const b2 = mb.box_2 || {};
-                    const b3 = mb.box_3 || {};
+                document.getElementById('cfgBrandHeader1').value = bh.co_quan_1 || bh.agency_1 || '';
+                document.getElementById('cfgBrandHeader2').value = bh.co_quan_2 || bh.agency_2 || '';
+                document.getElementById('cfgBrandLogo').value = bh.logo_url || '';
+                document.getElementById('cfgBrandMemberText').value = bh.member_text || '';
 
-                    document.getElementById('cfgBrandHeader1').value = bh.co_quan_1 || bh.agency_1 || '';
-                    document.getElementById('cfgBrandHeader2').value = bh.co_quan_2 || bh.agency_2 || '';
-                    document.getElementById('cfgBrandLogo').value = bh.logo_url || '';
-                    document.getElementById('cfgBrandMemberText').value = bh.member_text || '';
+                document.getElementById('cfgBadgeText').value = td.badge || '';
+                document.getElementById('cfgTitleLine1').value = td.line_1 || '';
+                document.getElementById('cfgTitleLine2').value = td.line_2 || '';
+                document.getElementById('cfgSubtitle').value = td.mo_ta || td.subtitle || '';
 
-                    document.getElementById('cfgBadgeText').value = td.badge || '';
-                    document.getElementById('cfgTitleLine1').value = td.line_1 || '';
-                    document.getElementById('cfgTitleLine2').value = td.line_2 || '';
-                    document.getElementById('cfgSubtitle').value = td.mo_ta || '';
+                document.getElementById('cfgBox1Top').value = b1.top || mb.box_1_top || tg.ngay || '';
+                document.getElementById('cfgBox1Bottom').value = b1.bottom || mb.box_1_bottom || tg.gio || '';
+                document.getElementById('cfgBox2Top').value = b2.top || mb.box_2_top || '';
+                document.getElementById('cfgBox2Bottom').value = b2.bottom || mb.box_2_bottom || '';
+                document.getElementById('cfgBox3Top').value = b3.top || mb.box_3_top || '';
+                document.getElementById('cfgBox3Bottom').value = b3.bottom || mb.box_3_bottom || '';
 
-                    document.getElementById('cfgBox1Top').value = b1.top || tg.ngay || '';
-                    document.getElementById('cfgBox1Bottom').value = b1.bottom || tg.gio || '';
-                    document.getElementById('cfgBox2Top').value = b2.top || '';
-                    document.getElementById('cfgBox2Bottom').value = b2.bottom || '';
-                    document.getElementById('cfgBox3Top').value = b3.top || '';
-                    document.getElementById('cfgBox3Bottom').value = b3.bottom || '';
+                document.getElementById('cfgEventTitle').value = kh.ten || '';
+                document.getElementById('cfgTargetDate').value = tg.target_date || '';
+                document.getElementById('cfgEventQuota').value = kh.suat_hoc || '';
 
-                    document.getElementById('cfgEventTitle').value = kh.ten || '';
-                    document.getElementById('cfgTargetDate').value = tg.target_date || '';
-                    document.getElementById('cfgEventQuota').value = kh.suat_hoc || '';
-                } else {
-                    // Tất cả các Landing Page khác: Ẩn hoàn toàn trường mẫu gốc, hiển thị Smart Dynamic Content
-                    if (secOriginal) secOriginal.classList.add('hidden');
-                    if (secDynamic) secDynamic.classList.remove('hidden');
-
-                    const customFields = Array.isArray(s.custom_content_fields) ? s.custom_content_fields : [];
-                    renderCustomContentTable(customFields);
-
-                    const statusEl = document.getElementById('scanContentStatus');
-                    if (statusEl) {
-                        if (customFields.length > 0) {
-                            statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Đã cấu hình ${customFields.length} trường tùy chỉnh nhanh</span>`;
-                        } else {
-                            statusEl.innerHTML = `<span class="text-slate-400"><i class="fa-solid fa-circle-info mr-1 text-slate-500"></i> Bấm "Quét Nội Dung Từ HTML" để hệ thống tự động bóc tách các trường chỉnh sửa nhanh.</span>`;
+                // NẾU CÁC TRƯỜNG TRÊN CÒN RỖNG (ví dụ trang mới chưa set), TỰ ĐỘNG BÓC TÁCH TỪ HTML CỦA TRANG
+                let currentHtmlForExtract = p.code_html || '';
+                if (!currentHtmlForExtract && typeof studioFileContents !== 'undefined') {
+                    currentHtmlForExtract = studioFileContents['index.html'] || '';
+                }
+                if (currentHtmlForExtract) {
+                    try {
+                        const pDoc = new DOMParser().parseFromString(currentHtmlForExtract, 'text/html');
+                        if (!document.getElementById('cfgBrandHeader1').value) {
+                            const el = pDoc.querySelector('.gov-text-1') || pDoc.querySelector('[data-config*="agency_1"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBrandHeader1').value = el.textContent.trim();
                         }
+                        if (!document.getElementById('cfgBrandHeader2').value) {
+                            const el = pDoc.querySelector('.gov-text-2') || pDoc.querySelector('[data-config*="agency_2"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBrandHeader2').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBrandLogo').value) {
+                            const img = pDoc.getElementById('brandLogoImg') || pDoc.querySelector('[data-config*="logo_url"]') || pDoc.querySelector('header img');
+                            if (img && img.getAttribute('src')) document.getElementById('cfgBrandLogo').value = img.getAttribute('src');
+                        }
+                        if (!document.getElementById('cfgBrandMemberText').value) {
+                            const el = pDoc.getElementById('brandMemberText') || pDoc.querySelector('.brand-member-text') || pDoc.querySelector('[data-config*="member_text"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBrandMemberText').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBadgeText').value) {
+                            const el = pDoc.getElementById('heroBadgeText') || pDoc.querySelector('.hero-badge-text') || pDoc.querySelector('.gov-badge span') || pDoc.querySelector('[data-config*="tieu_de.badge"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBadgeText').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgTitleLine1').value) {
+                            const el = pDoc.getElementById('heroTitleLine1') || pDoc.querySelector('[data-config*="title_1"]') || pDoc.querySelector('[data-config*="line_1"]') || pDoc.querySelector('h1');
+                            if (el && el.textContent.trim()) document.getElementById('cfgTitleLine1').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgTitleLine2').value) {
+                            const el = pDoc.getElementById('heroTitleLine2') || pDoc.querySelector('[data-config*="title_2"]') || pDoc.querySelector('[data-config*="line_2"]') || pDoc.querySelector('h2');
+                            if (el && el.textContent.trim()) document.getElementById('cfgTitleLine2').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgSubtitle').value) {
+                            const el = pDoc.getElementById('heroSubtitle') || pDoc.querySelector('.hero-subtitle') || pDoc.querySelector('[data-config*="subtitle"]') || pDoc.querySelector('[data-config*="mo_ta"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgSubtitle').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox1Top').value) {
+                            const el = pDoc.getElementById('infoEventDate') || pDoc.querySelector('[data-config*="box_1_top"]') || pDoc.querySelector('[data-config*="thoi_gian_chia_se.ngay"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox1Top').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox1Bottom').value) {
+                            const el = pDoc.getElementById('infoEventTime') || pDoc.querySelector('[data-config*="box_1_bottom"]') || pDoc.querySelector('[data-config*="thoi_gian_chia_se.gio"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox1Bottom').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox2Top').value) {
+                            const el = pDoc.getElementById('infoFormatTop') || pDoc.querySelector('[data-config*="box_2_top"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox2Top').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox2Bottom').value) {
+                            const el = pDoc.getElementById('infoFormatBottom') || pDoc.querySelector('[data-config*="box_2_bottom"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox2Bottom').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox3Top').value) {
+                            const el = pDoc.getElementById('infoDurationTop') || pDoc.querySelector('[data-config*="box_3_top"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox3Top').value = el.textContent.trim();
+                        }
+                        if (!document.getElementById('cfgBox3Bottom').value) {
+                            const el = pDoc.getElementById('infoDurationBottom') || pDoc.querySelector('[data-config*="box_3_bottom"]');
+                            if (el && el.textContent.trim()) document.getElementById('cfgBox3Bottom').value = el.textContent.trim();
+                        }
+                    } catch(ex) {}
+                }
+
+                // Render bảng Dynamic Content Fields
+                const customFields = Array.isArray(s.custom_content_fields) ? s.custom_content_fields : [];
+                renderCustomContentTable(customFields);
+
+                const statusEl = document.getElementById('scanContentStatus');
+                if (statusEl) {
+                    if (customFields.length > 0) {
+                        statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Đã cấu hình ${customFields.length} trường tùy chỉnh nhanh</span>`;
+                    } else {
+                        statusEl.innerHTML = `<span class="text-slate-400"><i class="fa-solid fa-circle-info mr-1 text-slate-500"></i> Bấm "Quét Nội Dung Từ HTML" để hệ thống tự động bóc tách các trường chỉnh sửa nhanh bổ sung.</span>`;
                     }
                 }
 
@@ -1267,100 +1331,176 @@
                 })()
             };
 
-            // Nếu không phải template gốc và có tùy chỉnh nội dung nhanh, cập nhật trực tiếp vào file HTML
-            if (pageId !== 'mxv_080_online' && customFields.length > 0) {
-                try {
-                    let htmlCode = '';
-                    if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
-                        htmlCode = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
-                    }
-                    if (!htmlCode) {
-                        const gRes = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domainVal)}`);
-                        if (gRes.ok) {
-                            const gData = await gRes.json();
-                            htmlCode = gData.landing?.code_html || '';
-                            if (!htmlCode && gData.files && gData.files.length > 0) {
-                                const fIdx = gData.files.find(f => f.file_path === 'index.html');
-                                if (fIdx) htmlCode = fIdx.content || '';
-                            }
+            // Đồng bộ trực tiếp các trường Hero / Giao diện & Dynamic Content vào cây DOM file index.html
+            try {
+                let htmlCode = '';
+                if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
+                    htmlCode = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
+                }
+                if (!htmlCode) {
+                    const gRes = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domainVal)}`);
+                    if (gRes.ok) {
+                        const gData = await gRes.json();
+                        htmlCode = gData.landing?.code_html || '';
+                        if (!htmlCode && gData.files && gData.files.length > 0) {
+                            const fIdx = gData.files.find(f => f.file_path === 'index.html');
+                            if (fIdx) htmlCode = fIdx.content || '';
                         }
                     }
+                }
 
-                    if (htmlCode) {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(htmlCode, 'text/html');
-                        let hasModified = false;
+                if (htmlCode) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlCode, 'text/html');
+                    let hasModified = false;
 
-                        customFields.forEach(cf => {
-                            try {
-                                const el = doc.querySelector(cf.selector);
-                                if (el) {
-                                    if (cf.type === 'heading' || cf.type === 'text') {
-                                        if (cf.value !== undefined) {
-                                            el.textContent = cf.value;
-                                            hasModified = true;
-                                        }
-                                    } else if (cf.type === 'image') {
-                                        if (cf.value) {
-                                            el.setAttribute('src', cf.value);
-                                            hasModified = true;
-                                        }
-                                        if (cf.extra) {
-                                            el.setAttribute('alt', cf.extra);
-                                            hasModified = true;
-                                        }
-                                    } else if (cf.type === 'cta') {
-                                        if (cf.value) {
-                                            el.textContent = cf.value;
-                                            hasModified = true;
-                                        }
-                                        if (cf.extra) {
-                                            el.setAttribute('href', cf.extra);
-                                            hasModified = true;
-                                        }
-                                    } else if (cf.type === 'contact') {
-                                        if (cf.value) {
-                                            el.setAttribute('href', cf.value);
-                                            hasModified = true;
-                                        }
-                                        if (cf.extra && el.textContent.trim()) {
-                                            el.textContent = cf.extra;
-                                            hasModified = true;
-                                        }
+                    // 1. Áp dụng các trường Brand Header
+                    const valBh1 = document.getElementById('cfgBrandHeader1')?.value?.trim();
+                    if (valBh1) {
+                        const el = doc.querySelector('.gov-text-1') || doc.querySelector('[data-config*="agency_1"]') || doc.querySelector('[data-config*="co_quan_1"]');
+                        if (el) { el.textContent = valBh1; hasModified = true; }
+                    }
+                    const valBh2 = document.getElementById('cfgBrandHeader2')?.value?.trim();
+                    if (valBh2) {
+                        const el = doc.querySelector('.gov-text-2') || doc.querySelector('[data-config*="agency_2"]') || doc.querySelector('[data-config*="co_quan_2"]');
+                        if (el) { el.textContent = valBh2; hasModified = true; }
+                    }
+                    const valLogo = document.getElementById('cfgBrandLogo')?.value?.trim();
+                    if (valLogo) {
+                        const img = doc.getElementById('brandLogoImg') || doc.querySelector('[data-config*="logo_url"]') || doc.querySelector('header img');
+                        if (img) { img.setAttribute('src', valLogo); hasModified = true; }
+                    }
+                    const valMember = document.getElementById('cfgBrandMemberText')?.value?.trim();
+                    if (valMember) {
+                        const el = doc.getElementById('brandMemberText') || doc.querySelector('.brand-member-text') || doc.querySelector('[data-config*="member_text"]');
+                        if (el) { el.textContent = valMember; hasModified = true; }
+                    }
+
+                    // 2. Áp dụng Tiêu đề & Huy hiệu Hero
+                    const valBadge = document.getElementById('cfgBadgeText')?.value?.trim();
+                    if (valBadge) {
+                        const el = doc.getElementById('heroBadgeText') || doc.querySelector('.hero-badge-text') || doc.querySelector('.gov-badge span:last-child') || doc.querySelector('[data-config*="tieu_de.badge"]');
+                        if (el) { el.textContent = valBadge; hasModified = true; }
+                    }
+                    const valTitle1 = document.getElementById('cfgTitleLine1')?.value?.trim();
+                    if (valTitle1) {
+                        const el = doc.getElementById('heroTitleLine1') || doc.querySelector('[data-config*="line_1"]') || doc.querySelector('[data-config*="title_1"]') || doc.querySelector('h1');
+                        if (el) { el.textContent = valTitle1; hasModified = true; }
+                    }
+                    const valTitle2 = document.getElementById('cfgTitleLine2')?.value?.trim();
+                    if (valTitle2) {
+                        const el = doc.getElementById('heroTitleLine2') || doc.querySelector('[data-config*="line_2"]') || doc.querySelector('[data-config*="title_2"]') || doc.querySelector('h2');
+                        if (el) { el.textContent = valTitle2; hasModified = true; }
+                    }
+                    const valSub = document.getElementById('cfgSubtitle')?.value?.trim();
+                    if (valSub) {
+                        const el = doc.getElementById('heroSubtitle') || doc.querySelector('.hero-subtitle') || doc.querySelector('[data-config*="subtitle"]') || doc.querySelector('[data-config*="mo_ta"]');
+                        if (el) { el.textContent = valSub; hasModified = true; }
+                    }
+
+                    // 3. Áp dụng 3 Khối Metric Box
+                    if (box1Top) {
+                        const el = doc.getElementById('infoEventDate') || doc.querySelector('[data-config*="box_1.top"]') || doc.querySelector('[data-config*="box_1_top"]') || doc.querySelector('[data-config*="thoi_gian_chia_se.ngay"]');
+                        if (el) { el.textContent = box1Top; hasModified = true; }
+                    }
+                    if (box1Btm) {
+                        const el = doc.getElementById('infoEventTime') || doc.querySelector('[data-config*="box_1.bottom"]') || doc.querySelector('[data-config*="box_1_bottom"]') || doc.querySelector('[data-config*="thoi_gian_chia_se.gio"]');
+                        if (el) { el.textContent = box1Btm; hasModified = true; }
+                    }
+                    if (box2Top) {
+                        const el = doc.getElementById('infoFormatTop') || doc.querySelector('[data-config*="box_2.top"]') || doc.querySelector('[data-config*="box_2_top"]');
+                        if (el) { el.textContent = box2Top; hasModified = true; }
+                    }
+                    if (box2Btm) {
+                        const el = doc.getElementById('infoFormatBottom') || doc.querySelector('[data-config*="box_2.bottom"]') || doc.querySelector('[data-config*="box_2_bottom"]');
+                        if (el) { el.textContent = box2Btm; hasModified = true; }
+                    }
+                    if (box3Top) {
+                        const el = doc.getElementById('infoDurationTop') || doc.querySelector('[data-config*="box_3.top"]') || doc.querySelector('[data-config*="box_3_top"]');
+                        if (el) { el.textContent = box3Top; hasModified = true; }
+                    }
+                    if (box3Btm) {
+                        const el = doc.getElementById('infoDurationBottom') || doc.querySelector('[data-config*="box_3.bottom"]') || doc.querySelector('[data-config*="box_3_bottom"]');
+                        if (el) { el.textContent = box3Btm; hasModified = true; }
+                    }
+
+                    // 4. Áp dụng các trường Dynamic Content Fields (nếu có)
+                    customFields.forEach(cf => {
+                        try {
+                            const el = doc.querySelector(cf.selector);
+                            if (el) {
+                                if (cf.type === 'heading' || cf.type === 'text') {
+                                    if (cf.value !== undefined) {
+                                        el.textContent = cf.value;
+                                        hasModified = true;
+                                    }
+                                } else if (cf.type === 'image') {
+                                    if (cf.value) {
+                                        el.setAttribute('src', cf.value);
+                                        hasModified = true;
+                                    }
+                                    if (cf.extra) {
+                                        el.setAttribute('alt', cf.extra);
+                                        hasModified = true;
+                                    }
+                                } else if (cf.type === 'cta') {
+                                    if (cf.value) {
+                                        el.textContent = cf.value;
+                                        hasModified = true;
+                                    }
+                                    if (cf.extra) {
+                                        el.setAttribute('href', cf.extra);
+                                        hasModified = true;
+                                    }
+                                } else if (cf.type === 'contact') {
+                                    if (cf.value) {
+                                        el.setAttribute('href', cf.value);
+                                        hasModified = true;
+                                    }
+                                    if (cf.extra && el.textContent.trim()) {
+                                        el.textContent = cf.extra;
+                                        hasModified = true;
                                     }
                                 }
-                            } catch (e) {}
-                        });
+                            }
+                        } catch (e) {}
+                    });
 
-                        if (hasModified) {
-                            const updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-                            await fetch('/api/landings/save-code', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    page_id: pageId,
-                                    domain: domainVal,
-                                    code_html: updatedHtml
-                                })
-                            });
-                            await fetch('/api/landings/file/save', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    page_id: pageId,
-                                    domain: domainVal,
-                                    file_path: 'index.html',
-                                    content: updatedHtml
-                                })
-                            });
-                            if (typeof studioFileContents !== 'undefined') {
-                                studioFileContents['index.html'] = updatedHtml;
+                    if (hasModified) {
+                        const updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+                        await fetch('/api/landings/save-code', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                page_id: pageId,
+                                domain: domainVal,
+                                code_html: updatedHtml
+                            })
+                        });
+                        await fetch('/api/landings/file/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                page_id: pageId,
+                                domain: domainVal,
+                                file_path: 'index.html',
+                                content: updatedHtml
+                            })
+                        });
+                        if (typeof studioFileContents !== 'undefined') {
+                            studioFileContents['index.html'] = updatedHtml;
+                            if (typeof activeStudioFile !== 'undefined' && activeStudioFile === 'index.html') {
+                                const ed = document.getElementById('csCodeEditor');
+                                if (ed) ed.value = updatedHtml;
+                            }
+                            if (typeof refreshStudioPreview === 'function') {
+                                refreshStudioPreview();
                             }
                         }
                     }
-                } catch (modErr) {
-                    console.warn('Lỗi tự động cập nhật HTML:', modErr);
                 }
+            } catch (modErr) {
+                console.warn('Lỗi tự động cập nhật HTML:', modErr);
             }
 
             const payload = {

@@ -634,20 +634,22 @@
         // 3.1. Cập nhật Nhận diện Thương hiệu & Cơ quan Header
         const brand = cfg.brand_header || (cfg.settings && cfg.settings.brand_header);
         if (brand) {
-            if (brand.agency_1) {
-                const el = document.querySelector('.gov-text-1') || document.querySelector('[data-config="brand_header.agency_1"]');
-                if (el) el.innerText = brand.agency_1;
+            const agency1 = brand.agency_1 || brand.co_quan_1;
+            if (agency1) {
+                const el = document.querySelector('.gov-text-1') || document.querySelector('[data-config="brand_header.agency_1"]') || document.querySelector('[data-config="brand_header.co_quan_1"]');
+                if (el) el.innerText = agency1;
             }
-            if (brand.agency_2) {
-                const el = document.querySelector('.gov-text-2') || document.querySelector('[data-config="brand_header.agency_2"]');
-                if (el) el.innerText = brand.agency_2;
+            const agency2 = brand.agency_2 || brand.co_quan_2;
+            if (agency2) {
+                const el = document.querySelector('.gov-text-2') || document.querySelector('[data-config="brand_header.agency_2"]') || document.querySelector('[data-config="brand_header.co_quan_2"]');
+                if (el) el.innerText = agency2;
             }
             if (brand.logo_url) {
-                const img = document.getElementById('brandLogoImg') || document.querySelector('header img');
+                const img = document.getElementById('brandLogoImg') || document.querySelector('[data-config="brand_header.logo_url"]') || document.querySelector('header img');
                 if (img) img.src = brand.logo_url;
             }
             if (brand.member_text) {
-                const el = document.getElementById('brandMemberText') || document.querySelector('.brand-member-text');
+                const el = document.getElementById('brandMemberText') || document.querySelector('.brand-member-text') || document.querySelector('[data-config="brand_header.member_text"]');
                 if (el) el.innerText = brand.member_text;
             }
         }
@@ -656,49 +658,56 @@
         const tieuDe = cfg.tieu_de || (cfg.settings && cfg.settings.tieu_de);
         if (tieuDe) {
             if (tieuDe.badge) {
-                const el = document.querySelector('.hero-badge-text') || document.querySelector('[data-config="tieu_de.badge"]');
+                const el = document.getElementById('heroBadgeText') || document.querySelector('.hero-badge-text') || document.querySelector('.gov-badge span') || document.querySelector('[data-config="tieu_de.badge"]');
                 if (el) el.innerText = tieuDe.badge;
             }
             if (tieuDe.line_1) {
-                const el = document.getElementById('heroTitleLine1') || document.querySelector('h1') || document.querySelector('[data-config="tieu_de.line_1"]');
+                const el = document.getElementById('heroTitleLine1') || document.querySelector('[data-config="tieu_de.line_1"]') || document.querySelector('h1');
                 if (el) el.innerText = tieuDe.line_1;
             }
             if (tieuDe.line_2) {
-                const el = document.getElementById('heroTitleLine2') || document.querySelector('h2') || document.querySelector('[data-config="tieu_de.line_2"]');
+                const el = document.getElementById('heroTitleLine2') || document.querySelector('[data-config="tieu_de.line_2"]') || document.querySelector('h2');
                 if (el) el.innerText = tieuDe.line_2;
             }
-            if (tieuDe.subtitle) {
-                const el = document.querySelector('.hero-subtitle') || document.querySelector('[data-config="tieu_de.subtitle"]');
-                if (el) el.innerText = tieuDe.subtitle;
+            const sub = tieuDe.subtitle || tieuDe.mo_ta;
+            if (sub) {
+                const el = document.getElementById('heroSubtitle') || document.querySelector('.hero-subtitle') || document.querySelector('[data-config="tieu_de.subtitle"]') || document.querySelector('[data-config="tieu_de.mo_ta"]');
+                if (el) el.innerText = sub;
             }
         }
 
         // 3.3. Cập nhật 3 Khối thông tin khóa học dưới form
         const boxes = cfg.metric_boxes || (cfg.settings && cfg.settings.metric_boxes);
         if (boxes) {
-            if (boxes.box_1_top) {
-                const el = document.getElementById('infoEventDate') || document.querySelector('[data-config="metric_boxes.box_1_top"]');
-                if (el) el.innerText = boxes.box_1_top;
+            const b1Top = (boxes.box_1 && boxes.box_1.top) || boxes.box_1_top || (timeCfg && timeCfg.ngay);
+            if (b1Top) {
+                const el = document.getElementById('infoEventDate') || document.querySelector('[data-config="metric_boxes.box_1_top"]') || document.querySelector('[data-config="thoi_gian_chia_se.ngay"]');
+                if (el) el.innerText = b1Top;
             }
-            if (boxes.box_1_bottom) {
-                const el = document.getElementById('infoEventTime') || document.querySelector('[data-config="metric_boxes.box_1_bottom"]');
-                if (el) el.innerText = boxes.box_1_bottom;
+            const b1Bottom = (boxes.box_1 && boxes.box_1.bottom) || boxes.box_1_bottom || (timeCfg && timeCfg.gio);
+            if (b1Bottom) {
+                const el = document.getElementById('infoEventTime') || document.querySelector('[data-config="metric_boxes.box_1_bottom"]') || document.querySelector('[data-config="thoi_gian_chia_se.gio"]');
+                if (el) el.innerText = b1Bottom;
             }
-            if (boxes.box_2_top) {
+            const b2Top = (boxes.box_2 && boxes.box_2.top) || boxes.box_2_top;
+            if (b2Top) {
                 const el = document.getElementById('infoFormatTop') || document.querySelector('[data-config="metric_boxes.box_2_top"]');
-                if (el) el.innerText = boxes.box_2_top;
+                if (el) el.innerText = b2Top;
             }
-            if (boxes.box_2_bottom) {
+            const b2Bottom = (boxes.box_2 && boxes.box_2.bottom) || boxes.box_2_bottom;
+            if (b2Bottom) {
                 const el = document.getElementById('infoFormatBottom') || document.querySelector('[data-config="metric_boxes.box_2_bottom"]');
-                if (el) el.innerText = boxes.box_2_bottom;
+                if (el) el.innerText = b2Bottom;
             }
-            if (boxes.box_3_top) {
+            const b3Top = (boxes.box_3 && boxes.box_3.top) || boxes.box_3_top;
+            if (b3Top) {
                 const el = document.getElementById('infoDurationTop') || document.querySelector('[data-config="metric_boxes.box_3_top"]');
-                if (el) el.innerText = boxes.box_3_top;
+                if (el) el.innerText = b3Top;
             }
-            if (boxes.box_3_bottom) {
+            const b3Bottom = (boxes.box_3 && boxes.box_3.bottom) || boxes.box_3_bottom;
+            if (b3Bottom) {
                 const el = document.getElementById('infoDurationBottom') || document.querySelector('[data-config="metric_boxes.box_3_bottom"]');
-                if (el) el.innerText = boxes.box_3_bottom;
+                if (el) el.innerText = b3Bottom;
             }
         }
 

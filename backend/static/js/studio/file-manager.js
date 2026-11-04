@@ -648,22 +648,24 @@
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang Deploy...';
 
             try {
+                // 1. Lưu file hiện tại trước khi deploy
                 await fetch('/api/landings/file', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        domain: currentStudioLanding.domain,
+                        domain: currentStudioLanding.domain || '',
                         page_id: currentStudioLanding.page_id,
                         file_path: activeStudioFile,
                         content: content
                     })
                 });
 
+                // 2. Kích hoạt Deploy chính thức lên hệ thống Multi-Domain & Edge Router
                 const res = await fetch('/api/landings/deploy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        domain: currentStudioLanding.domain,
+                        domain: currentStudioLanding.domain || '',
                         page_id: currentStudioLanding.page_id,
                         code_html: mainHtml
                     })
@@ -672,11 +674,21 @@
                 const result = await res.json();
 
                 studioEditorDirty = false;
-                document.getElementById('csSaveStatus').innerText = '🚀 ĐÃ XUẤT BẢN THÀNH CÔNG (' + new Date().toLocaleTimeString('vi-VN') + ')';
+                const finalUrl = (result.public_url && result.public_url.startsWith('http'))
+                    ? result.public_url
+                    : `${window.location.origin}${result.public_url || ('/p/' + currentStudioLanding.page_id)}`;
+
+                const statusLabel = result.is_custom_domain
+                    ? `🚀 ĐÃ DEPLOY LÊN TÊN MIỀN: ${result.domain}${result.path_prefix || ''}`
+                    : `🚀 ĐÃ XUẤT BẢN THÀNH CÔNG (${new Date().toLocaleTimeString('vi-VN')})`;
+
+                document.getElementById('csSaveStatus').innerText = statusLabel;
                 document.getElementById('csSaveStatus').className = 'text-[11px] text-emerald-300 font-bold font-mono ml-2';
 
                 refreshStudioPreview();
-                alert(`🎉 ${result.message}\nLanding Page đã hoạt động chính thức tại: ${window.location.origin}${result.public_url}`);
+                if (confirm(`🎉 ${result.message}\n\nĐường dẫn trực tiếp: ${finalUrl}\n\nBạn có muốn mở trang web đã deploy trong tab mới để kiểm tra ngay không?`)) {
+                    window.open(finalUrl, '_blank');
+                }
             } catch (e) {
                 alert('Lỗi Deploy: ' + e.message);
             } finally {

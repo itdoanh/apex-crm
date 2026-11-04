@@ -459,3 +459,32 @@ func (s *Store) GetRouteByLandingID(landingID string) (*models.DomainRoute, erro
 	}
 	return &r, nil
 }
+
+// GetRouteByDomainAndLandingID lấy route gắn với landing page trên một tên miền cụ thể
+func (s *Store) GetRouteByDomainAndLandingID(domainID int, landingID string) (*models.DomainRoute, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT
+			dr.id, dr.domain_id, LOWER(d.domain) AS domain, dr.path_prefix, dr.landing_id,
+			COALESCE(lp.name, dr.landing_id) AS landing_name,
+			dr.is_active, dr.redirect_url,
+			to_char(dr.deployed_at, 'YYYY-MM-DD HH24:MI:SS') AS deployed_at
+		FROM domain_routes dr
+		JOIN domains d ON d.id = dr.domain_id
+		LEFT JOIN landing_pages lp ON lp.page_id = dr.landing_id
+		WHERE dr.domain_id = $1 AND dr.landing_id = $2
+		ORDER BY dr.deployed_at DESC
+		LIMIT 1;
+	`
+	var r models.DomainRoute
+	err := s.pool.QueryRow(ctx, query, domainID, landingID).Scan(
+		&r.ID, &r.DomainID, &r.Domain, &r.PathPrefix, &r.LandingID,
+		&r.LandingName, &r.IsActive, &r.RedirectURL, &r.DeployedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}

@@ -375,27 +375,119 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// 1. Cập nhật code và chuyển status sang 'published'
-	if err := h.store.UpdateLandingCode(payload.Domain, payload.PageID, payload.CodeHTML, "published"); err != nil {
+	// 1. Tìm thông tin Landing Page và Route đã gán trước đó (nếu có)
+	existingLanding, _ := h.store.GetLandingPageByID(payload.PageID)
+	route, _ := h.store.GetRouteByLandingID(payload.PageID)
+
+	targetDomain := strings.TrimSpace(payload.Domain)
+	if targetDomain == "" {
+		if route != nil && route.Domain != "" {
+			targetDomain = route.Domain
+		} else if existingLanding != nil && existingLanding.Domain != "" {
+			targetDomain = existingLanding.Domain
+		}
+	}
+
+	// Nếu đã xác định targetDomain cụ thể, tìm chính xác route của domain đó
+	var dom *models.Domain
+	if targetDomain != "" {
+		dom, _ = h.store.GetDomainByName(targetDomain)
+		if dom != nil {
+			if domRoute, err := h.store.GetRouteByDomainAndLandingID(dom.ID, payload.PageID); err == nil && domRoute != nil {
+				route = domRoute
+			}
+		}
+	}
+
+	cleanPrefix := "/"
+	if route != nil && route.PathPrefix != "" {
+		cleanPrefix = route.PathPrefix
+	} else if existingLanding != nil && existingLanding.PathPrefix != "" {
+		cleanPrefix = existingLanding.PathPrefix
+	}
+	cleanPrefix = strings.TrimSpace(cleanPrefix)
+	if !strings.HasPrefix(cleanPrefix, "/") {
+		cleanPrefix = "/" + cleanPrefix
+	}
+	if len(cleanPrefix) > 1 {
+		cleanPrefix = strings.TrimRight(cleanPrefix, "/")
+	}
+
+	// 2. Cập nhật mã nguồn và trạng thái 'published' cho bản ghi gốc (domain "")
+	if err := h.store.UpdateLandingCode("", payload.PageID, payload.CodeHTML, "published"); err != nil {
 		http.Error(w, fmt.Sprintf("Lỗi xuất bản: %v", err), http.StatusInternalServerError)
 		return
 	}
+	_ = h.store.SaveLandingFile("", payload.PageID, "index.html", "html", payload.CodeHTML)
+	_ = h.store.ToggleLandingActive("", payload.PageID, true)
+	h.cache.Invalidate("", payload.PageID)
 
-	// 2. Kích hoạt is_active = true
-	_ = h.store.ToggleLandingActive(payload.Domain, payload.PageID, true)
+	// 3. Nếu landing đã được cấu hình tên miền hoặc có route, tự động đồng bộ và deploy lên tên miền đó
+	isCustomDomain := false
+	if targetDomain != "" {
+		isCustomDomain = true
+		_ = h.store.UpdateLandingCode(targetDomain, payload.PageID, payload.CodeHTML, "published")
+		_ = h.store.SaveLandingFile(targetDomain, payload.PageID, "index.html", "html", payload.CodeHTML)
+		_ = h.store.ToggleLandingActive(targetDomain, payload.PageID, true)
+		h.cache.Invalidate(targetDomain, payload.PageID)
 
-	// 3. Cập nhật RAM Cache
-	h.cache.Invalidate(payload.Domain, payload.PageID)
-	p, _ := h.store.GetLandingPage(payload.Domain, payload.PageID)
+		// Kích hoạt route trong bảng domain_routes nếu tìm thấy domain trong CSDL
+		if dom, err := h.store.GetDomainByName(targetDomain); err == nil && dom != nil {
+			_, _ = h.store.DeployDomainRoute(dom.ID, cleanPrefix, payload.PageID, "")
+		}
+	}
+
+	// 4. Làm mới toàn bộ RAM Cache (landingCache & domainCache cho Edge Router)
+	if h.domainCache != nil {
+		_ = h.domainCache.Reload(r.Context())
+	}
+
+	p, _ := h.store.GetLandingPage(targetDomain, payload.PageID)
+	if p == nil {
+		p, _ = h.store.GetLandingPage("", payload.PageID)
+	}
 	if p != nil {
+		if cleanPrefix != "" {
+			p.PathPrefix = cleanPrefix
+		}
 		h.cache.Set(p)
+		if targetDomain != "" && p.Domain != targetDomain {
+			domainP := *p
+			domainP.Domain = targetDomain
+			h.cache.Set(&domainP)
+		}
+	}
+
+	// 5. Xác định URL triển khai chính xác để phản hồi cho Frontend
+	var publicURL string
+	var message string
+	if isCustomDomain && targetDomain != "" {
+		scheme := "https://"
+		if strings.Contains(targetDomain, "localhost") || strings.Contains(targetDomain, "127.0.0.1") {
+			scheme = "http://"
+		}
+		displayPath := cleanPrefix
+		if displayPath == "/" {
+			displayPath = ""
+		}
+		publicURL = fmt.Sprintf("%s%s%s", scheme, targetDomain, displayPath)
+		if displayPath == "" {
+			publicURL += "/"
+		}
+		message = fmt.Sprintf("Đã Deploy thành công lên Tên Miền: %s%s", targetDomain, cleanPrefix)
+	} else {
+		publicURL = fmt.Sprintf("/p/%s", payload.PageID)
+		message = fmt.Sprintf("Đã Deploy thành công Landing Page '%s' lên URL mặc định: /p/%s", payload.PageID, payload.PageID)
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":    true,
-		"message":    fmt.Sprintf("Đã xuất bản (Deploy) Landing Page '%s' thành công!", payload.PageID),
-		"public_url": fmt.Sprintf("/p/%s", payload.PageID),
+		"success":          true,
+		"message":          message,
+		"public_url":       publicURL,
+		"is_custom_domain": isCustomDomain,
+		"domain":           targetDomain,
+		"path_prefix":      cleanPrefix,
 	})
 }
 
@@ -914,7 +1006,16 @@ func (h *LandingHandler) InjectDynamicScripts(rawHTML string, p *models.LandingP
 
 	var headInjection strings.Builder
 	headInjection.WriteString("\n<!-- [APEX DYNAMIC INJECTION - HEAD] -->\n")
-	headInjection.WriteString("<base href=\"/\">\n")
+	if !strings.Contains(strings.ToLower(rawHTML), "<base ") {
+		baseHref := "/"
+		if p.PathPrefix != "" && p.PathPrefix != "/" {
+			cleanPfx := strings.Trim(p.PathPrefix, "/")
+			if cleanPfx != "" {
+				baseHref = "/" + cleanPfx + "/"
+			}
+		}
+		headInjection.WriteString(fmt.Sprintf("<base href=\"%s\">\n", baseHref))
+	}
 	headInjection.WriteString(fmt.Sprintf("<script>window.APEX_LANDING_CONFIG = %s;</script>\n", string(configJSON)))
 
 	if title != "" {
