@@ -340,11 +340,21 @@ Tình trạng trước khi sửa (2026-11-04):
 ⇒ `byPageID["mxv_080_online"]` bị đè không xác định → `GetByPageID()` có thể trả về
 landing không đúng, `path_prefix` bị lẫn giữa 2 domain.
 
-**Cách xử lý (đã áp dụng):**
-- Giữ **1 dòng/domain** — mỗi `(domain, page_id)` chỉ có 1 bản ghi.
-- Dòng `domain=''` giữ `page_id` mặc định làm fallback toàn hệ thống.
-- Dòng `domain='ads.giaodichhanghoatuonglai.com'` giữ bản cấu hình riêng (form_mapping đầy đủ).
-- `landing_files` cũng phải khớp: mỗi `(domain, page_id)` có bộ file riêng.
+**Cách xử lý (đã áp dụng — ở mức dữ liệu):**
+- Backup trước khi sửa: `C:\backup\apex_leads\apex_leads_predup_20261104_093407.dump`.
+- Xoá dòng trùng `(domain='ads.giaodichhanghoatuonglai.com', page_id='mxv_080_online')`
+  kèm file trong `landing_files` — dòng này là bản sao, không phải bản phục vụ.
+- Giữ dòng `domain=''` làm **template/fallback toàn hệ thống** (route
+  `hanghoaphaisinh.net /` trỏ tới).
+- Kết quả: mỗi `page_id` hiện chỉ còn **1 dòng** → `byPageID` không còn bị đè.
+
+> ⚠️ **Giới hạn còn lại (cần code fix khi tới lúc):** `backend/cache/landing_cache.go`
+> vẫn xây map `byPageID` **chỉ theo `page_id`** (không theo domain) nên nếu sau này
+> cố ý tạo cùng một `page_id` trên 2 domain, dòng nạp sau sẽ đè dòng trước.
+> `GetByPageID()` hiện đã ưu tiên `byDomainPage` với `domain=''` trước khi fallback
+> sang `byPageID`, nên fallback toàn hệ thống vẫn đúng. Việc sửa triệt để đòi hỏi
+> đổi API `GetByPageID` → `GetByDomainPage(domain, pageID)` — **chưa thực hiện** vì
+> nằm ngoài phạm vi task production hardening.
 
 **Kiểm tra duplicate (chạy định kỳ):**
 ```sql
@@ -357,6 +367,35 @@ HAVING count(*) > 1;
 > (cùng `page_id` ở nhiều domain là hợp lệ). Điều cần kiểm là **trùng lặp trong cùng
 > một `(domain, page_id)`** — điều mà PK đã chặn. Vấn đề thật là map cache `byPageID`
 > bị đè, đã xử lý ở `backend/cache/landing_cache.go`.
+
+---
+
+## 9.2.1. ⚠️ Route dangling `landing2` — cần user quyết định
+
+Sau khi dọn duplicate, `domain_routes` còn 1 route trỏ tới landing **không tồn tại**:
+
+| domain | path_prefix | landing_id | landing có trong `landing_pages`? |
+|---|---|---|---|
+| `ads.giaodichhanghoatuonglai.com` | `/` | `landing2` | ❌ **KHÔNG** |
+
+Route này là **root domain** của `ads.giaodichhanghoatuonglai.com` ⇒ truy cập
+`https://ads.giaodichhanghoatuonglai.com/` sẽ rơi vào trang lỗi / landing mặc định.
+Hai route con (`/landing` → `landing_cu`, `/chucmung` → `landing_lznoew`) vẫn hoạt động bình thường.
+
+**Các landing hiện có:**
+| page_id | domain | is_active |
+|---|---|---|
+| `landing_cu` | `ads.giaodichhanghoatuonglai.com` | ✅ true |
+| `landing_lznoew` | `ads.giaodichhanghoatuonglai.com` | ✅ true |
+| `mxv_080_online` | *(rỗng — template toàn hệ thống)* | ⚠️ false |
+
+**Việc user (`itdoanh`) cần quyết định** — 3 lựa chọn:
+1. Trỏ `/` → `landing_cu` (landing chính, giống `/landing`).
+2. Trỏ `/` → `mxv_080_online` (template toàn hệ thống, dùng cho `hanghoaphaisinh.net`).
+3. Tạo landing mới `landing2` trong CRM → Studio rồi deploy.
+
+> Em **không tự sửa** route này vì nó là dữ liệu nghiệp vụ — đổi hướng landing root
+> có thể ảnh hưởng campaign đang chạy.
 
 ---
 
