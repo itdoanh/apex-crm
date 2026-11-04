@@ -1216,6 +1216,9 @@
             if (selFolder) selFolder.innerHTML = opts.join('');
             const selFile = document.getElementById('newFileParent');
             if (selFile) selFile.innerHTML = opts.join('');
+            // Modal "Tải lên" cũng cần danh sách thư mục đích để chọn nơi lưu file.
+            const selUpload = document.getElementById('studioUploadFolder');
+            if (selUpload) selUpload.innerHTML = opts.join('');
         }
 
         // --- Quản lý Thư mục (Folder) ---
