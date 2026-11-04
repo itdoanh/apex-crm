@@ -107,6 +107,9 @@ func main() {
 	mux.HandleFunc("/api/landings/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeleteLanding)))
 	mux.HandleFunc("/api/landings/files", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleListFiles)))
 	mux.HandleFunc("/api/landings/file/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveFile)))
+	mux.HandleFunc("/api/landings/files/upload", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleUploadFile)))
+	mux.HandleFunc("/api/landings/file/upload", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleUploadFile)))
+	mux.HandleFunc("/api/landings/file/raw", leadHandler.CORSMiddleware(landingHandler.HandleServeRawFile))
 	mux.HandleFunc("/api/landings/file", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			landingHandler.HandleGetFile(w, r)
@@ -430,22 +433,10 @@ func main() {
 					}
 				}
 
-				// Tìm trong landing_files DB
+				// Tìm trong landing_files DB (hỗ trợ cả văn bản lẫn nhị phân ảnh, video, âm thanh)
 				f, err := store.GetLandingFile(r.Host, landingID, subPath)
 				if err == nil && f != nil {
-					switch f.FileType {
-					case "css":
-						w.Header().Set("Content-Type", "text/css; charset=utf-8")
-					case "js":
-						w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-					case "html":
-						w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					case "json":
-						w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					default:
-						w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-					}
-					_, _ = w.Write([]byte(f.Content))
+					handlers.ServeBinaryFile(w, r, f.FilePath, f.FileType, f.Content)
 					return
 				}
 
@@ -570,10 +561,25 @@ func main() {
 			".svg":   true,
 			".webp":  true,
 			".ico":   true,
+			".bmp":   true,
+			".avif":  true,
 			".woff":  true,
 			".woff2": true,
 			".ttf":   true,
+			".otf":   true,
+			".eot":   true,
 			".mp4":   true,
+			".webm":  true,
+			".ogg":   true,
+			".mov":   true,
+			".avi":   true,
+			".mkv":   true,
+			".mp3":   true,
+			".wav":   true,
+			".m4a":   true,
+			".flac":  true,
+			".aac":   true,
+			".pdf":   true,
 		}
 		ext := strings.ToLower(filepath.Ext(cleanPath))
 		if !allowedExts[ext] {

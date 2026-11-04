@@ -1,0 +1,201 @@
+---
+description: Quy trình deploy production, cấu hình server, Task Scheduler, firewall và các bẫy vận hành đã biết của Apex Fintech.
+globs: deploy/**/*.{sh,ps1,bat,conf,service}
+alwaysApply: false
+---
+
+# Quy tắc Deploy & Vận hành
+
+Tài liệu đầy đủ: `docs/DEPLOYMENT.md`, `docs/RUNBOOK.md`.
+
+---
+
+## 1. Production facts (không được sai)
+
+| Hạng mục | Giá trị đúng |
+|---|---|
+| Server OS | Windows Server 2025 Datacenter |
+| SSH | `Administrator@103.124.95.232` **port 22899** (không phải root, không phải 22) |
+| Code trên server | `C:\apex` (git clone `github.com/itdoanh/apex-crm.git`) |
+| Binary | `C:\apex\backend\apex-server.exe` |
+| Caddy | `C:\caddy\caddy.exe`, config `C:\caddy\Caddyfile` |
+| PostgreSQL | `C:\pgsql\bin\psql.exe`, DB `apex_leads` |
+| Log Caddy | `C:\caddy\logs\` |
+| **Quản lý tiến trình** | **Task Scheduler** — `Apex_Backend_Server`, `Apex_Caddy_Server` |
+| Backend working dir | `C:\apex\backend` (BẮT BUỘC) |
+| Admin CRM | `https://crm.hanghoaphaisinh.net/ads` |
+
+> ⚠️ **Production chạy Task Scheduler, KHÔNG phải NSSM.** `deploy/windows/setup_services.ps1` đã đổi mặc định sang `-Method task` (khớp production) và action đã bọc `cmd /c ... >> logs\server.log 2>&1` để có log. Chỉ dùng `-Method nssm` khi thực sự muốn Windows Service — nếu chạy NSSM trên production sẽ tạo service trùng và xung đột port.
+
+---
+
+## 2. Working Directory là bắt buộc
+
+`backend/main.go` phục vụ static qua đường dẫn tương đối:
+```
+../frontend/landing
+../frontend/admin
+static/...
+```
+
+→ Đổi WD khỏi `C:\apex\backend` ⇒ **toàn bộ landing/CSS/JS trả 404**.
+
+Cũng vậy: deploy chỉ copy thư mục `backend/` mà không copy `frontend/` ⇒ vỡ.
+
+---
+
+## 3. Quy trình deploy
+
+```
+1. Sửa + test ở LOCAL
+2. git commit + git push
+3. SSH vào server
+4. cd C:\apex && git pull
+5. cd backend && build.bat
+6. schtasks /End /TN "Apex_Backend_Server"
+   schtasks /Run /TN "Apex_Backend_Server"
+7. Verify: curl http://127.0.0.1:8080/health
+8. Kiểm tra log Caddy không có 502 mới
+```
+
+🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi qua git để rollback được.
+
+---
+
+## 4. Backend KHÔNG ghi log — phải bọc action
+
+Task Scheduler nuốt stdout/stderr ⇒ mọi lỗi Go **bị mất hoàn toàn**.
+
+Action hiện tại:
+```
+C:\apex\backend\apex-server.exe
+```
+
+Action nên dùng (ghi log + xoay vòng):
+```
+cmd /c "C:\apex\backend\apex-server.exe >> C:\apex\backend\logs\server.log 2>&1"
+```
+
+Phải tạo sẵn `C:\apex\backend\logs\`.
+
+---
+
+## 5. Firewall
+
+| Port | Yêu cầu |
+|---|---|
+| 80, 443 | Allow Any ✅ |
+| 8080 | **Phải chặn từ internet** ⚠️ hiện đang mở |
+| 5432 | Chỉ localhost ✅ (Postgres đã listen loopback) |
+
+```powershell
+New-NetFirewallRule -DisplayName "Apex_Block_External_8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -RemoteAddress Any -Action Block -Profile Public,Private
+```
+
+Sau khi chặn, Caddy vẫn proxy được (loopback không bị ảnh hưởng).
+
+Verify:
+```powershell
+Invoke-WebRequest -Uri "http://103.124.95.232:8080/health" -UseBasicParsing -TimeoutSec 10
+# Phải FAIL
+```
+
+---
+
+## 6. Caddyfile
+
+```caddyfile
+{
+    on_demand_tls {
+        ask http://127.0.0.1:8080/api/internal/check-domain
+        interval 2m
+        burst 5
+    }
+    email admin@hanghoaphaisinh.net
+    log { output file C:/caddy/logs/caddy.log { roll_size 10mb; roll_keep 3; roll_keep_for 7d } }
+}
+
+crm.hanghoaphaisinh.net {
+    reverse_proxy 127.0.0.1:8080 { header_up Host {host}; ... }
+}
+
+:443 {
+    tls { on_demand }
+    reverse_proxy 127.0.0.1:8080 { ... }
+}
+```
+
+**Bắt buộc:** `header_up Host {host}` — backend dùng Host header để định tuyến multi-domain. Thiếu → mọi request về `/`.
+
+**Nên thêm** (đang thiếu, gây 502 khi backend restart):
+```caddyfile
+reverse_proxy 127.0.0.1:8080 {
+    header_up Host {host}
+    lb_try_duration 10s
+    lb_try_interval 500ms
+    lb_try_count 5
+    health_uri /health
+    health_interval 30s
+}
+```
+
+**Cấu hình Caddy cho Linux** (`deploy/caddy/Caddyfile`) phải tương đương bản Windows.
+
+---
+
+## 7. DNS
+
+```
+A  crm   → 103.124.95.232
+A  ns1   → 103.124.95.232
+A  ns2   → 103.124.95.232
+A  @     → 103.124.95.232
+A  *     → 103.124.95.232
+```
+
+Domain mới → trỏ A record hoặc đổi NS → đăng ký trong CRM → SSL tự cấp ~2s.
+
+---
+
+## 8. Script deploy
+
+| Script | Nền tảng | Trạng thái |
+|---|---|---|
+| `deploy/windows/setup_services.ps1` | Windows | ✅ Mặc định `-Method task` (khớp production). Action đã bọc `cmd /c ... >> logs\server.log 2>&1` để có log. Truyền `-Method nssm` nếu muốn Windows Service. |
+| `deploy/windows/install_postgres_native.ps1` | Windows | ✅ OK |
+| `deploy/windows/install_caddy.ps1` | Windows | ✅ OK |
+| `deploy/windows/setup_firewall.ps1` | Windows | ✅ OK — cần chạy thật (port 8080 hiện chưa chặn) |
+| `deploy/windows/cleanup_disk_space.ps1` | Windows | ✅ OK — chưa có task, cần đăng ký vào Task Scheduler |
+| `deploy/windows/health_check.ps1` | Windows | ✅ **Script chẩn đoán tổng hợp** — dùng khi có sự cố |
+| `deploy/windows/start_all.bat` / `stop_all.bat` / `restart_all.bat` | Windows | ✅ Tự phát hiện Task Scheduler vs Windows Service |
+| `deploy/scripts/deploy.sh` | Linux | ✅ OK |
+| `deploy/systemd/apex.service` | Linux | ✅ OK |
+
+> Nếu sửa script → cập nhật `docs/DEPLOYMENT.md` cho khớp.
+
+### Chẩn đoán nhanh
+```powershell
+powershell -File .apex-session\apex.ps1 "PS1:C:\code\apex_moi\landing\deploy\windows\health_check.ps1"
+```
+Thu thập: tiến trình · port · Task + Working Directory · health local/public · check-domain · log Caddy · đĩa/RAM · số dòng DB + page_id trùng · git status trên server.
+
+---
+
+## 9. Bất biến sau khi deploy
+
+```bash
+# 1. Backend sống
+curl http://127.0.0.1:8080/health
+
+# 2. Caddy trả OK
+curl https://crm.hanghoaphaisinh.net/health
+
+# 3. Không có 502 mới trong log
+powershell -c "Select-String -Path C:\caddy\logs\caddy.log -Pattern ERROR | Select -Last 5"
+
+# 4. Domain mới vẫn cấp SSL được (backend sống → ask endpoint OK)
+curl "http://127.0.0.1:8080/api/internal/check-domain?domain=<domain-đã-đăng-ký>"
+# → 200
+```
+
+Nếu (4) trả 403 cho domain đã đăng ký ⇒ `domainCache` chưa reload ⇒ restart backend.

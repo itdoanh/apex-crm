@@ -18,6 +18,19 @@
 
 ---
 
+> ## 📚 TÀI LIỆU DỰ ÁN — BẮT BUỘC ĐỌC TRƯỚC KHI LÀM VIỆC
+>
+> | Bạn là | Đọc file này |
+> |---|---|
+> | **Người mới / AI agent** | [`AGENTS.md`](AGENTS.md) → [`docs/ONBOARDING.md`](docs/ONBOARDING.md) |
+> | **AI agent (Cursor)** | Rules auto-load từ `.cursor/rules/`, skills trong `.cursor/skills/` |
+> | **AI agent (Claude Code)** | [`CLAUDE.md`](CLAUDE.md) |
+> | **Tổng quan tài liệu** | [`docs/README.md`](docs/README.md) |
+>
+> **Tài liệu chuyên đề:** [`ARCHITECTURE`](docs/ARCHITECTURE.md) · [`DATABASE`](docs/DATABASE.md) · [`API`](docs/API.md) · [`FRONTEND`](docs/FRONTEND.md) · [`LANDING`](docs/LANDING.md) · [`SECURITY`](docs/SECURITY.md) · [`DEPLOYMENT`](docs/DEPLOYMENT.md) · [`RUNBOOK`](docs/RUNBOOK.md)
+
+---
+
 ## 🌟 ĐIỂM ĐẶC BIỆT & ĐỘT PHÁ CÔNG NGHỆ
 
 ### 1. 🤖 Tự Động Hóa Đồng Bộ Google Sheets Qua Master Email Bot (Zero-Config)

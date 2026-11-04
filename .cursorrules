@@ -1,0 +1,67 @@
+# Cursor Rules (legacy format)
+
+> File này dành cho Cursor phiên bản cũ (không đọc `.cursor/rules/*.mdc`).
+> Nếu bạn dùng Cursor mới, các rule ở `.cursor/rules/` sẽ tự động apply — file này chỉ là bản tóm tắt.
+
+## Bắt buộc đọc trước khi làm việc
+
+- `AGENTS.md` — bản đồ repo + bất biến kỹ thuật
+- `docs/ARCHITECTURE.md` — kiến trúc
+- Task-specific: `docs/API.md` · `docs/DATABASE.md` · `docs/FRONTEND.md` · `docs/LANDING.md` · `docs/SECURITY.md` · `docs/DEPLOYMENT.md` · `docs/RUNBOOK.md`
+
+## Bất biến
+
+1. CORS mặc định `*`
+2. SĐT VN 10 số
+3. Múi giờ `Asia/Ho_Chi_Minh` cho mọi query ngày/giờ
+4. `landing_pages` PK = `(domain, page_id)`
+5. Ghi DB → `Reload()` cache
+6. WD backend = `C:\apex\backend`
+7. `check-domain` → 200/403
+8. `backend/static/` mirror `frontend/admin/`
+9. Không phá autofill-safe
+10. Không xoá honeypot
+
+## Production
+
+`ssh Administrator@103.124.95.232 -p 22899` · code `C:\apex` · Task Scheduler (không phải NSSM).
+Deploy qua git. Không sửa file trực tiếp trên server.
+
+## Commit
+
+`feat(scope):` / `fix(scope):` / `chore(scope):` — tiếng Việt.
+Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
+
+**Commit chung với `itdoanh`** — luôn kết thúc message bằng:
+```
+Co-authored-by: itdoanh <itdoanh@users.noreply.github.com>
+Co-authored-by: Cursor <cursoragent@cursor.com>
+```
+
+## Quy luật bắt buộc cho AI agent
+
+### Đọc trước — sửa sau — đồng bộ
+
+1. **Trước khi làm gì cũng phải đọc các file liên quan.**
+2. **Làm xong phải cập nhật lại và đồng bộ với các file liên quan** — `docs/`, `AGENTS.md`,
+   `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*.mdc`, `CONTRIBUTING.md`.
+   Đồng bộ tài liệu là **một phần của task**, không phải việc làm thêm cho sau.
+
+### AI không tự test vận hành
+
+- **Được**: check lỗi code (`go build ./...`, `go vet ./...`, parse PowerShell), khởi động
+  lại service, báo cáo trạng thái.
+- **Không được** (trừ khi `itdoanh` nói rõ): submit lead thật, test luồng end-user
+  (đăng nhập CRM, tạo landing, deploy domain), sửa dữ liệu nghiệp vụ chỉ để "kiểm tra".
+
+> Mỗi lần test lead là một lần ghi vào DB production + Google Sheets + KPI doanh thu.
+> AI test "cho có" chỉ làm nhiễu dữ liệu thật.
+
+Báo cáo phải kết thúc bằng:
+`🧪 CHƯA TEST vận hành — anh itdoanh vào kiểm tra giúp em`
+
+### Không tự ý sửa lan sang
+
+- Vấn đề ngoài phạm vi task → **báo cáo**, không tự sửa.
+- Không xoá code/dữ liệu production mà không hỏi `itdoanh`.
+- Deploy / restart production → **báo trước khi làm**.

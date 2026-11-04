@@ -1,13 +1,18 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"apex-backend/cache"
 	"apex-backend/config"
@@ -913,6 +918,230 @@ func (h *LandingHandler) HandleRenameFile(w http.ResponseWriter, r *http.Request
 		"success": true,
 		"message": fmt.Sprintf("Đã đổi tên tệp tin '%s' thành '%s'", payload.OldPath, payload.NewPath),
 	})
+}
+
+// HandleUploadFile tiếp nhận upload tệp tin assets: ảnh (jpg, png, webp, svg, gif), video (mp4, webm), âm thanh (mp3, wav, ogg)
+func (h *LandingHandler) HandleUploadFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Giới hạn upload lên tới 100MB cho video và tài nguyên media
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		http.Error(w, "Kích thước tệp quá lớn hoặc định dạng form không hợp lệ (tối đa 100MB)", http.StatusBadRequest)
+		return
+	}
+
+	pageID := strings.TrimSpace(r.FormValue("page_id"))
+	domain := strings.TrimSpace(r.FormValue("domain"))
+	targetFolder := strings.TrimSpace(r.FormValue("folder"))
+
+	if pageID == "" {
+		http.Error(w, "Thiếu page_id", http.StatusBadRequest)
+		return
+	}
+
+	disallowedExts := map[string]bool{
+		".exe": true, ".bat": true, ".cmd": true, ".sh": true,
+		".ps1": true, ".php": true, ".jsp": true, ".asp": true,
+	}
+
+	targetFolder = strings.Trim(targetFolder, "/")
+
+	var uploadedFiles []map[string]interface{}
+
+	// Xử lý tất cả các tệp trong form
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		for _, fileHeaders := range r.MultipartForm.File {
+			for _, fHeader := range fileHeaders {
+				fileName := filepath.Base(fHeader.Filename)
+				fileName = strings.ReplaceAll(fileName, " ", "_")
+				ext := strings.ToLower(filepath.Ext(fileName))
+
+				if disallowedExts[ext] {
+					continue
+				}
+
+				var relativePath string
+				if targetFolder != "" {
+					relativePath = targetFolder + "/" + fileName
+				} else {
+					relativePath = fileName
+				}
+
+				file, err := fHeader.Open()
+				if err != nil {
+					continue
+				}
+				data, err := io.ReadAll(file)
+				file.Close()
+				if err != nil {
+					continue
+				}
+
+				mimeType := mime.TypeByExtension(ext)
+				if mimeType == "" {
+					switch ext {
+					case ".webp":
+						mimeType = "image/webp"
+					case ".svg":
+						mimeType = "image/svg+xml"
+					case ".ico":
+						mimeType = "image/x-icon"
+					case ".mp4":
+						mimeType = "video/mp4"
+					case ".webm":
+						mimeType = "video/webm"
+					case ".ogg":
+						mimeType = "audio/ogg"
+					case ".mp3":
+						mimeType = "audio/mpeg"
+					case ".wav":
+						mimeType = "audio/wav"
+					case ".m4a":
+						mimeType = "audio/mp4"
+					default:
+						mimeType = "application/octet-stream"
+					}
+				}
+
+				var fileContent string
+				if IsBinaryFileType(ext) {
+					b64 := base64.StdEncoding.EncodeToString(data)
+					fileContent = fmt.Sprintf("data:%s;base64,%s", mimeType, b64)
+				} else {
+					fileContent = string(data)
+				}
+
+				if err := h.store.SaveLandingFile(domain, pageID, relativePath, mimeType, fileContent); err != nil {
+					continue
+				}
+				if domain != "" {
+					_ = h.store.SaveLandingFile("", pageID, relativePath, mimeType, fileContent)
+				}
+
+				uploadedFiles = append(uploadedFiles, map[string]interface{}{
+					"file_path": relativePath,
+					"file_type": mimeType,
+					"size":      len(data),
+					"url":       fmt.Sprintf("/api/landings/file/raw?page_id=%s&domain=%s&path=%s", pageID, domain, relativePath),
+				})
+			}
+		}
+	}
+
+	if len(uploadedFiles) == 0 {
+		http.Error(w, "Không có tệp tin hợp lệ nào được tải lên", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"files":     uploadedFiles,
+		"file_path": uploadedFiles[0]["file_path"],
+		"message":   fmt.Sprintf("Đã tải lên %d tệp tin thành công!", len(uploadedFiles)),
+	})
+}
+
+// HandleServeRawFile phục vụ file binary (ảnh, video, audio) trực tiếp qua HTTP
+func (h *LandingHandler) HandleServeRawFile(w http.ResponseWriter, r *http.Request) {
+	pageID := strings.TrimSpace(r.URL.Query().Get("page_id"))
+	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+	filePath := strings.TrimSpace(r.URL.Query().Get("path"))
+	if filePath == "" {
+		filePath = strings.TrimSpace(r.URL.Query().Get("file_path"))
+	}
+	if pageID == "" || filePath == "" {
+		http.Error(w, "Thiếu page_id hoặc path", http.StatusBadRequest)
+		return
+	}
+
+	f, err := h.store.GetLandingFile(domain, pageID, filePath)
+	if err != nil || f == nil {
+		f, err = h.store.GetLandingFile("", pageID, filePath)
+	}
+	if err != nil || f == nil {
+		http.Error(w, "Tệp tin không tồn tại", http.StatusNotFound)
+		return
+	}
+
+	ServeBinaryFile(w, r, f.FilePath, f.FileType, f.Content)
+}
+
+// ServeBinaryFile giải mã base64 (nếu có) và phục vụ dữ liệu binary qua HTTP với Cache-Control và Range header
+func ServeBinaryFile(w http.ResponseWriter, r *http.Request, filePath string, fileType string, content string) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		switch ext {
+		case ".webp":
+			mimeType = "image/webp"
+		case ".svg":
+			mimeType = "image/svg+xml"
+		case ".ico":
+			mimeType = "image/x-icon"
+		case ".mp4":
+			mimeType = "video/mp4"
+		case ".webm":
+			mimeType = "video/webm"
+		case ".ogg":
+			mimeType = "audio/ogg"
+		case ".mp3":
+			mimeType = "audio/mpeg"
+		case ".wav":
+			mimeType = "audio/wav"
+		case ".m4a":
+			mimeType = "audio/mp4"
+		default:
+			if fileType != "" && strings.Contains(fileType, "/") {
+				mimeType = fileType
+			} else {
+				mimeType = "application/octet-stream"
+			}
+		}
+	}
+
+	if strings.HasPrefix(content, "data:") && strings.Contains(content, ";base64,") {
+		idx := strings.Index(content, ";base64,")
+		dataMime := strings.TrimPrefix(content[:idx], "data:")
+		if dataMime != "" {
+			mimeType = dataMime
+		}
+		b64Data := content[idx+8:]
+		rawBytes, err := base64.StdEncoding.DecodeString(b64Data)
+		if err == nil {
+			w.Header().Set("Content-Type", mimeType)
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeContent(w, r, filepath.Base(filePath), time.Now(), bytes.NewReader(rawBytes))
+			return
+		}
+	} else if IsBinaryFileType(ext) {
+		rawBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(content))
+		if err == nil && len(rawBytes) > 0 {
+			w.Header().Set("Content-Type", mimeType)
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeContent(w, r, filepath.Base(filePath), time.Now(), bytes.NewReader(rawBytes))
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", mimeType)
+	_, _ = w.Write([]byte(content))
+}
+
+// IsBinaryFileType kiểm tra phần mở rộng có phải là định dạng nhị phân/media
+func IsBinaryFileType(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".bmp", ".avif",
+		".mp4", ".webm", ".ogg", ".mov", ".avi", ".mkv",
+		".mp3", ".wav", ".m4a", ".flac", ".aac",
+		".woff", ".woff2", ".ttf", ".otf", ".eot", ".pdf":
+		return true
+	default:
+		return false
+	}
 }
 
 // ============================================================

@@ -1,0 +1,207 @@
+---
+description: Quy tắc bảo mật — xác thực admin, anti-bot, chống spam, bảo vệ file tĩnh và dữ liệu nhạy cảm.
+globs: backend/security/**/*.go
+alwaysApply: false
+---
+
+# Quy tắc Bảo mật
+
+Tài liệu đầy đủ: `docs/SECURITY.md`.
+
+---
+
+## 1. Hash mật khẩu
+
+**Argon2id** — `backend/security/argon2.go`.
+
+| Tham số | Giá trị |
+|---|---|
+| Memory | 64 MB |
+| Iterations | 3 |
+| Parallelism | 2 |
+| Salt | 16 byte ngẫu nhiên |
+
+❌ Không dùng MD5, SHA1, SHA256 thuần, hay bcrypt cho mật khẩu.
+
+---
+
+## 2. Session
+
+- Token sinh bằng `crypto/rand`.
+- Lưu **SHA-256 hash** trong `admin_sessions.token_hash` — **không** lưu plaintext.
+- Cookie `apex_session` phải có `HttpOnly`.
+- So sánh token dùng constant-time (`hmac.Equal`, `subtle.ConstantTimeCompare`).
+- Đổi mật khẩu ⇒ revoke **mọi** session khác.
+- Luôn có đường `POST /api/admin/sessions/revoke` để thu hồi từ xa.
+
+---
+
+## 3. Endpoint admin
+
+```go
+mux.HandleFunc("/api/leads", leadHandler.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {
+    if r.Method == http.MethodPost {
+        leadHandler.HandleSubmitLead(w, r)   // PUBLIC — không bọc auth
+    } else if r.Method == http.MethodGet {
+        authHandler.RequireAdminAuth(leadHandler.HandleListLeads)(w, r)  // ADMIN
+    }
+}))
+```
+
+**Danh sách endpoint PUBLIC** (được phép không cần auth):
+- `POST /api/leads`
+- `GET /api/landing/config`
+- `POST /api/analytics/track`
+- `GET /api/auth/challenge`
+- `GET /api/internal/check-domain`
+- `GET /health`
+
+Mọi endpoint khác → phải bọc `RequireAdminAuth`.
+
+---
+
+## 4. Proof-of-Work
+
+`backend/security/challenge.go`
+
+### Verify đủ 4 bước — không được bỏ bước nào
+```go
+// 1. Hết hạn
+if time.Now().Unix() > expiresAt { return false, "Thử thách xác thực đã hết hạn" }
+
+// 2. Chữ ký HMAC — dùng hmac.Equal (constant-time)
+if !hmac.Equal([]byte(signature), []byte(expectedSig)) { return false, "..." }
+
+// 3. Replay attack — nonce đã dùng
+if _, loaded := usedNonces.LoadOrStore(nonceKey, time.Now().Add(10*time.Minute)); loaded {
+    return false, "Thử thách này đã được sử dụng (Replay attack detected)"
+}
+
+// 4. Bài toán hash — SHA256(challenge_id:salt:solution) bắt đầu bằng "000"^difficulty
+```
+
+### Payload hash — phải khớp chính xác
+```
+SHA256(challenge_id + ":" + salt + ":" + solution)
+```
+Cùng format với cả 2 phía (server generate & verify). Đổi format ở một chỗ ⇒ mọi lead bị reject.
+
+### ⚠️ Secret đã hỗ trợ biến môi trường
+```go
+// backend/security/challenge.go
+const defaultChallengeSecretKey = "apex_fintech_security_secret_2026_salt_xyz99"
+
+func resolveChallengeSecretKey() []byte {
+	if s := strings.TrimSpace(os.Getenv("CHALLENGE_SECRET")); s != "" {
+		return []byte(s)
+	}
+	return []byte(defaultChallengeSecretKey)
+}
+```
+Đặt `CHALLENGE_SECRET` trong `.env` để rotate secret mà không cần sửa code. Nếu để trống → dùng giá trị mặc định. Xem `docs/SECURITY.md`.
+
+### Difficulty
+- Mặc định `3` (SHA-256 bắt đầu bằng `"000"`, client mất ~15–30ms).
+- Tối đa `6` — `ParseDifficulty` trả `3` nếu out of range.
+- Difficulty cao quá → người dùng thật chờ lâu → giảm CR.
+
+---
+
+## 5. Honeypot
+
+- Field phải **luôn nằm trong DOM** (không thêm/sau bằng JS).
+- Ẩn bằng CSS thuần: `display:none`, `visibility:hidden`, `opacity:0`, `position:absolute; left:-9999px`.
+- Tên field: `website`, `fax_company_prefix`, `user_email_verify`, `company_website_url`.
+- Luôn kèm `tabindex="-1"` và `autocomplete="off"`.
+
+---
+
+## 6. Autofill-safe — KHÔNG ĐƯỢC PHÁ
+
+Chrome autofill / Apple Keychain điền form trong ~50ms, không có mouse movement, scroll 0%.
+Thuật toán **phải** bỏ qua các tín hiệu này khi:
+- `is_autofill === true`
+- `autofill_source === "browser_autofill"`
+
+Nếu chặn nhầm → tỷ lệ chuyển đổi giảm mạnh (autofill là nguồn lead lớn ở Facebook/TikTok ads).
+
+Xem `docs/SECURITY.md` mục 4.
+
+---
+
+## 7. Rate limit
+
+- Giới hạn theo IP, sliding window.
+- Vượt ngưỡng → `429`, **không** ghi vào DB.
+- Kiểm tra rate limit **trước** PoW (tiết kiệm CPU băm SHA-256).
+
+---
+
+## 8. Phone validation
+
+- Chuẩn E.164: `+84XXXXXXXXX`.
+- 10 số, prefix hợp lệ: `03`, `05`, `07`, `08`, `09`.
+- Nhà mạng nhận diện: Viettel, Vinaphone, Mobifone, Vietnamobile, Wintel.
+- Normalize bỏ `+84` / `84` / `0` đầu trước khi lưu.
+
+---
+
+## 9. Bảo vệ file tĩnh
+
+```go
+// Path traversal
+if strings.Contains(reqPath, "..") || strings.Contains(reqPath, "//") {
+    http.Error(w, "Forbidden", http.StatusForbidden)
+    return
+}
+
+// File nhạy cảm
+if strings.Contains(lowerSub, "service-account") || strings.Contains(lowerSub, ".env") ||
+   strings.HasSuffix(lowerSub, ".key") || strings.HasSuffix(lowerSub, ".sql") ||
+   strings.HasSuffix(lowerSub, ".exe") {
+    http.NotFound(w, r)
+    return
+}
+
+// File ẩn
+if strings.HasPrefix(baseName, ".") { http.NotFound(w, r); return }
+```
+
+---
+
+## 10. `/api/internal/check-domain`
+
+Được Caddy gọi để quyết định cấp SSL:
+- Domain đã đăng ký → `200 OK`
+- Domain lạ → `403 Forbidden`
+
+⚠️ **Endpoint không có auth.** Giới hạn IP ở tầng Caddy hoặc firewall (chỉ `127.0.0.1`).
+
+---
+
+## 11. Dữ liệu nhạy cảm
+
+| File | Quy tắc |
+|---|---|
+| `service-account.json` | KHÔNG commit. `.gitignore` đã có `*service-account*.json` |
+| `.env`, `.env.prod` | KHÔNG commit. `.gitignore` đã có `.env`, `.env.*` |
+| `rinva-*.json` | KHÔNG commit |
+
+- Không log password, token, `challenge_secret`, private key.
+- Không trả `credentials_json` từ `google_sheet_configs` ra API cho client không cần thiết.
+
+---
+
+## 12. Checklist trước khi deploy
+
+```
+□ service-account.json / .env KHÔNG nằm trong git diff
+□ Mật khẩu admin đã đổi khỏi ApexAdmin@2026!
+□ Mật khẩu PostgreSQL đã đổi khỏi postgres
+□ ALLOW_ORIGINS thu hẹp nếu không cần wildcard
+□ Port 8080 đã chặn từ internet
+□ /api/internal/check-domain giới hạn IP local
+□ Mọi endpoint admin bọc RequireAdminAuth
+□ Autofill vẫn hoạt động (test bằng Chrome autofill)
+□ Honeypot vẫn trong DOM
+```

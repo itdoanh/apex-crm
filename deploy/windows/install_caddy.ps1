@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Kịch bản tự động tải và cài đặt Caddy Web Server cho Windows Server 2025.
 .DESCRIPTION

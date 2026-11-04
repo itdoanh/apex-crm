@@ -1,0 +1,205 @@
+---
+description: Quy ước cho JavaScript frontend — tracker.js, CRM SPA, Ladi Studio. Áp dụng khi sửa file .js hoặc .html trong frontend.
+globs: frontend/**/*.{js,html}
+alwaysApply: false
+---
+
+# Quy ước Frontend
+
+Tài liệu đầy đủ: `docs/FRONTEND.md`, `docs/LANDING.md`.
+
+---
+
+## 1. Không có build step
+
+Frontend là HTML/CSS/JS thuần + Tailwind/Alpine/Chart.js từ CDN.
+**Không** thêm webpack/vite/npm dependency mới — repo không có `package.json`.
+Sửa file → refresh trình duyệt là thấy.
+
+---
+
+## 2. Mirror `frontend/admin/` ↔ `backend/static/`
+
+```
+frontend/admin/index.html          ← NGUỒN CHUẨN
+backend/static/index.html          ← MIRROR (copy từ frontend/admin)
+```
+
+Sửa UI → sửa ở `frontend/admin/` → copy sang `backend/static/`.
+
+```powershell
+Copy-Item frontend\admin\js\crm.js backend\static\js\crm.js
+Copy-Item frontend\admin\index.html backend\static\index.html -Force
+```
+
+Kiểm tra đồng bộ:
+```powershell
+git diff --stat frontend/admin backend/static
+```
+
+Vì sao cần mirror: production chạy binary từ `C:\apex\backend` với WD `C:\apex\backend`, nên `main.go` phục vụ static từ `../backend/static` hoặc `../frontend/admin`. **Cả hai phải giống nhau.**
+
+---
+
+## 3. Naming & cấu trúc
+
+### File
+| Loại | Quy ước | Ví dụ |
+|---|---|---|
+| JS module | camelCase | `form-scanner.js`, `context-menu.js` |
+| CSS | kebab-case | `admin.css`, `studio.css` |
+| Hàm JS | camelCase | `renderLeads()`, `loadAnalytics()` |
+| ID HTML | camelCase | `leadTable`, `btnRefresh` |
+| Data attribute | kebab-case | `data-config`, `data-ve-id` |
+
+### Đặc tả DOM
+```html
+<!-- Alpine.js (x-data, x-show, x-model) -->
+<template x-data="{ open: false }">
+    <button @click="open = !open">Toggle</button>
+    <div x-show="open">Nội dung</div>
+</template>
+```
+
+### Gọi API
+```javascript
+// ✅ Đúng — dùng API_BASE_URL từ config.js
+const API_BASE = window.APEX_ADMIN_CONFIG?.API_BASE_URL || '';
+const res = await fetch(`${API_BASE}/api/leads?page=1&limit=50`, {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+});
+const data = await res.json();
+
+// ❌ Sai — hardcode domain
+const res = await fetch('https://crm.hanghoaphaisinh.net/api/leads');
+```
+
+---
+
+## 4. Xử lý lỗi API
+
+```javascript
+// ✅ Đúng
+try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
+} catch (e) {
+    showToast(`Lỗi: ${e.message}`, 'error');
+    console.error('[APEX] API error:', e);
+}
+```
+
+**Luôn kiểm tra `res.ok`** trước khi parse — backend trả 401/403/429 với JSON khác shape.
+
+---
+
+## 5. XSS — BẮT BUỘC escape output
+
+```javascript
+// ✅ Đúng
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+}
+element.innerHTML = `<td>${escapeHTML(lead.so_dien_thoai)}</td>`;
+
+// ❌ Sai — XSS qua tên/ghi chú khách nhập
+element.innerHTML = `<td>${lead.tracking.fullName}</td>`;
+```
+
+Lead data đến từ **form công khai** → không bao giờ tin. Luôn escape.
+
+---
+
+## 6. `tracker.js` — bất biến
+
+**Không được:**
+- ❌ Xoá field honeypot (`website`, `fax_company_prefix`, `user_email_verify`, `company_website_url`) khỏi DOM.
+- ❌ Bỏ `tracker.js` khỏi landing → mất PoW → lead bị 403.
+- ❌ Phá logic autofill-safe (đặt `is_autofill`, `autofill_source`, `fill_duration_ms`).
+- ❌ Gửi lead trước khi giải PoW xong.
+- ❌ Xoá `challenge_*` khỏi payload.
+
+**Phải giữ:**
+```javascript
+// Honeypot — phải nằm trong DOM, bot điền, người thật không thấy
+const honeypots = ['website', 'fax_company_prefix', 'user_email_verify', 'company_website_url'];
+```
+
+Chi tiết: `docs/SECURITY.md` mục 3 & 4.
+
+---
+
+## 7. `data-ve-id` — phải duy trì
+
+`data-ve-id` là khoá định danh element giữa DOM ↔ AST ↔ code editor trong Ladi Studio.
+
+```javascript
+// ✅ Đúng — giữ nguyên qua các thao tác clone/reorder
+node.dataset.veId = existingId;
+
+// ❌ Sai — mất id → inspector/layers/code mất liên kết
+```
+
+Khi clone element → **clone cả `data-ve-id`** hoặc tạo id mới.
+
+---
+
+## 8. Encoding
+
+- Tất cả file frontend: **UTF-8 không BOM**.
+- Không dùng `innerHTML` với nội dung có tiếng Việt từ biến chưa escape.
+- Khi đọc file server bằng PowerShell: `Get-Content -Encoding UTF8`.
+- `cmd /c type` hiển thị mojibake với UTF-8 → đây là vấn đề console, không phải file.
+
+---
+
+## 9. Performance
+
+```javascript
+// ✅ Debounce input search
+let searchTimer;
+input.addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => fetchLeads(e.target.value), 300);
+});
+
+// ✅ Dừng request cũ khi có request mới
+let abortController;
+function fetchData() {
+    abortController?.abort();
+    abortController = new AbortController();
+    fetch(url, { signal: abortController.signal });
+}
+```
+
+Studio phải đạt **60fps** khi pan/zoom → dùng `requestAnimationFrame`, không dùng `setInterval` cho animation.
+
+---
+
+## 10. Kiểm tra trước khi commit
+
+```
+□ Không còn console.log debug
+□ Mọi output từ API đã escapeHTML
+□ Honeypot vẫn còn trong DOM
+□ is_autofill / autofill_source vẫn được gửi
+□ đã copy sang backend/static/ (nếu sửa frontend/admin/)
+□ Test trên mobile viewport
+□ Test bằng Chrome autofill (không bị chặn nhầm)
+```
+
+---
+
+## 11. Test E2E
+
+```bash
+node backend/tests/e2e_domain_management_test.js
+python backend/tests/test_full_suite.py
+```
+Cần server chạy sẵn + admin `admin` / `ApexAdmin@2026!`.

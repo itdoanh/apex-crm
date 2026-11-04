@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Thiết lập dịch vụ tự khởi động (Windows Service) cho Apex Backend và Caddy Server trên Windows Server 2025.
 .DESCRIPTION
@@ -12,7 +12,8 @@
 param(
     [string]$ApexBackendDir = "",
     [string]$CaddyDir = "C:\caddy",
-    [string]$Method = "nssm" # 'nssm' hoặc 'task'
+    # 'task' = Windows Task Scheduler (KHỚP VỚI PRODUCTION), 'nssm' = Windows Service qua NSSM
+    [string]$Method = "task"
 )
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -132,24 +133,33 @@ if ($Method -eq "task") {
     Write-Host "[*] Đang cấu hình tự khởi động qua Windows Task Scheduler..." -ForegroundColor Yellow
 
     # 1. Scheduled Task cho Apex Backend
+    # Action bọc qua cmd /c để stdout/stderr được ghi vào file log
+    # (Task Scheduler mặc định nuốt toàn bộ output -> mất log khi lỗi)
+    $ApexLogsDir = Join-Path $ApexBackendDir "logs"
+    if (-not (Test-Path $ApexLogsDir)) { New-Item -ItemType Directory -Force -Path $ApexLogsDir | Out-Null }
+    $ApexLogFile = Join-Path $ApexLogsDir "server.log"
+
     Unregister-ScheduledTask -TaskName "Apex_Backend_Server" -Confirm:$false -ErrorAction SilentlyContinue
-    $ActionApex = New-ScheduledTaskAction -Execute $ApexExe -WorkingDirectory $ApexBackendDir
+    $ActionApex = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"`"$ApexExe`" >> `"$ApexLogFile`" 2>&1`"" -WorkingDirectory $ApexBackendDir
     $TriggerApex = New-ScheduledTaskTrigger -AtStartup
     $PrincipalApex = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    $SettingsApex = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 365)
+    $SettingsApex = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 365) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName "Apex_Backend_Server" -Action $ActionApex -Trigger $TriggerApex -Principal $PrincipalApex -Settings $SettingsApex | Out-Null
     Start-ScheduledTask -TaskName "Apex_Backend_Server"
-    Write-Host "[OK] Đã tạo Task Scheduler: Apex_Backend_Server (Chạy dưới NT AUTHORITY\SYSTEM)" -ForegroundColor Green
+    Write-Host "[OK] Đã tạo Task Scheduler: Apex_Backend_Server (WD=$ApexBackendDir, log=$ApexLogFile)" -ForegroundColor Green
 
     # 2. Scheduled Task cho Caddy Server
+    $CaddyLogsDir = Join-Path $CaddyDir "logs"
+    if (-not (Test-Path $CaddyLogsDir)) { New-Item -ItemType Directory -Force -Path $CaddyLogsDir | Out-Null }
+
     Unregister-ScheduledTask -TaskName "Apex_Caddy_Server" -Confirm:$false -ErrorAction SilentlyContinue
     $ActionCaddy = New-ScheduledTaskAction -Execute $CaddyExe -Argument "run --config `"$Caddyfile`"" -WorkingDirectory $CaddyDir
     $TriggerCaddy = New-ScheduledTaskTrigger -AtStartup
     $PrincipalCaddy = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    $SettingsCaddy = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 365)
+    $SettingsCaddy = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 365) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName "Apex_Caddy_Server" -Action $ActionCaddy -Trigger $TriggerCaddy -Principal $PrincipalCaddy -Settings $SettingsCaddy | Out-Null
     Start-ScheduledTask -TaskName "Apex_Caddy_Server"
-    Write-Host "[OK] Đã tạo Task Scheduler: Apex_Caddy_Server (Chạy dưới NT AUTHORITY\SYSTEM)" -ForegroundColor Green
+    Write-Host "[OK] Đã tạo Task Scheduler: Apex_Caddy_Server (WD=$CaddyDir)" -ForegroundColor Green
 }
 
 Write-Host "=================================================================" -ForegroundColor Cyan

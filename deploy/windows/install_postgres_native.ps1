@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Kịch bản hướng dẫn và tự động thiết lập CSDL PostgreSQL Native trên Windows Server 2025.
 .DESCRIPTION

@@ -6,20 +6,34 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
+// defaultChallengeSecretKey là giá trị dự phòng khi CHALLENGE_SECRET chưa được cấu hình.
+// Nên đặt CHALLENGE_SECRET trong .env để có thể rotate secret mà không cần sửa code.
+const defaultChallengeSecretKey = "apex_fintech_security_secret_2026_salt_xyz99"
+
 var (
 	// Server secret key dùng để ký HMAC cho các challenge token
-	challengeSecretKey = []byte("apex_fintech_security_secret_2026_salt_xyz99")
+	challengeSecretKey = resolveChallengeSecretKey()
 
 	// Bộ nhớ cache lưu các nonce đã qua sử dụng để chống Replay Attack
 	usedNonces   = sync.Map{}
 	nonceCleaner sync.Once
 )
+
+// resolveChallengeSecretKey lấy secret từ biến môi trường CHALLENGE_SECRET,
+// fallback về giá trị mặc định nếu không được cấu hình.
+func resolveChallengeSecretKey() []byte {
+	if s := strings.TrimSpace(os.Getenv("CHALLENGE_SECRET")); s != "" {
+		return []byte(s)
+	}
+	return []byte(defaultChallengeSecretKey)
+}
 
 // ChallengeResponse đại diện cho thử thách mật mã gửi cho client
 type ChallengeResponse struct {

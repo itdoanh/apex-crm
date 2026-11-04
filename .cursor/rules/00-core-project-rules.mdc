@@ -1,0 +1,102 @@
+---
+description: Kiến trúc, bất biến kỹ thuật và quy trình làm việc cốt lõi của dự án Apex Fintech. Áp dụng cho MỌI phiên làm việc.
+alwaysApply: true
+---
+
+# Apex Fintech — Quy tắc cốt lõi
+
+## Bắt buộc đọc trước khi sửa
+
+| Việc cần làm | Đọc |
+|---|---|
+| Bất kỳ thứ gì | `docs/ARCHITECTURE.md` |
+| Go handler / DB query | `docs/API.md` + `docs/DATABASE.md` |
+| Sửa UI CRM / Studio | `docs/FRONTEND.md` |
+| Sửa landing / tracker | `docs/LANDING.md` |
+| Auth / anti-bot | `docs/SECURITY.md` |
+| Deploy | `docs/DEPLOYMENT.md` |
+| Sự cố production | `docs/RUNBOOK.md` |
+
+## Bất biến kỹ thuật — KHÔNG được phá
+
+1. **CORS** mặc định `ALLOW_ORIGINS=*`. Đổi → landing domain khác không gửi lead được.
+2. **SĐT Việt Nam 10 số**, prefix `03x/05x/07x/08x/09x`. Xem `backend/security/phone_validator.go`.
+3. **Múi giờ hiển thị là `Asia/Ho_Chi_Minh`.** Mọi query so sánh ngày/giờ phải dùng `AT TIME ZONE 'Asia/Ho_Chi_Minh'`. **Không dùng `NOW()` trực tiếp** cho so sánh ngày.
+4. **`landing_pages` có PK composite `(domain, page_id)`** — không phải `page_id` đơn lẻ. Đổi schema → cập nhật cả `backend/db/db.go` lẫn `backend/cache/landing_cache.go`.
+5. **Ghi DB → phải `Reload()` cache.** Handler ghi `landing_pages`/`domains`/`domain_routes` mà không gọi `landingCache.Reload(ctx)` / `domainCache.Reload(ctx)` → thay đổi không hiện ra cho user.
+6. **Static files dùng đường dẫn tương đối** `../frontend/landing`, `../frontend/admin`. Backend **phải** chạy với working directory là `C:\apex\backend`.
+7. **`/api/internal/check-domain`** phải trả `200` cho domain đã đăng ký, `403` cho domain lạ — Caddy dùng endpoint này để quyết định cấp SSL hay không.
+8. **`backend/static/` là MIRROR của `frontend/admin/`.** Sửa UI ở `frontend/admin/` rồi copy sang `backend/static/`. Không sửa trực tiếp trong `backend/static/`.
+
+## Nguyên tắc bảo mật
+
+- `service-account.json`, `.env`, `.env.prod` **không được commit** (đã có trong `.gitignore`).
+- Mật khẩu hash bằng **Argon2id** (`backend/security/argon2.go`). Không dùng MD5/SHA1/bcrypt.
+- Session token lưu **SHA-256 hash** trong DB, không lưu plaintext.
+- Mọi endpoint admin bọc `authHandler.RequireAdminAuth(...)`.
+- Public endpoint duy nhất: `POST /api/leads`, `GET /api/landing/config`, `POST /api/analytics/track`, `GET /api/auth/challenge`, `/api/internal/check-domain`, `/health`.
+- **Không được phá autofill-safe** trong tracker.js — nếu chặn Chrome autofill thì CR giảm mạnh. Xem `docs/SECURITY.md` mục 4.
+
+## Production
+
+```
+SSH : ssh Administrator@103.124.95.232 -p 22899   (KHÔNG phải root, KHÔNG phải port 22)
+Code: C:\apex (git clone)   Binary: C:\apex\backend\apex-server.exe
+Quản lý: Task Scheduler (Apex_Backend_Server, Apex_Caddy_Server) — KHÔNG phải NSSM
+```
+
+**Quy trình deploy bắt buộc:** sửa local → test → commit → push → `git pull` trên server → build → restart task → verify `/health`.
+
+🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi phải qua git để rollback được.
+
+## Quy ước commit
+
+```
+feat(scope): mô tả tiếng Việt
+fix(scope): mô tả tiếng Việt
+chore(scope): mô tả
+```
+Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
+
+**Commit là công sức chung của `itdoanh` + AI agent.** Luôn kết thúc message bằng:
+```
+Co-authored-by: itdoanh <itdoanh@users.noreply.github.com>
+Co-authored-by: Cursor <cursoragent@cursor.com>
+```
+
+---
+
+## Quy luật cốt lõi cho AI agent (BẮT BUỘC)
+
+### 1. Đọc trước — sửa sau — đồng bộ
+
+- **Trước khi làm gì cũng phải đọc các file liên quan** (bảng ở đầu file này).
+- **Làm xong phải cập nhật lại và đồng bộ với các file liên quan** — `docs/`, `AGENTS.md`,
+  `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*.mdc`, `CONTRIBUTING.md`, `.env.example`.
+  Đồng bộ tài liệu là **một phần của task**, không phải việc làm thêm cho sau.
+
+### 2. AI không tự test vận hành
+
+- AI **được**: check lỗi code (`go build`, `go vet`, parse PowerShell), khởi động lại
+  service, báo cáo trạng thái.
+- AI **không được** (trừ khi `itdoanh` nói rõ): submit lead thật, test luồng end-user
+  (đăng nhập CRM, tạo landing, deploy domain), đổi dữ liệu nghiệp vụ để "kiểm tra".
+
+> Mỗi lần test lead là một lần ghi vào DB production + Google Sheets + KPI doanh thu.
+> AI test "cho có" chỉ làm nhiễu dữ liệu thật.
+
+**Báo cáo phải kết thúc bằng:** `🧪 CHƯA TEST vận hành — anh itdoanh vào kiểm tra giúp em`
+
+### 3. Không tự ý sửa lan sang, không xoá dữ liệu
+
+- Vấn đề ngoài phạm vi task → **báo cáo**, không tự sửa.
+- Không xoá code/dữ liệu production mà không hỏi `itdoanh`.
+- Deploy / restart production → **báo trước khi làm**.
+
+## Lệnh
+
+```bash
+cd backend && build.bat          # build Windows
+cd backend && build_linux.bat    # build Linux
+cd backend && go run main.go     # chạy local
+```

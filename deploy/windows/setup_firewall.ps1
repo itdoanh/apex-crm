@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Cấu hình tường lửa Windows Defender Firewall cho hệ thống Apex Fintech trên Windows Server 2025.
 .DESCRIPTION

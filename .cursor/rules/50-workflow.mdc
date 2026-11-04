@@ -1,0 +1,206 @@
+---
+description: Quy trình làm việc chuẩn của dự án — đọc tài liệu, đặt branch, commit, review, deploy, xử lý sự cố.
+alwaysApply: true
+---
+
+# Quy trình làm việc chuẩn
+
+## 1. Trước khi bắt đầu bất kỳ task nào
+
+```
+1. Đọc AGENTS.md
+2. Đọc tài liệu liên quan (bảng bên dưới)
+3. Grep code hiện có trước khi viết mới
+4. Kiểm tra git status — không được ghi đè thay đổi của người khác
+```
+
+| Task | Tài liệu bắt buộc |
+|---|---|
+| Sửa Go handler / DB | `docs/API.md`, `docs/DATABASE.md` |
+| Sửa UI | `docs/FRONTEND.md` |
+| Sửa landing / tracker | `docs/LANDING.md` |
+| Auth / anti-bot | `docs/SECURITY.md` |
+| Deploy / server | `docs/DEPLOYMENT.md` |
+| Sự cố production | `docs/RUNBOOK.md` |
+| Lần đầu dự án | `docs/ONBOARDING.md` |
+
+---
+
+## 2. Branch & commit
+
+```bash
+git checkout -b feat/ten-task        # hoặc fix/...
+git status                           # kiểm tra trước khi add
+git add <file cụ thể>                # KHÔNG git add -A trước khi xem diff
+git diff --cached
+git commit -m "feat(scope): mô tả bằng tiếng Việt"
+```
+
+### Format commit
+```
+feat(scope): mô tả
+fix(scope): mô tả
+chore(scope): mô tả
+```
+Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
+
+### Ví dụ thực tế
+```
+fix(studio): fix preview syntax error, persistent data-ve-id sync, domain deploy 400
+feat(landings): add search-replace widget, live attribute sync, multi-file domain deploy
+```
+
+**Tiếng Việt, không mập mờ.** Nêu rõ cái gì sửa + hậu quả.
+
+---
+
+## 3. Review checklist trước khi commit
+
+```
+□ Build thành công: cd backend && build.bat
+□ Không còn console.log / fmt.Println debug
+□ Không còn TODO/FIXME bỏ dở
+□ Mọi API response đã kiểm tra res.ok
+□ Output từ dữ liệu người dùng đã escapeHTML
+□ Honeypot + autofill-safe còn nguyên (nếu đụng tracker.js)
+□ Ghi DB → đã gọi Reload() cache
+□ Query dùng parameterized + AT TIME ZONE 'Asia/Ho_Chi_Minh'
+□ Sửa frontend/admin/ → đã copy sang backend/static/
+□ git diff xem kỹ — không có file nhạy cảm (.env, service-account.json)
+□ Docs liên quan đã cập nhật (docs/API.md, docs/DATABASE.md...)
+```
+
+---
+
+## 4. Kiểm tra nhanh
+
+```bash
+# Build
+cd backend && build.bat
+
+# Test E2E (cần server chạy)
+node backend/tests/e2e_domain_management_test.js
+python backend/tests/test_full_suite.py
+
+# Lint cơ bản
+cd backend && go vet ./...
+```
+
+---
+
+## 5. Deploy
+
+Xem `docs/DEPLOYMENT.md` mục 1. Tóm tắt:
+
+```
+local → test → commit → push → git pull trên server → build → restart task → verify /health
+```
+
+🚨 **Không sửa file trực tiếp trên production.** Mọi thay đổi qua git.
+
+---
+
+## 6. Xử lý sự cố
+
+Theo thứ tự:
+```
+1. Đọc docs/RUNBOOK.md — tra triệu chứng tương ứng
+2. Thu thập thông tin: /health, log Caddy, trạng thái Task, query DB
+3. Xác định nguyên nhân trước khi sửa
+4. Sửa → verify → nếu là bug code thì commit fix
+```
+
+### Công cụ chẩn đoán
+```bash
+# Phiên persistent
+powershell -File .apex-session\apex.ps1 "PS1:C:\path\to\diag.ps1"
+
+# Kiểm tra nhanh
+curl http://127.0.0.1:8080/health
+curl https://crm.hanghoaphaisinh.net/health
+```
+
+---
+
+## 7. Quy tắc cộng tác — BẮT BUỘC
+
+- **Tiếng Việt** trong commit message, comment code, tài liệu, và trả lời người dùng.
+- Giải thích **tại sao**, không chỉ **cái gì** — đặc biệt với quyết định ảnh hưởng vận hành.
+- Khi phát hiện vấn đề ngoài phạm vi task → **báo cáo**, không tự ý sửa lan sang.
+- Không xoá code/dữ liệu mà không hỏi.
+- Khi deploy hoặc restart service production → **báo trước khi làm**.
+
+---
+
+## 8. Quy luật bắt buộc cho AI agent (áp dụng cho MỌI phiên làm việc)
+
+Ba quy luật này áp dụng **cho mọi agent** làm việc trong repo này — kể cả agent được
+mở từ IDE khác, không chỉ Cursor.
+
+### 8.1. Đọc trước — sửa sau — đồng bộ hóa
+
+```
+1. ĐỌC   → trước khi làm gì, đọc TẤT CẢ file liên quan (bảng mục 1)
+2. LÀM   → sửa code / cấu hình
+3. ĐỒNG BỘ → sau khi làm xong, cập nhật lại TẤT CẢ file liên quan
+            (docs/, rules, README, .env.example, script) cho khớp với nhau
+```
+
+**"File liên quan" bao gồm** (không giới hạn):
+
+| Loại thay đổi | File phải đồng bộ |
+|---|---|
+| Đổi API | `docs/API.md` + `AGENTS.md` (nếu đổi public endpoint) |
+| Đổi schema DB | `docs/DATABASE.md` + `backend/db/db.go` + `backend/cache/` |
+| Đổi UI | `frontend/admin/` → copy sang `backend/static/` + `docs/FRONTEND.md` |
+| Đổi landing/tracker | `docs/LANDING.md` + `docs/SECURITY.md` (nếu đụng anti-bot) |
+| Đổi deploy/vận hành | `docs/DEPLOYMENT.md` + `docs/RUNBOOK.md` + `.cursor/rules/30-deploy.mdc` |
+| Đổi quy trình | `AGENTS.md` + `CLAUDE.md` + `.cursorrules` + `.cursor/rules/*.mdc` + `CONTRIBUTING.md` |
+
+> ⚠️ **Sai lầm thường gặp:** sửa xong code nhưng bỏ qua `docs/` → 6 tháng sau người khác
+> đọc tài liệu cũ và làm sai. Đồng bộ tài liệu **là một phần của task**, không phải
+> việc làm thêm cho sau.
+
+### 8.2. AI KHÔNG tự test vận hành — để `itdoanh` tự kiểm
+
+**Mặc định AI chỉ được làm:**
+- Kiểm tra lỗi code: `go build ./...`, `go vet ./...`, parse syntax script (PowerShell).
+- Khởi động / dựng lại service để production sẵn sàng.
+- Báo cáo trạng thái sau khi làm xong.
+
+**AI KHÔNG được tự làm (trừ khi `itdoanh` nói rõ):**
+- Submit lead thật / đăng ký thử trên landing page.
+- Test luồng end-user (đăng nhập CRM, tạo landing, deploy domain, đổi mật khẩu…).
+- Xoá/sửa dữ liệu nghiệp vụ để "kiểm tra xem có chạy không".
+
+> **Lý do:** mỗi lần submit lead là một lần ghi vào DB production + Google Sheets + tính
+> vào KPI doanh thu. AI test "cho có" làm nhiễu dữ liệu thật mà không đem lại giá trị.
+
+**Kết luận bắt buộc trong báo cáo:**
+```
+✅ Đã check lỗi code: go build + go vet (0 lỗi)
+✅ Đã khởi động sẵn: backend :8080, Caddy :80/:443, /health = OK
+🧪 CHƯA TEST vận hành — anh itdoanh vào kiểm tra giúp em
+```
+
+### 8.3. Commit chung với `itdoanh`
+
+Mọi commit trong repo này là **công sức chung** của `itdoanh` (chủ repo) và AI agent.
+Git config đã đặt `user.name = itdoanh` → AI **không được** tự đổi identity.
+
+```bash
+git add <file cụ thể>          # KHÔNG git add -A
+git diff --cached               # ĐỌC KỸ trước khi commit
+git commit -F- <<'EOF'
+feat(deploy): thêm firewall rule chặn port 8080 từ internet
+
+Mô tả vấn đề và cách sửa bằng tiếng Việt.
+
+Co-authored-by: itdoanh <itdoanh@users.noreply.github.com>
+Co-authored-by: Cursor <cursoragent@cursor.com>
+EOF
+```
+
+**Luôn kết thúc commit message bằng cả hai dòng `Co-authored-by:`** (theo thứ tự trên).
+
+---

@@ -25,6 +25,16 @@ crm.hanghoaphaisinh.net {
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto https
+
+        # Health check backend: Caddy tự động loại backend đang chết khỏi vòng proxy
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+
+        # Retry: cho thêm thời gian backend restart trước khi trả 502
+        lb_try_duration 10s
+        lb_try_interval 500ms
+        lb_try_count 5
     }
 }
 
@@ -41,5 +51,15 @@ crm.hanghoaphaisinh.net {
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto https
+
+        # Health check backend: Caddy tự động loại backend đang chết khỏi vòng proxy
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+
+        # Retry: cho thêm thời gian backend restart trước khi trả 502
+        lb_try_duration 10s
+        lb_try_interval 500ms
+        lb_try_count 5
     }
 }

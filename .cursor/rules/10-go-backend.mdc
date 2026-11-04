@@ -1,0 +1,234 @@
+---
+description: Quy ước viết Go backend cho dự án Apex Fintech — routing, DB access, cache, error handling, an toàn.
+globs: backend/**/*.go
+alwaysApply: false
+---
+
+# Quy ước Go Backend
+
+Tài liệu đầy đủ: `docs/API.md`, `docs/DATABASE.md`, `docs/ARCHITECTURE.md`.
+
+---
+
+## 1. Thêm endpoint mới — checklist
+
+```
+1. Thêm model struct          → backend/models/
+2. Thêm query/store method    → backend/db/
+3. Thêm handler               → backend/handlers/
+4. Đăng ký route              → backend/main.go (mux.HandleFunc)
+5. Ghi vào docs/API.md
+```
+
+### Bọc middleware đúng thứ tự
+
+```go
+// Endpoint công khai
+mux.HandleFunc("/api/leads", leadHandler.CORSMiddleware(leadHandler.HandleSubmitLead))
+
+// Endpoint admin — RequireAdminAuth BỌC TRONG CORS
+mux.HandleFunc("/api/landings", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleListLandings)))
+```
+
+⚠️ `RequireAdminAuth` **phải nằm trong** `CORSMiddleware` — đảo ngược thì response 401 sẽ không có header CORS → browser báo lỗi CORS thay vì 401.
+
+---
+
+## 2. Truy vấn DB
+
+### Luôn dùng parameterized query
+```go
+// ✅ Đúng
+rows, err := s.pool.Query(ctx, "SELECT * FROM leads WHERE landing_id = $1", landingID)
+
+// ❌ Sai — SQL injection
+rows, err := s.pool.Query(ctx, "SELECT * FROM leads WHERE landing_id = '"+landingID+"'")
+```
+
+### Điều kiện động — dùng placeholder index
+```go
+func buildWhereClause(search string, landingID string, ...) (string, []interface{}) {
+    var conditions []string
+    var args []interface{}
+    idx := 1
+
+    if strings.TrimSpace(search) != "" {
+        conditions = append(conditions, fmt.Sprintf(
+            "(so_dien_thoai ILIKE '%%' || $%d || '%%' OR ghi_chu ILIKE '%%' || $%d || '%%')", idx, idx))
+        args = append(args, strings.TrimSpace(search))
+        idx++
+    }
+    // ...
+    if len(conditions) == 0 {
+        return "", args
+    }
+    return "WHERE " + strings.Join(conditions, " AND "), args
+}
+```
+
+### Múi giờ — BẮT BUỘC dùng `Asia/Ho_Chi_Minh`
+```go
+// ✅ Đúng
+TO_CHAR(thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
+COUNT(*) FILTER (WHERE (thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
+
+// ❌ Sai — lệch 7 tiếng so với UI
+COUNT(*) FILTER (WHERE thoi_gian::date = CURRENT_DATE)
+```
+
+### Timeout mọi query
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+```
+
+| Loại query | Timeout |
+|---|---|
+| Đọc đơn lẻ / count | 3–5s |
+| Aggregate nhiều bảng | 8–10s |
+| Export toàn bộ | 30s |
+
+### NULL trong DB
+Cột NOT NULL DEFAULT '' vẫn có thể NULL nếu dữ liệu cũ. Luôn bọc `COALESCE`:
+```go
+COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(city, '')
+```
+
+---
+
+## 3. Cache — BẮT BUỘC Reload sau khi ghi
+
+```go
+func (h *LandingHandler) HandleSaveLanding(w http.ResponseWriter, r *http.Request) {
+    // ... ghi vào DB ...
+
+    // ⚠️ BẮT BUỘC — không có dòng này thì user không thấy thay đổi
+    if err := h.landingCache.Reload(r.Context()); err != nil {
+        log.Printf("[ERROR] reload landing cache: %v", err)
+    }
+    // ...
+}
+```
+
+Áp dụng cho: `landing_pages`, `domains`, `domain_routes`.
+
+---
+
+## 4. Xử lý lỗi
+
+```go
+// ✅ Wrap lỗi có context
+if err != nil {
+    return nil, fmt.Errorf("lỗi truy vấn danh sách leads: %w", err)
+}
+
+// ❌ Nuốt lỗi
+if err != nil {
+    return nil, nil
+}
+```
+
+**Ngoại lệ:** Khi lỗi không ảnh hưởng kết quả (như đếm KPI phụ), dùng `_ = ...` — nhưng phải có comment giải thích:
+```go
+// KPI phụ — lỗi không làm hỏng báo cáo chính
+_ = s.pool.QueryRow(ctx, summaryQuery, args...).Scan(&total, &today)
+```
+
+---
+
+## 5. HTTP response
+
+```go
+// ✅ Đúng
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(http.StatusCreated)
+_, _ = w.Write([]byte(`{"success":true}`))
+
+// ❌ Sai — quên WriteHeader → status 200 thay vì 201/400
+w.Write([]byte(`{"success":false,"error":"..."}`))
+```
+
+### Mã lỗi chuẩn
+| Code | Dùng khi |
+|---|---|
+| `400` | Validation fail (thiếu field, SĐT sai) |
+| `401` | Chưa đăng nhập / session hết hạn |
+| `403` | Không đủ quyền, honeypot, PoW sai, domain chưa đăng ký |
+| `404` | Không tìm thấy resource |
+| `429` | Rate limit |
+| `500` | Lỗi server |
+
+---
+
+## 6. Xử lý input
+
+```go
+// ✅ Luôn trim + validate độ dài
+name := strings.TrimSpace(r.FormValue("name"))
+if name == "" || len(name) > 255 {
+    http.Error(w, "Tên không hợp lệ", http.StatusBadRequest)
+    return
+}
+```
+
+### Phòng chống path traversal (static files)
+```go
+if strings.Contains(reqPath, "..") || strings.Contains(reqPath, "//") {
+    http.Error(w, "Forbidden", http.StatusForbidden)
+    return
+}
+```
+
+### Chặn file nhạy cảm
+```go
+if strings.Contains(lowerSub, "service-account") || strings.Contains(lowerSub, ".env") ||
+   strings.HasSuffix(lowerSub, ".key") || strings.HasSuffix(lowerSub, ".sql") ||
+   strings.HasSuffix(lowerSub, ".exe") {
+    http.NotFound(w, r)
+    return
+}
+```
+
+---
+
+## 7. Logging
+
+```go
+log.Printf("[INFO] %s", "Thông điệp rõ ràng")
+log.Printf("[ERROR] Không thể lưu lead: %v", err)
+log.Printf("[WARN] Cache reload thất bại: %v", err)
+```
+
+Prefix: `[INFO]` `[WARN]` `[ERROR]` `[FATAL]`
+
+⚠️ **Không log PII nhạy cảm** — không log mật khẩu, token, `challenge_secret`, private key.
+
+---
+
+## 8. Bảo mật handler admin
+
+```go
+// ✅ Đúng
+mux.HandleFunc("/api/admin/audit-logs",
+    leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(authHandler.HandleListAuditLogs)))
+```
+
+---
+
+## 9. Thêm cột DB
+
+1. Sửa `initSchema` trong `backend/db/db.go` — dùng `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+2. Cập nhật struct trong `backend/models/`.
+3. Cập nhật **mọi** `Scan()` trong `backend/db/db.go` (thêm biến + thêm vào danh sách scan).
+4. Nếu frontend đọc trực tiếp từ JSON → grep toàn `frontend/admin/js/`.
+5. Cập nhật `docs/DATABASE.md`.
+
+---
+
+## 10. Không làm
+
+- ❌ Không dùng `interface{}` khi đã biết type → dùng `any` hoặc type cụ thể.
+- ❌ Không dùng `panic()` trong handler → trả `500` với log.
+- ❌ Không bỏ qua lỗi bằng `_ =` nếu lỗi ảnh hưởng dữ liệu.
+- ❌ Không hardcode secret trong code (trừ khi đã ghi chú TODO + đã đưa vào docs/SECURITY.md).
+- ❌ Không tạo bảng mới ngoài `initSchema` — schema phải tự tạo được.

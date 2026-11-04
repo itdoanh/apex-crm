@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Kịch bản dọn dẹp dung lượng đĩa cho Windows Server 2025 Datacenter (Ổ đĩa ~30GB).
 .DESCRIPTION
@@ -92,13 +92,30 @@ if (Get-Command "docker" -ErrorAction SilentlyContinue) {
     }
 }
 
-# 7. Xóa các tệp build tạm thời trong thư mục Apex nếu có
+# 8. Xoá các tệp build tạm thời trong thư mục Apex nếu có
 $ApexRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..") -ErrorAction SilentlyContinue
 if ($ApexRoot -and (Test-Path $ApexRoot)) {
     Get-ChildItem -Path $ApexRoot -Filter "*~" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem -Path $ApexRoot -Filter "*.tmp" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem -Path $ApexRoot -Filter "*.log" -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 50MB } | Remove-Item -Force -ErrorAction SilentlyContinue
     Write-Host "[OK] Đã dọn sạch tệp tạm thời trong thư mục dự án Apex." -ForegroundColor Green
+}
+
+# 9. Xoay vòng log backend (server.log) - giữ lại 10MB mới nhất
+# Task Scheduler redirect stdout vào file này nên không có cơ chế xoay vòng tự động
+Write-Host "[*] Đang xoay vòng log backend (server.log)..." -ForegroundColor Yellow
+$backendLogDir = Join-Path $PSScriptRoot "..\..\backend\logs"
+if (Test-Path $backendLogDir) {
+    $serverLog = Join-Path $backendLogDir "server.log"
+    if ((Test-Path $serverLog) -and ((Get-Item $serverLog).Length -gt 10MB)) {
+        $keepTail = Get-Content $serverLog -Tail 2000 -ErrorAction SilentlyContinue
+        Set-Content -Path $serverLog -Value $keepTail -Encoding UTF8
+        Write-Host "[OK] Đã cắt bớt server.log, giữ lại 2000 dòng cuối." -ForegroundColor Green
+    } else {
+        Write-Host "[OK] server.log nhỏ, không cần cắt." -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "[!] Không tìm thấy thư mục log backend: $backendLogDir" -ForegroundColor DarkGray
 }
 
 $endFree = Get-DriveFreeSpace
