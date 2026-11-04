@@ -393,9 +393,11 @@
                 if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             }, 50);
 
-            // Tự động chuyển sang tab 'content' phù hợp với thẻ (nếu đang ở tab 'css' thì giữ nguyên và cập nhật)
+            // Giữ nguyên tab nếu người dùng đang ở tab 'layers' hoặc 'css', ngược lại mới tự động chuyển sang 'content'
             if (typeof switchInspectorTab === 'function') {
-                if (currentInspTab === 'css') {
+                if (currentInspTab === 'layers') {
+                    if (typeof renderAstLayerTree === 'function') renderAstLayerTree();
+                } else if (currentInspTab === 'css') {
                     if (typeof renderCssInspectorTab === 'function') renderCssInspectorTab();
                 } else {
                     switchInspectorTab('content');
