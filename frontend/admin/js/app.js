@@ -185,17 +185,22 @@ function formatYMD(d) {
 const loadedModules = new Set(['auth', 'app', 'crm']);
 const moduleLoadingPromises = {};
 
+// APP_ASSET_VERSION: tăng mỗi khi deploy để cache-busting các module lazy-load.
+// Server cũng trả `Cache-Control: no-cache` cho .js/.css, nhưng browser vẫn có thể
+// dùng bản cache khi offline hoặc khi proxy cache. Query ?v= đảm bảo luôn lấy bản mới.
+const APP_ASSET_VERSION = '20261104-02';
+
 async function ensureTabModuleLoaded(moduleName) {
     if (loadedModules.has(moduleName)) return true;
     if (moduleLoadingPromises[moduleName]) return moduleLoadingPromises[moduleName];
 
     moduleLoadingPromises[moduleName] = new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = `js/${moduleName}.js`;
+        script.src = `js/${moduleName}.js?v=${APP_ASSET_VERSION}`;
         script.async = true;
         script.onload = () => {
             loadedModules.add(moduleName);
-            console.log(`[Apex Dynamic Import] Lazy loaded module: js/${moduleName}.js`);
+            console.log(`[Apex Dynamic Import] Lazy loaded module: js/${moduleName}.js?v=${APP_ASSET_VERSION}`);
             resolve(true);
         };
         script.onerror = (err) => {

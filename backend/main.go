@@ -21,6 +21,36 @@ import (
 //go:embed static/admin.html
 var adminHTML []byte
 
+// setStaticCacheHeaders đặt header chống cache cho tài nguyên tĩnh (Admin UI).
+//
+// Bối cảnh: server KHÔNG trả Cache-Control => trình duyệt áp dụng "heuristic freshness"
+// (10% thời gian từ Last-Modified). Hệ quả: sau khi deploy file JS/HTML mới, trình duyệt
+// vẫn chạy bản cache cũ → UI "thiếu" tính năng vừa thêm (vd: trường `url` trong danh sách
+// ánh xạ Google Sheets không xuất hiện dù server đã đúng).
+//
+// `no-cache` KHÔNG phải "không cache" — nghĩa là "luôn phải hỏi server trước khi dùng".
+// Server trả 304 Not Modified nếu file không đổi ⇒ vẫn nhẹ, nhưng luôn thấy bản mới nhất.
+// `must-revalidate` bảo đảm không dùng bản cache khi offline.
+func setStaticCacheHeaders(w http.ResponseWriter, filePath string) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	switch ext {
+	case ".html":
+		// HTML chứa tham chiếu script → không được cache
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+	case ".js", ".css":
+		// Luôn revalidate (304 nếu không đổi) → deploy có hiệu lực ngay
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+	default:
+		// Ảnh / font / media: cache dài hạn (kèm ETag/Last-Modified mặc định của http.ServeFile)
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
+}
+
 func main() {
 	log.Println("==================================================")
 	log.Println("  APEX FINTECH - LANDING PAGE BACKEND SERVER (GO)")
@@ -324,6 +354,11 @@ func main() {
 					case ".ico":
 						w.Header().Set("Content-Type", "image/x-icon")
 					}
+					// Chống cache trình duyệt cho tài nguyên tĩnh của Admin UI.
+					// Không có Cache-Control => Chrome dùng heuristic cache (10% tuổi file)
+					// => sau khi deploy file mới, trình duyệt vẫn chạy JS cũ và UI "thiếu" tính năng.
+					// no-cache = phải revalidate với server mỗi lần (304 nếu không đổi) => nhẹ mà luôn đúng.
+					setStaticCacheHeaders(w, cleanTarget)
 					http.ServeFile(w, r, cleanTarget)
 					return
 				}
@@ -349,11 +384,13 @@ func main() {
 		for _, p := range candidates {
 			if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				setStaticCacheHeaders(w, p)
 				_, _ = w.Write(data)
 				return
 			}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		setStaticCacheHeaders(w, "admin.html")
 		_, _ = w.Write(adminHTML)
 	}
 	mux.HandleFunc("/admin", adminHandler)
@@ -371,10 +408,12 @@ func main() {
 		}
 		for _, p := range candidates {
 			if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+				setStaticCacheHeaders(w, p)
 				_, _ = w.Write(data)
 				return
 			}
 		}
+		setStaticCacheHeaders(w, "config.js")
 		_, _ = w.Write([]byte(`window.APEX_ADMIN_CONFIG = { API_BASE_URL: '', BASE_PATH: '/ads' };`))
 	}
 	mux.HandleFunc("/ads/config.js", adminConfigHandler)
@@ -479,15 +518,16 @@ func main() {
 							w.Header().Set("Content-Type", "image/png")
 						case ".webp":
 							w.Header().Set("Content-Type", "image/webp")
-						case ".jpg", ".jpeg":
-							w.Header().Set("Content-Type", "image/jpeg")
-						case ".ico":
-							w.Header().Set("Content-Type", "image/x-icon")
-						}
-						http.ServeFile(w, r, cleanTarget)
-						return
+					case ".jpg", ".jpeg":
+						w.Header().Set("Content-Type", "image/jpeg")
+					case ".ico":
+						w.Header().Set("Content-Type", "image/x-icon")
 					}
+					setStaticCacheHeaders(w, cleanTarget)
+					http.ServeFile(w, r, cleanTarget)
+					return
 				}
+			}
 
 				// QUAN TRỌNG: Nếu là tài nguyên tĩnh có đuôi mở rộng (.js, .css, .png, .jpg, .json, .ico...)
 				// mà không tìm thấy -> trả về 404 ngay với MIME type đúng, TUYỆT ĐỐI không fallback sang trang Landing HTML!
@@ -619,6 +659,7 @@ func main() {
 				continue
 			}
 			if fi, err := os.Stat(cleanTarget); err == nil && !fi.IsDir() {
+				setStaticCacheHeaders(w, cleanTarget)
 				http.ServeFile(w, r, cleanTarget)
 				return
 			}
