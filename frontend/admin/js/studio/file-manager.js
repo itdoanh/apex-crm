@@ -1111,6 +1111,14 @@
 
             const htmlContent = studioFileContents[activeStudioFile] || (currentStudioLanding ? currentStudioLanding.code_html : '');
             if (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm')) {
+                // Truyền thông tin landing hiện tại vào astMapper để ghi đè
+                // window.APEX_LANDING_CONFIG trong preview iframe. Nếu không,
+                // tracker.js trong HTML template sẽ nạp config của landing khác.
+                if (currentStudioLanding) {
+                    astMapper.studioLandingId = currentStudioLanding.page_id || '';
+                    astMapper.studioDomain = currentStudioLanding.domain || '';
+                    astMapper.studioLandingName = currentStudioLanding.name || '';
+                }
                 astMapper.parse(htmlContent);
                 const count = Object.keys(astMapper.astMap).length;
                 const nodeCountEl = document.getElementById('csAstNodeCount');
@@ -1420,3 +1428,4 @@
 
         // 17.15. Standalone Preview Modal (3 Kiểu xem)
         let currentModalPreviewPageId = '';
+        let currentModalPreviewDomain = '';

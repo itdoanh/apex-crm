@@ -180,7 +180,7 @@ func (s *Store) GetLandingPage(domain string, pageID string) (*models.LandingPag
 		       TO_CHAR(updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM landing_pages
 		WHERE (domain = $1 OR domain = '') AND page_id = $2
-		ORDER BY domain DESC
+		ORDER BY (CASE WHEN domain = $1 AND $1 != '' THEN 0 ELSE 1 END) ASC, updated_at DESC
 		LIMIT 1
 	`
 	row := s.pool.QueryRow(ctx, query, domain, pageID)
@@ -501,17 +501,22 @@ func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, n
 // FILE MANAGER DATABASE OPERATIONS
 // ============================================================
 
-// ListLandingFiles liệt kê toàn bộ tệp tin thuộc landing page
+// ListLandingFiles trả về danh toàn bộ file của landing theo domain + page_id.
+//
+// LƯU Ý: dùng DISTINCT ON (file_path) để mỗi đường dẫn chỉ xuất hiện 1 lần.
+// Trước đây query trả về cả bản domain='' và bản domain=<cụ thể> cho cùng một
+// file_path → Code Studio có thể nạp nhầm nội dung của template gốc (domain rỗng)
+// thay vì nội dung của landing đang mở (domain cụ thể) ⇒ preview hiển thị sai landing.
 func (s *Store) ListLandingFiles(domain string, pageID string) ([]models.LandingFile, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := `
-		SELECT id, page_id, domain, file_path, file_type, content,
+		SELECT DISTINCT ON (file_path) id, page_id, domain, file_path, file_type, content,
 		       TO_CHAR(updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM landing_files
 		WHERE (domain = $1 OR domain = '') AND page_id = $2
-		ORDER BY file_path ASC
+		ORDER BY file_path, (CASE WHEN domain = $1 AND $1 != '' THEN 0 ELSE 1 END) ASC, updated_at DESC
 	`
 	rows, err := s.pool.Query(ctx, query, domain, pageID)
 	if err != nil {

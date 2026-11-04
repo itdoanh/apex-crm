@@ -174,24 +174,39 @@ FROM domain_routes r JOIN domains d ON d.id = r.domain_id;
 
 Backend tự inject vào HTML khi render (`InjectDynamicScripts`).
 
-### Hotline & Zalo link
+### ❌ Hotline & Zalo link — KHÔNG còn ép ghi đè (từ 2026-11-04)
 
-Đặt trong `settings` của landing trong CRM:
-- `hotline` — số điện thoại hiển thị & link `tel:` (vd: `0984386538`)
-- `zalo_link` — link Zalo mặc định (chat 1-1 theo SĐT: `https://zalo.me/0984386538`,
-  hoặc link nhóm: `https://zalo.me/g/xxxxx`)
-
-`tracker.js` (`applyConfigToDOM`) tự ghi đè các thẻ `<a href*="zalo.me">` và `<a href^="tel:">`
-bằng giá trị trên.
-
-> ⚠️ **Ngoại lệ link nhóm Zalo**: `tracker.js` **không** ghi đè các thẻ có `href` chứa
-> `zalo.me/g/` — đây là link nhóm cố định do Admin/Ladi Studio cấu hình trực tiếp trong HTML
-> (vd: nút "ThAM GIA NHÓM ZALO NGAY", mã QR trên `chucmung.html`). Nếu ghi đè, nút sẽ bị biến
-> thành chat 1-1 theo SĐT và người dùng không vào được nhóm.
+> **Thay đổi kiến trúc**: HTML viết tay trong **Code Studio là nguồn sự thật duy nhất**.
+> Hệ thống **không còn** ghi đè bất kỳ nội dung nào trên landing từ cấu hình CSDL.
+> Các module sau đã bị **xoá hoàn toàn** khỏi UI lẫn runtime:
 >
-> Nếu muốn đổi link nhóm: sửa trực tiếp trong HTML của landing (CRM → Code Studio) **và**
-> cập nhật `settings.zalo_link` cho khớp — hoặc chỉ sửa `settings.zalo_link` nếu muốn áp dụng
-> cho toàn bộ link Zalo trên landing.
+> | Đã xoá | Nơi xoá |
+> |---|---|
+> | `Hotline` / tự động cập nhật link `tel:` | UI tab Cài đặt + `tracker.js applyConfigToDOM` |
+> | `Zalo link` (ghi đè `<a href*="zalo.me">`) | UI + `tracker.js applyConfigToDOM` |
+> | `Trang chuyển hướng sau đăng ký` (`cfgSuccessRedirect`) | UI + save-time rewrite |
+> | Form Auto-Scanner & Mapping Engine (`btnScanForm`, `btnInjectScript`) | UI + `js/studio/form-scanner.js` |
+> | Nhận diện cơ quan / logo thương hiệu (`cfgBrand*`) | UI + save-time rewrite |
+> | Tiêu đề hero & huy hiệu (`cfgBadge*`, `cfgTitle*`, `cfgSubtitle`) | UI + save-time rewrite |
+> | 3 khối thông tin dưới form (`cfgBox*`, `cfgTargetDate`, `cfgEventQuota`, `cfgEventTitle`) | UI + save-time rewrite |
+> | Nội dung động (Quét Nội Dung Từ HTML) | UI + `landings.js` |
+> | Tab "Form" và tab "Sự Kiện" trong modal Cài đặt | `index.html` / `studio.html` |
+>
+> **Cách sửa bây giờ**: mở CRM → Code Studio → sửa trực tiếp HTML → Lưu.
+> Không có bước "áp dụng cấu hình" nữa.
+
+Các key `settings.hotline`, `settings.zalo_link`, `settings.brand_header`, `settings.tieu_de`,
+`settings.metric_boxes`, `settings.thoi_gian_chia_se` vẫn còn trong DB (không xoá để tương
+thích ngược) nhưng **backend không còn inject chúng xuống client** và `tracker.js` **không còn
+đọc chúng** để sửa DOM.
+
+Link nhóm Zalo (`https://zalo.me/g/...`) giờ chỉ được đặt trực tiếp trong HTML.
+
+> 💡 Muốn đổi trang chuyển hướng sau đăng ký? Đặt biến JS trong HTML:
+> ```html
+> <script>window.APEX_SUCCESS_REDIRECT = 'chucmung.html';</script>
+> ```
+> `tracker.js` ưu tiên biến này, sau đó mới fallback về `settings.form_config.success_redirect`.
 
 ### Nguồn phục vụ file: `landing_files` (DB) TRƯỚC, đĩa SAU
 
@@ -288,6 +303,23 @@ curl http://localhost:8080/api/leads -H "Authorization: Bearer <token>"
 3. Kiểm tra `POST /api/leads` trả 200
 4. Kiểm tra `POST /api/analytics/track` có gửi
 5. Vào CRM → kiểm tra lead có trong danh sách + đủ thông tin tracking
+
+### 🔒 Code Studio preview — cách ly (từ 2026-11-04)
+
+Khi xem trước trong **Code Studio**, `tracker.js` phải **không** dùng cấu hình của landing
+khác. Cơ chế cách ly gồm 3 lớp:
+
+| Lớp | Cơ chế | Mục đích |
+|---|---|---|
+| 1. `tracker.js` | `isStudioBuilder()` / `isAnyPreview()` | Bỏ qua `loadConfigFile()` + `applyConfigToDOM()`; bỏ qua `initAutoFormInterceptor()` (không chặn form); bỏ qua `sendAnalyticsPing()` (không gửi analytics) |
+| 2. `ast-mapper.js` | `getHelperScript()` inject `__APEX_STUDIO_LANDING_ID__` / `__APEX_STUDIO_DOMAIN__` + ghi đè `window.APEX_LANDING_CONFIG` | Đảm bảo preview dùng đúng landing đang mở, không phải template gốc (vd `mxv_080_online`) |
+| 3. `db/landings.go` | `ListLandingFiles()` dùng `DISTINCT ON (file_path)`, ưu tiên `domain` cụ thể; `GetLandingPage()` ưu tiên `domain` khớp chính xác | Domain cụ thể được ưu tiên hơn bản `domain = ''` (template) |
+
+Nếu thêm bất kỳ module DOM-mutating nào mới vào `tracker.js`, **phải** guard bằng:
+
+```javascript
+if (isAnyPreview()) return;
+```
 
 ---
 

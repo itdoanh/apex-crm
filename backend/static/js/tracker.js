@@ -449,6 +449,25 @@
         } catch (_) {}
     }
 
+    // Chế độ Preview / Code Studio: KHÔNG được tải config từ mạng và KHÔNG được
+    // ghi đè DOM — để nội dung HTML viết tay trong editor là nguồn sự thật duy nhất.
+    function isStudioBuilder() {
+        try {
+            return !!(window.__APEX_STUDIO__ || window.__APEX_BUILDER_ACTIVE__ || window.__APEX_FREEZE_MODE__);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function isAnyPreview() {
+        try {
+            if (isStudioBuilder()) return true;
+            if (window.__APEX_PREVIEW__ || window.IS_PREVIEW) return true;
+            if (window.self !== window.top || window.frameElement !== null) return true;
+        } catch (_) {}
+        return false;
+    }
+
     function shouldBypassRedirect() {
         try {
             // 1. Chặn tuyệt đối khi chạy trong iframe (Code Studio, Admin Preview Modal, v.v.)
@@ -560,160 +579,25 @@
         return cur;
     }
 
+    // ============================================================
+    // APPLY CONFIG TO DOM
+    // ------------------------------------------------------------
+    // NGUYÊN TẮC: HTML viết tay trong Code Studio là NGUỒN SỰ THẬT DUY NHẤT.
+    // Hệ thống KHÔNG tự động ghi đè nội dung, link tel:/zalo.me, tiêu đề hero,
+    // ô thông tin hay thời gian sự kiện trên DOM. Muốn đổi gì thì sửa trực tiếp
+    // trong mã HTML. Cấu hình động chỉ dùng cho: Meta Title + Pixel Tracking.
+    // ============================================================
     function applyConfigToDOM(cfg) {
         if (!cfg || typeof cfg !== 'object') return;
-        try {
-            const boundElements = document.querySelectorAll('[data-config]');
-            boundElements.forEach(function (el) {
-                const keyPath = el.getAttribute('data-config');
-                const val = getNestedValue(cfg, keyPath);
-                if (val !== undefined && val !== null && val !== '') {
-                    el.innerText = String(val);
-                }
-            });
-        } catch (_) {}
 
-        // 1. Áp dụng Tiêu đề SEO & Meta Title
+        // 0. Code Studio / Preview: không áp dụng bất kỳ config nào lên DOM.
+        //    HTML viết tay trong editor là nguồn sự thật duy nhất.
+        if (isAnyPreview()) return;
+
+        // 1. Meta Title (SEO) — an toàn, không ảnh hưởng nội dung giao diện
         const pageTitle = cfg.title || (cfg.settings && cfg.settings.title);
         if (pageTitle && typeof document !== 'undefined') {
             document.title = pageTitle;
-        }
-
-        // 2. Cập nhật Hotline & Zalo link
-        const hotlineVal = cfg.hotline || (cfg.settings && cfg.settings.hotline);
-        if (hotlineVal) {
-            try {
-                const telLinks = document.querySelectorAll('a[href^="tel:"]');
-                telLinks.forEach(function(a) {
-                    a.setAttribute('href', 'tel:' + String(hotlineVal).replace(/[^0-9+]/g, ''));
-                    if (a.innerText && a.innerText.match(/\d{3,4}[\.\s]?\d{3}[\.\s]?\d{3,4}/)) {
-                        a.innerText = hotlineVal;
-                    }
-                });
-                const hotlineElems = document.querySelectorAll('#hotlineText, .hotline-display, [data-hotline]');
-                hotlineElems.forEach(function(el) { el.innerText = hotlineVal; });
-            } catch (_) {}
-        }
-
-        const zaloVal = cfg.zalo_link || (cfg.settings && cfg.settings.zalo_link);
-        if (zaloVal) {
-            try {
-                const zaloLinks = document.querySelectorAll('a[href*="zalo.me"]');
-                zaloLinks.forEach(function(a) {
-                    // KHÔNG ghi đè link nhóm Zalo (/zalo.me/g/...) — đây là link cố định
-                    // do Admin/Ladi Studio cấu hình trực tiếp trong HTML (vd: nút "Tham gia
-                    // nhóm Zalo", mã QR). Ghi đè sẽ biến nút thành chat 1-1 theo SĐT.
-                    const href = a.getAttribute('href') || '';
-                    if (href.includes('zalo.me/g/')) return;
-                    a.setAttribute('href', zaloVal);
-                });
-            } catch (_) {}
-        }
-
-        // 3. Cập nhật Lịch sự kiện & Thời gian chia sẻ
-        const timeCfg = cfg.thoi_gian_chia_se || (cfg.settings && cfg.settings.thoi_gian_chia_se) || cfg.event || {};
-        if (timeCfg.ngay) {
-            const modalDate = document.getElementById('modalEventDate');
-            if (modalDate) modalDate.innerText = timeCfg.ngay;
-            const infoDate = document.getElementById('infoEventDate');
-            if (infoDate) infoDate.innerText = timeCfg.ngay;
-        }
-        if (timeCfg.gio) {
-            const infoTime = document.getElementById('infoEventTime');
-            if (infoTime) infoTime.innerText = timeCfg.gio;
-        }
-        if (timeCfg.hien_thi) {
-            const scheduleHeader = document.getElementById('eventScheduleHeader');
-            if (scheduleHeader) scheduleHeader.innerText = timeCfg.hien_thi;
-            const modalTime = document.getElementById('modalEventTime');
-            if (modalTime) modalTime.innerText = timeCfg.hien_thi;
-        }
-        if (timeCfg.hinh_thuc) {
-            const modalFormat = document.getElementById('modalEventFormat');
-            if (modalFormat) modalFormat.innerText = timeCfg.hinh_thuc;
-        }
-        if (timeCfg.target_date && typeof window.setEventTargetDate === 'function') {
-            window.setEventTargetDate(timeCfg.target_date);
-        }
-
-        // 3.1. Cập nhật Nhận diện Thương hiệu & Cơ quan Header
-        const brand = cfg.brand_header || (cfg.settings && cfg.settings.brand_header);
-        if (brand) {
-            const agency1 = brand.agency_1 || brand.co_quan_1;
-            if (agency1) {
-                const el = document.querySelector('.gov-text-1') || document.querySelector('[data-config="brand_header.agency_1"]') || document.querySelector('[data-config="brand_header.co_quan_1"]');
-                if (el) el.innerText = agency1;
-            }
-            const agency2 = brand.agency_2 || brand.co_quan_2;
-            if (agency2) {
-                const el = document.querySelector('.gov-text-2') || document.querySelector('[data-config="brand_header.agency_2"]') || document.querySelector('[data-config="brand_header.co_quan_2"]');
-                if (el) el.innerText = agency2;
-            }
-            if (brand.logo_url) {
-                const img = document.getElementById('brandLogoImg') || document.querySelector('[data-config="brand_header.logo_url"]') || document.querySelector('header img');
-                if (img) img.src = brand.logo_url;
-            }
-            if (brand.member_text) {
-                const el = document.getElementById('brandMemberText') || document.querySelector('.brand-member-text') || document.querySelector('[data-config="brand_header.member_text"]');
-                if (el) el.innerText = brand.member_text;
-            }
-        }
-
-        // 3.2. Cập nhật Tiêu đề Hero & Badge
-        const tieuDe = cfg.tieu_de || (cfg.settings && cfg.settings.tieu_de);
-        if (tieuDe) {
-            if (tieuDe.badge) {
-                const el = document.getElementById('heroBadgeText') || document.querySelector('.hero-badge-text') || document.querySelector('.gov-badge span') || document.querySelector('[data-config="tieu_de.badge"]');
-                if (el) el.innerText = tieuDe.badge;
-            }
-            if (tieuDe.line_1) {
-                const el = document.getElementById('heroTitleLine1') || document.querySelector('[data-config="tieu_de.line_1"]') || document.querySelector('h1');
-                if (el) el.innerText = tieuDe.line_1;
-            }
-            if (tieuDe.line_2) {
-                const el = document.getElementById('heroTitleLine2') || document.querySelector('[data-config="tieu_de.line_2"]') || document.querySelector('h2');
-                if (el) el.innerText = tieuDe.line_2;
-            }
-            const sub = tieuDe.subtitle || tieuDe.mo_ta;
-            if (sub) {
-                const el = document.getElementById('heroSubtitle') || document.querySelector('.hero-subtitle') || document.querySelector('[data-config="tieu_de.subtitle"]') || document.querySelector('[data-config="tieu_de.mo_ta"]');
-                if (el) el.innerText = sub;
-            }
-        }
-
-        // 3.3. Cập nhật 3 Khối thông tin khóa học dưới form
-        const boxes = cfg.metric_boxes || (cfg.settings && cfg.settings.metric_boxes);
-        if (boxes) {
-            const b1Top = (boxes.box_1 && boxes.box_1.top) || boxes.box_1_top || (timeCfg && timeCfg.ngay);
-            if (b1Top) {
-                const el = document.getElementById('infoEventDate') || document.querySelector('[data-config="metric_boxes.box_1_top"]') || document.querySelector('[data-config="thoi_gian_chia_se.ngay"]');
-                if (el) el.innerText = b1Top;
-            }
-            const b1Bottom = (boxes.box_1 && boxes.box_1.bottom) || boxes.box_1_bottom || (timeCfg && timeCfg.gio);
-            if (b1Bottom) {
-                const el = document.getElementById('infoEventTime') || document.querySelector('[data-config="metric_boxes.box_1_bottom"]') || document.querySelector('[data-config="thoi_gian_chia_se.gio"]');
-                if (el) el.innerText = b1Bottom;
-            }
-            const b2Top = (boxes.box_2 && boxes.box_2.top) || boxes.box_2_top;
-            if (b2Top) {
-                const el = document.getElementById('infoFormatTop') || document.querySelector('[data-config="metric_boxes.box_2_top"]');
-                if (el) el.innerText = b2Top;
-            }
-            const b2Bottom = (boxes.box_2 && boxes.box_2.bottom) || boxes.box_2_bottom;
-            if (b2Bottom) {
-                const el = document.getElementById('infoFormatBottom') || document.querySelector('[data-config="metric_boxes.box_2_bottom"]');
-                if (el) el.innerText = b2Bottom;
-            }
-            const b3Top = (boxes.box_3 && boxes.box_3.top) || boxes.box_3_top;
-            if (b3Top) {
-                const el = document.getElementById('infoDurationTop') || document.querySelector('[data-config="metric_boxes.box_3_top"]');
-                if (el) el.innerText = b3Top;
-            }
-            const b3Bottom = (boxes.box_3 && boxes.box_3.bottom) || boxes.box_3_bottom;
-            if (b3Bottom) {
-                const el = document.getElementById('infoDurationBottom') || document.querySelector('[data-config="metric_boxes.box_3_bottom"]');
-                if (el) el.innerText = b3Bottom;
-            }
         }
 
         // 4. Client-side Pixel Auto-Injection nếu backend chưa inject sẵn
@@ -732,6 +616,14 @@
     }
 
     async function loadConfigFile() {
+        // Code Studio / Preview: KHÔNG tải config từ mạng.
+        // Lý do: HTML trong editor có thể chứa sẵn `window.APEX_LANDING_CONFIG` của
+        // template gốc (vd: mxv_080_online) → nếu tải/ghi đè, preview sẽ hiển thị
+        // sai landing. HTML viết tay trong Code Studio là nguồn sự thật duy nhất.
+        if (isAnyPreview()) {
+            return window.APEX_LANDING_CONFIG || {};
+        }
+
         // Xác định Landing ID từ URL (/p/:id, ?landing_id=, ?page_id= hoặc window.APEX_LANDING_CONFIG)
         const urlParams = getUrlParams();
         let currentLandingId = urlParams.landing_id || urlParams.page_id || '';
@@ -881,6 +773,9 @@
 
     // Gửi payload analytics lên backend (hỗ trợ fetch keepalive & sendBeacon)
     function sendAnalyticsPing(extraEvents) {
+        // Code Studio / Preview: KHÔNG gửi analytics để tránh làm nhiễu dữ liệu thật.
+        if (isAnyPreview()) return;
+
         const payload = buildAnalyticsPayload(extraEvents);
         const endpoint = getAnalyticsEndpoint();
         const bodyStr = JSON.stringify(payload);
@@ -1116,6 +1011,10 @@
     }
 
     function initAutoFormInterceptor() {
+        // Code Studio / Preview: KHÔNG chặn form, KHÔNG gửi lead thật.
+        // HTML viết tay trong editor là nguồn sự thật duy nhất.
+        if (isAnyPreview()) return;
+
         const globalConfig = window.APEX_LANDING_CONFIG || {};
         const formMapping = globalConfig.form_mapping || (globalConfig.settings && globalConfig.settings.form_mapping) || null;
 
@@ -1275,8 +1174,11 @@
                         try { window.gtag('event', 'generate_lead', { value: 1 }); } catch (_) {}
                     }
 
-                    // Xác định trang chuyển hướng
-                    const redirectUrl = (formMapping && formMapping.success_redirect) ||
+                    // Xác định trang chuyển hướng sau khi gửi lead thành công.
+                    // Ưu tiên biến khai báo trong chính mã HTML (nguồn sự thật duy nhất),
+                    // sau đó mới fallback về cấu hình CSDL cũ (tương thích ngược).
+                    const redirectUrl = window.APEX_SUCCESS_REDIRECT ||
+                        (formMapping && formMapping.success_redirect) ||
                         (globalConfig.form_config && globalConfig.form_config.success_redirect) ||
                         globalConfig.redirect_url ||
                         'chucmung.html';

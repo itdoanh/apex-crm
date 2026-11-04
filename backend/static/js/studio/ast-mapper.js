@@ -11,6 +11,12 @@
                 this.tree = [];
                 this.nodeCounter = 0;
                 this.mobileStylesMap = {};
+                // Thông tin landing đang mở trong Code Studio — dùng để ghi đè
+                // window.APEX_LANDING_CONFIG trong preview iframe (tránh preview
+                // hiển thị nội dung của template gốc thay vì landing hiện tại).
+                this.studioLandingId = '';
+                this.studioDomain = '';
+                this.studioLandingName = '';
                 this.voidElements = new Set([
                     'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
                     'link', 'meta', 'param', 'source', 'track', 'wbr'
@@ -267,6 +273,20 @@
                     `    window.__APEX_PREVIEW__ = true;\n` +
                     `    window.IS_PREVIEW = true;\n` +
                     `    window.__APEX_FREEZE_MODE__ = true;\n` +
+                    // Ép cấu hình landing đúng theo landing đang mở trong Studio.
+                    // HTML template gốc có sẵn window.APEX_LANDING_CONFIG với landing_id
+                    // của template (vd: mxv_080_online) → nếu không ghi đè, tracker.js
+                    // sẽ nạp config của landing khác và preview hiển thị sai nội dung.
+                    `    window.__APEX_STUDIO_LANDING_ID__ = ${JSON.stringify(this.studioLandingId || '')};\n` +
+                    `    window.__APEX_STUDIO_DOMAIN__ = ${JSON.stringify(this.studioDomain || '')};\n` +
+                    `    window.__APEX_STUDIO_LANDING_NAME__ = ${JSON.stringify(this.studioLandingName || '')};\n` +
+                    `    try {\n` +
+                    `        window.APEX_LANDING_CONFIG = Object.assign({}, window.APEX_LANDING_CONFIG || {}, {\n` +
+                    `            landing_id: window.__APEX_STUDIO_LANDING_ID__,\n` +
+                    `            domain: window.__APEX_STUDIO_DOMAIN__,\n` +
+                    `            name: window.__APEX_STUDIO_LANDING_NAME__\n` +
+                    `        });\n` +
+                    `    } catch(e) {}\n` +
                     `    window.redirectToChucMung = function() { console.log('[Studio] Blocked redirectToChucMung call'); };\n` +
                     `    document.addEventListener('DOMContentLoaded', function() {\n` +
                     `        var observer = new MutationObserver(function(mutations) {\n` +

@@ -199,9 +199,26 @@ Trả config của landing mặc định (dùng để inject script & feature fl
   "is_active": false,
   "status": "published",
   "redirect_url": "chucmung.html",
-  "settings": { "brand_header": {...}, "facebook_pixel_id": "..." }
+  "settings": { "facebook_pixel_id": "...", "form_mapping": {...} }
 }
 ```
+
+> ⚠️ **Từ 2026-11-04**: endpoint này **không còn** trả các key dùng để ép ghi đè nội dung
+> (`hotline`, `zalo_link`, `brand_header`, `tieu_de`, `metric_boxes`, `thoi_gian_chia_se`).
+> HTML viết tay trong Code Studio là nguồn sự thật duy nhất — xem `docs/LANDING.md` mục 5.
+> Vẫn giữ: `form_mapping` (ánh xạ input → trường lead), `khoa_hoc` (điền trường package),
+> `form_config`, `redirect_url`, và toàn bộ `settings` (pixel/SEO/sheets).
+
+### `GET /api/landings/preview` — Admin
+Xem trước landing. Query params:
+
+| Param | Mô tả |
+|---|---|
+| `page_id` | Mã landing (bắt buộc) |
+| `domain` | Domain cụ thể — **quan trọng**, ưu tiên landing theo domain thay vì template `domain = ''` |
+| `draft` | `1` = lấy bản nháp `index.html` trong `landing_files` |
+| `bypass` | `1` = bỏ qua check quyền nội bộ |
+| `preview` | `1` = đánh dấu chế độ preview |
 
 ---
 

@@ -145,10 +145,6 @@
                     <i class="fa-solid fa-sliders text-amber-400"></i>
                     <span class="hidden xl:inline">Cài Đặt</span>
                 </button>
-                <button onclick="openStudioFormScanner()" id="btnStudioScanForm" class="bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-indigo-800 transition flex items-center gap-1" title="Quét form tự động & ánh xạ trường Lead">
-                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
-                    <span class="hidden xl:inline">Quét Form</span>
-                </button>
                 <button onclick="closeCodeStudio()" id="btnCloseStudio" class="bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-xs px-2.5 py-1.5 rounded-lg border border-rose-800 transition" title="Đóng Studio">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -1574,14 +1570,8 @@
                 <button type="button" id="cfgTabBtnDomain" onclick="switchSettingsTab('domain')" class="px-3 py-2 font-bold rounded-t-lg transition border-b-2 border-cyan-400 text-white">
                     1. Tên Miền &amp; Chung
                 </button>
-                <button type="button" id="cfgTabBtnForm" onclick="switchSettingsTab('form')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
-                    2. Form, Quét Input &amp; Hotline
-                </button>
                 <button type="button" id="cfgTabBtnPixel" onclick="switchSettingsTab('pixel')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition">
                     3. Pixel &amp; Mã QC Các Bên
-                </button>
-                <button type="button" id="cfgTabBtnEvent" onclick="switchSettingsTab('event')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
-                    4. Giao Diện &amp; Nội Dung Hero
                 </button>
                 <button type="button" id="cfgTabBtnSEO" onclick="switchSettingsTab('seo')" class="px-3 py-2 font-semibold text-slate-400 hover:text-white transition whitespace-nowrap">
                     5. SEO &amp; Mạng Xã Hội
@@ -1664,124 +1654,8 @@
                 </div>
 
                 <!-- TAB 2: FORM, QUÉT INPUT & HOTLINE -->
-                <div id="cfgTabSecForm" class="hidden space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Hotline Tư Vấn Hiển Thị</label>
-                            <input type="text" id="cfgHotline" placeholder="ví dụ: 0984.386.538" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            <span class="text-[10px] text-slate-500">Tự động cập nhật toàn bộ link <code>tel:</code> trên landing</span>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Đường Link Zalo Tư Vấn / Nhóm</label>
-                            <input type="text" id="cfgZaloLink" placeholder="ví dụ: https://zalo.me/0984386538" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-300 mb-1">Trang Chuyển Hướng Sau Đăng Ký Thành Công</label>
-                        <input type="text" id="cfgSuccessRedirect" placeholder="chucmung.html" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
-                    </div>
-
-                    <!-- KHỐI QUÉT FORM TỰ ĐỘNG & ÁNH XẠ TRƯỜNG DỮ LIỆU -->
-                    <div class="bg-slate-950/80 border border-indigo-900/60 rounded-xl p-4 space-y-3.5 shadow-sm">
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                            <div>
-                                <h4 class="text-xs font-bold text-white flex items-center gap-2">
-                                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
-                                    <span>Bộ Quét Form Tự Động &amp; Ánh Xạ Dữ Liệu (Form Auto-Scanner &amp; Mapping Engine)</span>
-                                </h4>
-                                <p class="text-[11px] text-slate-400 mt-0.5">
-                                    Tự động phân tích cây DOM của Landing Page (kể cả Ladipage, HTML xuất khẩu), phát hiện mọi thẻ Input và gợi ý ánh xạ trường vào CSDL Lead Server
-                                </p>
-                            </div>
-                            <div class="flex items-center gap-2 flex-shrink-0">
-                                <button type="button" onclick="scanLandingFormFields()" id="btnScanForm" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow">
-                                    <i class="fa-solid fa-magnifying-glass"></i>
-                                    <span>Quét Form Từ HTML</span>
-                                </button>
-                                <button type="button" onclick="autoInjectTrackingScript()" id="btnInjectScript" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow" title="Tự động nhúng script tracker.js vào mã HTML">
-                                    <i class="fa-solid fa-code"></i>
-                                    <span>Tự Động Nhúng Mã Tracking &amp; API</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Trạng thái quét & selector Form -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                            <div>
-                                <label class="block text-slate-300 font-bold mb-1">CSS Selector của Thẻ Form</label>
-                                <input type="text" id="cfgFormSelector" placeholder="ví dụ: form#leadForm hoặc form.ladi-form hoặc để trống cho tất cả" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
-                                <span class="text-[10px] text-slate-500">Mặc định tự động chặn bắt mọi form trên trang nếu để trống</span>
-                            </div>
-                            <div>
-                                <label class="block text-slate-300 font-bold mb-1">Trạng Thái Quét Form</label>
-                                <div id="scanFormStatus" class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between">
-                                    <span>Chưa thực hiện quét</span>
-                                    <span class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Sẵn sàng</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Bảng danh sách các trường input đã quét được -->
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-list-check text-cyan-400"></i>
-                                    <span>Danh Sách Trường Nhập Liệu Phát Hiện &amp; Ánh Xạ Server:</span>
-                                </span>
-                                <button type="button" onclick="addManualMappingRow()" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1">
-                                    <i class="fa-solid fa-plus text-[10px]"></i> Thêm trường thủ công
-                                </button>
-                            </div>
-
-                            <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/60 max-h-64 overflow-y-auto">
-                                <table class="w-full text-left text-xs whitespace-nowrap" id="tableScannedInputs">
-                                    <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800 sticky top-0">
-                                        <tr>
-                                            <th class="py-2 px-3">Thẻ / Kiểu</th>
-                                            <th class="py-2 px-3">Tên / ID Selector</th>
-                                            <th class="py-2 px-3">Placeholder / Nhãn</th>
-                                            <th class="py-2 px-3">Ánh Xạ Vào Trường Lead Server</th>
-                                            <th class="py-2 px-3 text-center">Bắt Buộc</th>
-                                            <th class="py-2 px-3 text-center">Xóa</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tbodyScannedInputs" class="divide-y divide-slate-800/60 font-mono text-[11px]">
-                                        <tr>
-                                            <td colspan="6" class="py-6 text-center text-slate-500 font-sans">
-                                                Bấm nút <b class="text-indigo-400">"Quét Form Từ HTML"</b> bên trên để tự động nhận diện tất cả các trường nhập liệu trên landing page.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Tùy chọn bảo mật & tính năng client-side tự động -->
-                        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
-                            <span class="font-bold text-slate-300 block mb-1">Các cơ chế bảo mật &amp; tracking tự động tích hợp:</span>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
-                                    <input type="checkbox" id="cfgOptValidatePhone" checked class="rounded text-emerald-500 focus:ring-0">
-                                    <span>Validate số điện thoại Việt Nam chuẩn 10 số (03x, 05x, 07x, 08x, 09x)</span>
-                                </label>
-                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
-                                    <input type="checkbox" id="cfgOptHoneypot" checked class="rounded text-emerald-500 focus:ring-0">
-                                    <span>Tự động nhúng Honeypot trap &amp; Proof-of-Work chống Bot Spam</span>
-                                </label>
-                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
-                                    <input type="checkbox" id="cfgOptUtmCapture" checked class="rounded text-emerald-500 focus:ring-0">
-                                    <span>Thu thập toàn bộ UTM Tags &amp; Fingerprint Visitor ID</span>
-                                </label>
-                                <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
-                                    <input type="checkbox" id="cfgOptCookie180d" checked class="rounded text-emerald-500 focus:ring-0">
-                                    <span>Lưu Cookie 180 ngày &amp; tự chuyển hướng Chúc Mừng nếu đã gửi</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TAB 3: PIXEL & MÃ QC CÁC BÊN -->
+                
+                <!-- TAB 3: PIXEL & Mã QC CÁC BÊN -->
                 <div id="cfgTabSecPixel" class="hidden space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
@@ -1818,143 +1692,7 @@
                 </div>
 
                 <!-- TAB 4: GIAO DIỆN & NỘI DUNG HERO (THƯƠNG HIỆU, TIÊU ĐỀ, 3 Ô THÔNG TIN) -->
-                <div id="cfgTabSecEvent" class="hidden space-y-5">
-                    <!-- 1. Nhận Diện Thương Hiệu -->
-                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-shield-halved text-rose-400"></i>
-                                <span>1. Nhận Diện Cơ Quan Quản Lý &amp; Logo Thương Hiệu</span>
-                            </span>
-                            <span class="text-[10px] text-slate-400">Góc trên cùng Landing Page</span>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Cơ Quan Cấp Phép 1 (Căn trái dòng 1)</label>
-                                <input type="text" id="cfgBrandHeader1" placeholder="Bộ Công Thương" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Cơ Quan / Sở Giao Dịch (Căn trái dòng 2)</label>
-                                <input type="text" id="cfgBrandHeader2" placeholder="Sở giao dịch hàng hóa Việt Nam MXV" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Đường Dẫn Logo Thương Hiệu (Đối diện góc phải)</label>
-                                <input type="text" id="cfgBrandLogo" placeholder="assets/img/logo_APEX_K_NEN.webp" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
-                                <span class="text-[10px] text-slate-500 mt-0.5 block">Logo trong suốt (không nền) hiển thị nổi bật</span>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Dòng Chữ Phụ Dưới Logo Apex</label>
-                                <input type="text" id="cfgBrandMemberText" placeholder="Thành viên 080 MXV" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                <span class="text-[10px] text-slate-500 mt-0.5 block">Ví dụ: Thành viên 080 MXV</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 2. Khối Tiêu Đề Hero (Căn giữa) -->
-                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-heading text-amber-400"></i>
-                                <span>2. Tiêu Đề Chính &amp; Huy Hiệu (Hero Titles)</span>
-                            </span>
-                            <span class="text-[10px] text-amber-400">Hiển thị nổi bật phía trên Form</span>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Huy Hiệu Cam Trên Cùng</label>
-                                <input type="text" id="cfgBadgeText" placeholder="LỚP HỌC ONLINE MIỄN PHÍ" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Tiêu Đề Dòng 1 (Xanh Navy)</label>
-                                <input type="text" id="cfgTitleLine1" placeholder="GIẢI MÃ ĐẦU TƯ" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-300 mb-1">Tiêu Đề Dòng 2 (Cam Đậm)</label>
-                                <input type="text" id="cfgTitleLine2" placeholder="HÀNG HÓA" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Mô Tả Phụ (Căn Giữa Dưới Tiêu Đề)</label>
-                            <input type="text" id="cfgSubtitle" placeholder="Hiểu thị trường – Nắm cơ hội – Quản trị rủi ro" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                        </div>
-                    </div>
-
-                    <!-- 3. Ba Ô Thông Tin Dưới Form -->
-                    <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-table-columns text-cyan-400"></i>
-                                <span>3. Ba Khối Thông Tin Dưới Form Đăng Ký (Metric Boxes)</span>
-                            </span>
-                            <span class="text-[10px] text-cyan-400">3 cột song song</span>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <!-- Ô 1 -->
-                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
-                                <span class="text-[11px] font-bold text-amber-400 block flex items-center gap-1">
-                                    <i class="fa-regular fa-calendar-days"></i> Ô 1: Lịch Khóa Học
-                                </span>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu cam)</label>
-                                    <input type="text" id="cfgBox1Top" placeholder="03/11/2026" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu tối)</label>
-                                    <input type="text" id="cfgBox1Bottom" placeholder="20:00 Online" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                            </div>
-
-                            <!-- Ô 2 -->
-                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
-                                <span class="text-[11px] font-bold text-cyan-400 block flex items-center gap-1">
-                                    <i class="fa-solid fa-desktop"></i> Ô 2: Hình Thức
-                                </span>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu tối)</label>
-                                    <input type="text" id="cfgBox2Top" placeholder="Học Online" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu cam)</label>
-                                    <input type="text" id="cfgBox2Bottom" placeholder="Qua Zoom" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                            </div>
-
-                            <!-- Ô 3 -->
-                            <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-2">
-                                <span class="text-[11px] font-bold text-emerald-400 block flex items-center gap-1">
-                                    <i class="fa-solid fa-user-group"></i> Ô 3: Thời Lượng
-                                </span>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Trên (Màu tối)</label>
-                                    <input type="text" id="cfgBox3Top" placeholder="2 Giờ" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-slate-400 mb-0.5">Dòng Dưới (Màu cam)</label>
-                                    <input type="text" id="cfgBox3Bottom" placeholder="Thực chiến" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 4. Đếm Ngược & Giới Hạn -->
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 border border-slate-800 rounded-xl p-3">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Ngày Giờ Countdown (ISO)</label>
-                            <input type="text" id="cfgTargetDate" placeholder="2026-11-03T20:00:00" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Số Lượng Suất Đăng Ký</label>
-                            <input type="text" id="cfgEventQuota" placeholder="Chỉ dành cho 100 suất" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-300 mb-1">Tên Khóa Học / Chủ Đề</label>
-                            <input type="text" id="cfgEventTitle" placeholder="Giải Mã Đầu Tư Hàng Hóa" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                        </div>
-                    </div>
-                </div>
-
+                
                 <!-- TAB 5: SEO & MXH -->
                 <div id="cfgTabSecSEO" class="hidden space-y-4">
                     <div>
@@ -2152,7 +1890,6 @@
     <script src="js/studio/history.js"></script>
     <script src="js/studio/gizmo.js"></script>
     <script src="js/studio/inspector.js"></script>
-    <script src="js/studio/form-scanner.js"></script>
     <script src="js/studio/context-menu.js"></script>
     <script src="js/studio/layers.js"></script>
     <script src="js/studio/file-manager.js"></script>

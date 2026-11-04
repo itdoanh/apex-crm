@@ -236,10 +236,7 @@ async function ensureTabModuleLoaded(moduleName) {
                 await ensureTabModuleLoaded('sheets');
                 if (typeof loadGoogleSheetsConfigs === 'function') loadGoogleSheetsConfigs();
             } else if (currentMainTab === 'ladiStudio') {
-                await Promise.all([
-                    ensureTabModuleLoaded('landings'),
-                    ensureTabModuleLoaded('studio/form-scanner')
-                ]);
+                await ensureTabModuleLoaded('landings');
                 if (typeof loadLandingPages === 'function') loadLandingPages();
             } else if (currentMainTab === 'domains') {
                 await ensureTabModuleLoaded('domains');
@@ -332,7 +329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Idle background pre-fetch: lazy-load remaining tab modules without blocking initial paint
         const prefetchModules = () => {
-            ['analytics', 'landings', 'studio/form-scanner', 'sheets', 'domains', 'security'].forEach(m => ensureTabModuleLoaded(m));
+            ['analytics', 'landings', 'sheets', 'domains', 'security'].forEach(m => ensureTabModuleLoaded(m));
         };
         if ('requestIdleCallback' in window) {
             requestIdleCallback(prefetchModules, { timeout: 2000 });

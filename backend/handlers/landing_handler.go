@@ -1235,15 +1235,14 @@ func (h *LandingHandler) InjectDynamicScripts(rawHTML string, p *models.LandingP
 		"nguon":             p.NguonDefault,
 		"is_active":         p.IsActive,
 		"title":             title,
-		"hotline":           settings["hotline"],
-		"zalo_link":         settings["zalo_link"],
-		"thoi_gian_chia_se": settings["thoi_gian_chia_se"],
+		// Lưu ý: các key "ép ghi đè" (hotline, zalo_link, brand_header, tieu_de,
+		// metric_boxes) KHÔNG được inject xuống client nữa — HTML viết tay trong
+		// Code Studio là nguồn sự thật duy nhất.
+		// Giữ lại form_mapping (ánh xạ input → trường lead, không sửa nội dung)
+		// và khoa_hoc (điền vào trường "package" của lead, không sửa DOM).
 		"khoa_hoc":          settings["khoa_hoc"],
 		"form_config":       settings["form_config"],
 		"form_mapping":      settings["form_mapping"],
-		"brand_header":      settings["brand_header"],
-		"tieu_de":           settings["tieu_de"],
-		"metric_boxes":      settings["metric_boxes"],
 		"redirect_url":      p.RedirectURL,
 		"settings":          settings,
 	})

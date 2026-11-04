@@ -35,7 +35,6 @@ frontend/
 │           ├── layers.js           Cây layer Z-Index
 │           ├── history.js          Undo/Redo 50 bước
 │           ├── context-menu.js     Menu chuột phải 20 hành động
-│           ├── form-scanner.js     Quét form tự động
 │           ├── inspector.js        Panel thuộc tính 6 tab
 │           ├── ast-mapper.js       Ánh xạ DOM ↔ AST
 │           └── file-manager.js     Cây file landing
@@ -208,6 +207,29 @@ studio.html
 ### Bất biến
 - **Không** được gỡ field honeypot (`website`, `fax_company_prefix`, `user_email_verify`, `company_website_url`) khỏi DOM.
 - **Không** được phá autofill-safe — xem `docs/SECURITY.md` mục 4.
+- **Không** được thêm logic sửa DOM từ cấu hình CSDL (hotline, zalo, tiêu đề hero, metric box...).
+  HTML viết tay trong Code Studio là **nguồn sự thật duy nhất**. Xem `docs/LANDING.md` mục 5.
+- **Mọi** module mới có side-effect lên DOM phải guard bằng `if (isAnyPreview()) return;`
+  để Code Studio preview không bị nhiễu.
+
+### Code Studio preview — cách ly
+
+`tracker.js` có 3 helper để nhận biết đang chạy trong preview/Studio:
+
+| Helper | Ý nghĩa |
+|---|---|
+| `isStudioBuilder()` | `window.__APEX_STUDIO__` / `__APEX_BUILDER_ACTIVE__` / `__APEX_FREEZE_MODE__` |
+| `isAnyPreview()` | Studio builder **hoặc** `__APEX_PREVIEW__` / `IS_PREVIEW` **hoặc** đang nằm trong iframe |
+
+Khi preview:
+- Không nạp `config.json` từ network.
+- Không chạy `applyConfigToDOM()` (chỉ set `document.title` + Pixel ngoài preview).
+- Không chặn form (`initAutoFormInterceptor` return sớm).
+- Không gửi analytics (`sendAnalyticsPing` return sớm).
+
+Thêm vào `ast-mapper.getHelperScript()` (inject vào preview iframe):
+`__APEX_STUDIO_LANDING_ID__`, `__APEX_STUDIO_DOMAIN__`, `__APEX_STUDIO_LANDING_NAME__` —
+dùng để ghi đè `window.APEX_LANDING_CONFIG` của template gốc.
 
 ---
 

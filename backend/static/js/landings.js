@@ -208,7 +208,7 @@
                                     <i class="fa-solid fa-sliders"></i>
                                     <span>Cài Đặt</span>
                                 </button>
-                                <button onclick="openLandingPreview('${escapeHTML(p.page_id)}')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] py-1.5 px-2 rounded-lg border border-slate-700 transition flex items-center justify-center gap-1" title="Xem trước trực tiếp Responsive">
+                                <button onclick="openLandingPreview('${escapeHTML(p.page_id)}', '${escapeHTML(p.domain)}')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] py-1.5 px-2 rounded-lg border border-slate-700 transition flex items-center justify-center gap-1" title="Xem trước trực tiếp Responsive">
                                     <i class="fa-solid fa-eye"></i>
                                     <span>Preview</span>
                                 </button>
@@ -340,10 +340,14 @@
         }
 
         // ============================================================
-        // 17.8. LANDING SETTINGS MODAL CONTROLLERS (6 TABS KÈM GOOGLE SHEETS)
+        // 17.8. LANDING SETTINGS MODAL CONTROLLERS (4 TABS)
+        // Lưu ý: chỉ còn Domain / Pixel / SEO / Google Sheets.
+        // Mọi cấu hình "ép ghi đè" nội dung landing (hotline, zalo, hero title,
+        // metric box, form scanner, dynamic content) đã bị gỡ bỏ — HTML viết
+        // tay trong Code Studio là nguồn sự thật duy nhất.
         // ============================================================
         function switchSettingsTab(tab) {
-            ['domain', 'form', 'pixel', 'event', 'seo', 'sheets'].forEach(t => {
+            ['domain', 'pixel', 'seo', 'sheets'].forEach(t => {
                 const btn = document.getElementById('cfgTabBtn' + (t.charAt(0).toUpperCase() + t.slice(1)));
                 const sec = document.getElementById('cfgTabSec' + (t.charAt(0).toUpperCase() + t.slice(1)));
                 if (btn) {
@@ -680,9 +684,6 @@
                 const data = await res.json();
                 const p = data.landing;
                 const s = p.settings || {};
-                const tg = s.thoi_gian_chia_se || {};
-                const kh = s.khoa_hoc || {};
-                const fc = s.form_config || {};
 
                 document.getElementById('cfgPageId').value = p.page_id;
                 document.getElementById('cfgPageId').setAttribute('readonly', 'true');
@@ -698,176 +699,11 @@
                 document.getElementById('cfgIsActive').checked = p.is_active;
                 document.getElementById('cfgRedirectUrl').value = p.redirect_url || '';
 
-                document.getElementById('cfgHotline').value = s.hotline || '';
-                document.getElementById('cfgZaloLink').value = s.zalo_link || '';
-                document.getElementById('cfgSuccessRedirect').value = fc.success_redirect || p.redirect_url || '';
-
                 document.getElementById('cfgFacebookPixel').value = s.facebook_pixel_id || '';
                 document.getElementById('cfgGoogleAnalytics').value = s.google_analytics_id || '';
                 document.getElementById('cfgTikTokPixel').value = s.tiktok_pixel_id || '';
                 document.getElementById('cfgCustomHead').value = s.custom_head_scripts || '';
                 document.getElementById('cfgCustomBody').value = s.custom_body_scripts || '';
-
-                // CẤU HÌNH GIAO DIỆN & NỘI DUNG HERO CHO MỌI LANDING PAGE
-                const secOriginal = document.getElementById('cfgSecOriginalTemplate');
-                const secDynamic = document.getElementById('cfgSecDynamicContent');
-                if (secOriginal) secOriginal.classList.remove('hidden');
-                if (secDynamic) secDynamic.classList.remove('hidden');
-
-                const bh = s.brand_header || {};
-                const td = s.tieu_de || {};
-                const mb = s.metric_boxes || {};
-                const b1 = mb.box_1 || {};
-                const b2 = mb.box_2 || {};
-                const b3 = mb.box_3 || {};
-
-                document.getElementById('cfgBrandHeader1').value = bh.co_quan_1 || bh.agency_1 || '';
-                document.getElementById('cfgBrandHeader2').value = bh.co_quan_2 || bh.agency_2 || '';
-                document.getElementById('cfgBrandLogo').value = bh.logo_url || '';
-                document.getElementById('cfgBrandMemberText').value = bh.member_text || '';
-
-                document.getElementById('cfgBadgeText').value = td.badge || '';
-                document.getElementById('cfgTitleLine1').value = td.line_1 || '';
-                document.getElementById('cfgTitleLine2').value = td.line_2 || '';
-                document.getElementById('cfgSubtitle').value = td.mo_ta || td.subtitle || '';
-
-                document.getElementById('cfgBox1Top').value = b1.top || mb.box_1_top || tg.ngay || '';
-                document.getElementById('cfgBox1Bottom').value = b1.bottom || mb.box_1_bottom || tg.gio || '';
-                document.getElementById('cfgBox2Top').value = b2.top || mb.box_2_top || '';
-                document.getElementById('cfgBox2Bottom').value = b2.bottom || mb.box_2_bottom || '';
-                document.getElementById('cfgBox3Top').value = b3.top || mb.box_3_top || '';
-                document.getElementById('cfgBox3Bottom').value = b3.bottom || mb.box_3_bottom || '';
-
-                document.getElementById('cfgEventTitle').value = kh.ten || '';
-                document.getElementById('cfgTargetDate').value = tg.target_date || '';
-                document.getElementById('cfgEventQuota').value = kh.suat_hoc || '';
-
-                // NẾU CÁC TRƯỜNG TRÊN CÒN RỖNG (ví dụ trang mới chưa set), TỰ ĐỘNG BÓC TÁCH TỪ HTML CỦA TRANG
-                let currentHtmlForExtract = p.code_html || '';
-                if (!currentHtmlForExtract && typeof studioFileContents !== 'undefined') {
-                    currentHtmlForExtract = studioFileContents['index.html'] || '';
-                }
-                if (currentHtmlForExtract) {
-                    try {
-                        const pDoc = new DOMParser().parseFromString(currentHtmlForExtract, 'text/html');
-                        if (!document.getElementById('cfgBrandHeader1').value) {
-                            const el = pDoc.querySelector('.gov-text-1') || pDoc.querySelector('[data-config*="agency_1"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBrandHeader1').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBrandHeader2').value) {
-                            const el = pDoc.querySelector('.gov-text-2') || pDoc.querySelector('[data-config*="agency_2"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBrandHeader2').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBrandLogo').value) {
-                            const img = pDoc.getElementById('brandLogoImg') || pDoc.querySelector('[data-config*="logo_url"]') || pDoc.querySelector('header img');
-                            if (img && img.getAttribute('src')) document.getElementById('cfgBrandLogo').value = img.getAttribute('src');
-                        }
-                        if (!document.getElementById('cfgBrandMemberText').value) {
-                            const el = pDoc.getElementById('brandMemberText') || pDoc.querySelector('.brand-member-text') || pDoc.querySelector('[data-config*="member_text"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBrandMemberText').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBadgeText').value) {
-                            const el = pDoc.getElementById('heroBadgeText') || pDoc.querySelector('.hero-badge-text') || pDoc.querySelector('.gov-badge span') || pDoc.querySelector('[data-config*="tieu_de.badge"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBadgeText').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgTitleLine1').value) {
-                            const el = pDoc.getElementById('heroTitleLine1') || pDoc.querySelector('[data-config*="title_1"]') || pDoc.querySelector('[data-config*="line_1"]') || pDoc.querySelector('h1');
-                            if (el && el.textContent.trim()) document.getElementById('cfgTitleLine1').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgTitleLine2').value) {
-                            const el = pDoc.getElementById('heroTitleLine2') || pDoc.querySelector('[data-config*="title_2"]') || pDoc.querySelector('[data-config*="line_2"]') || pDoc.querySelector('h2');
-                            if (el && el.textContent.trim()) document.getElementById('cfgTitleLine2').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgSubtitle').value) {
-                            const el = pDoc.getElementById('heroSubtitle') || pDoc.querySelector('.hero-subtitle') || pDoc.querySelector('[data-config*="subtitle"]') || pDoc.querySelector('[data-config*="mo_ta"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgSubtitle').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox1Top').value) {
-                            const el = pDoc.getElementById('infoEventDate') || pDoc.querySelector('[data-config*="box_1_top"]') || pDoc.querySelector('[data-config*="thoi_gian_chia_se.ngay"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox1Top').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox1Bottom').value) {
-                            const el = pDoc.getElementById('infoEventTime') || pDoc.querySelector('[data-config*="box_1_bottom"]') || pDoc.querySelector('[data-config*="thoi_gian_chia_se.gio"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox1Bottom').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox2Top').value) {
-                            const el = pDoc.getElementById('infoFormatTop') || pDoc.querySelector('[data-config*="box_2_top"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox2Top').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox2Bottom').value) {
-                            const el = pDoc.getElementById('infoFormatBottom') || pDoc.querySelector('[data-config*="box_2_bottom"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox2Bottom').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox3Top').value) {
-                            const el = pDoc.getElementById('infoDurationTop') || pDoc.querySelector('[data-config*="box_3_top"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox3Top').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgBox3Bottom').value) {
-                            const el = pDoc.getElementById('infoDurationBottom') || pDoc.querySelector('[data-config*="box_3_bottom"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgBox3Bottom').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgTargetDate').value) {
-                            const matchTd = currentHtmlForExtract.match(/(?:let|const|var)\s+targetDate\s*=\s*new\s*Date\s*\(\s*["']([^"']+)["']\s*\)/i) ||
-                                            currentHtmlForExtract.match(/targetDate\s*=\s*new\s*Date\s*\(\s*["']([^"']+)["']\s*\)/i);
-                            if (matchTd && matchTd[1]) {
-                                document.getElementById('cfgTargetDate').value = matchTd[1].trim();
-                            } else {
-                                const matchConfig = currentHtmlForExtract.match(/(?:["']?target_date["']?|["']?targetDate["']?)\s*:\s*["']([^"']+)["']/i);
-                                if (matchConfig && matchConfig[1]) {
-                                    document.getElementById('cfgTargetDate').value = matchConfig[1].trim();
-                                } else {
-                                    const tdEl = pDoc.querySelector('[data-target-date]') || pDoc.querySelector('[data-countdown]');
-                                    if (tdEl) {
-                                        const val = tdEl.getAttribute('data-target-date') || tdEl.getAttribute('data-countdown');
-                                        if (val) document.getElementById('cfgTargetDate').value = val.trim();
-                                    }
-                                }
-                            }
-                        }
-                        if (!document.getElementById('cfgEventTitle').value) {
-                            const el = pDoc.getElementById('modalEventCourse') || pDoc.querySelector('[data-config*="khoa_hoc.ten"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgEventTitle').value = el.textContent.trim();
-                        }
-                        if (!document.getElementById('cfgEventQuota').value) {
-                            const el = pDoc.getElementById('infoEventQuota') || pDoc.querySelector('[data-config*="khoa_hoc.suat_hoc"]');
-                            if (el && el.textContent.trim()) document.getElementById('cfgEventQuota').value = el.textContent.trim();
-                        }
-                    } catch(ex) {}
-                }
-
-                // Render bảng Dynamic Content Fields
-                const customFields = Array.isArray(s.custom_content_fields) ? s.custom_content_fields : [];
-                renderCustomContentTable(customFields);
-
-                const statusEl = document.getElementById('scanContentStatus');
-                if (statusEl) {
-                    if (customFields.length > 0) {
-                        statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Đã cấu hình ${customFields.length} trường tùy chỉnh nhanh</span>`;
-                    } else {
-                        statusEl.innerHTML = `<span class="text-slate-400"><i class="fa-solid fa-circle-info mr-1 text-slate-500"></i> Bấm "Quét Nội Dung Từ HTML" để hệ thống tự động bóc tách các trường chỉnh sửa nhanh bổ sung.</span>`;
-                    }
-                }
-
-                document.getElementById('cfgMetaTitle').value = s.title || '';
-                document.getElementById('cfgMetaDesc').value = s.meta_description || '';
-                document.getElementById('cfgOgImage').value = s.og_image || '';
-
-                // Cấu hình Form Mapping & Heuristics
-                const fm = s.form_mapping || {};
-                document.getElementById('cfgFormSelector').value = fm.form_selector || '';
-                const fmOpts = fm.options || {};
-                document.getElementById('cfgOptValidatePhone').checked = fmOpts.validate_phone !== false;
-                document.getElementById('cfgOptHoneypot').checked = fmOpts.honeypot !== false;
-                document.getElementById('cfgOptUtmCapture').checked = fmOpts.utm_capture !== false;
-                document.getElementById('cfgOptCookie180d').checked = fmOpts.cookie_180d !== false;
-
-                if (fm.fields && Array.isArray(fm.fields) && fm.fields.length > 0) {
-                    renderScannedInputsTable(fm.fields);
-                    document.getElementById('scanFormStatus').innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Đã cấu hình ${fm.fields.length} trường</span>`;
-                } else {
-                    renderScannedInputsTable([]);
-                    document.getElementById('scanFormStatus').innerHTML = `<span>Chưa thực hiện quét</span><span class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Sẵn sàng</span>`;
-                }
 
                 // Cấu hình Google Sheets riêng biệt cho Landing Page này
                 const syncMode = s.google_sheet_sync_mode || 'selected';
@@ -896,9 +732,6 @@
             document.getElementById('landingSettingsModal').classList.add('hidden');
         }
 
-        // ============================================================
-        // 17.8.3. BỘ BÓC TÁCH NỘI DUNG ĐỘNG (SMART DYNAMIC CONTENT)
-        // ============================================================
         function escapeHtml(str) {
             if (!str) return '';
             return String(str)
@@ -909,329 +742,6 @@
                 .replace(/'/g, '&#039;');
         }
 
-        function getDomSelector(el) {
-            if (!el) return '';
-            if (el.id) return '#' + el.id;
-            if (el.getAttribute('data-role')) return `[data-role="${el.getAttribute('data-role')}"]`;
-            if (el.getAttribute('data-field')) return `[data-field="${el.getAttribute('data-field')}"]`;
-
-            if (el.classList && el.classList.length > 0) {
-                for (let i = 0; i < el.classList.length; i++) {
-                    const cls = el.classList[i];
-                    if (!cls.startsWith('hover:') && !cls.startsWith('focus:') && !cls.startsWith('active:') && cls.length > 2) {
-                        try {
-                            if (el.ownerDocument && el.ownerDocument.querySelectorAll('.' + cls).length === 1) {
-                                return '.' + cls;
-                            }
-                        } catch (e) {}
-                    }
-                }
-            }
-
-            const tag = el.tagName.toLowerCase();
-            const parent = el.parentElement;
-            if (parent) {
-                const siblings = Array.from(parent.children).filter(c => c.tagName.toLowerCase() === tag);
-                if (siblings.length > 1) {
-                    const idx = siblings.indexOf(el) + 1;
-                    const parentSel = parent.id ? '#' + parent.id + ' > ' : (parent.tagName.toLowerCase() !== 'body' ? parent.tagName.toLowerCase() + ' > ' : '');
-                    return `${parentSel}${tag}:nth-of-type(${idx})`;
-                }
-            }
-            return tag;
-        }
-
-        async function scanLandingContentFields() {
-            const btn = document.getElementById('btnScanContent');
-            const statusEl = document.getElementById('scanContentStatus');
-            const pageId = (document.getElementById('cfgPageId')?.value || '').trim();
-            const domain = (document.getElementById('cfgDomain')?.value || '').trim();
-
-            if (!pageId) {
-                alert('Vui lòng chọn hoặc nhập Mã Định Danh (Page ID) trước khi quét!');
-                return;
-            }
-
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> <span>Đang quét DOM...</span>';
-            }
-            if (statusEl) {
-                statusEl.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang tải và phân tích cấu trúc HTML...</span>`;
-            }
-
-            try {
-                let htmlContent = '';
-                if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
-                    htmlContent = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
-                }
-
-                if (!htmlContent) {
-                    const res = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domain)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.landing && data.landing.code_html) {
-                            htmlContent = data.landing.code_html;
-                        } else if (data.files && data.files.length > 0) {
-                            const idxFile = data.files.find(f => f.file_path === 'index.html' || f.file_path.endsWith('.html'));
-                            if (idxFile) htmlContent = idxFile.content;
-                        }
-                    }
-                }
-
-                if (!htmlContent || !htmlContent.trim()) {
-                    if (statusEl) {
-                        statusEl.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Chưa có mã HTML. Vui lòng mở Code Studio và nhập code trước.</span>`;
-                    }
-                    alert('Chưa có mã HTML để bóc tách. Vui lòng mở Code Studio, nhập/dán mã nguồn rồi lưu lại trước khi Quét Nội Dung!');
-                    return;
-                }
-
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlContent, 'text/html');
-
-                const scannedFields = [];
-                const seenSelectors = new Set();
-
-                // 1. Quét Tiêu Đề (Headings: h1, h2, h3, .hero-title, [data-role="title"])
-                const headingEls = doc.querySelectorAll('h1, h2, h3, .hero-title, .title, [data-role="title"], [data-role="heading"]');
-                headingEls.forEach(el => {
-                    const text = el.textContent.trim().replace(/\s+/g, ' ');
-                    if (!text || text.length < 2 || text.length > 300) return;
-                    const sel = getDomSelector(el);
-                    if (seenSelectors.has(sel)) return;
-                    seenSelectors.add(sel);
-
-                    const tagName = el.tagName.toLowerCase();
-                    scannedFields.push({
-                        type: 'heading',
-                        label: `Tiêu Đề (${tagName.toUpperCase()})`,
-                        selector: sel,
-                        value: text,
-                        extra: ''
-                    });
-                });
-
-                // 2. Quét Hình Ảnh (Images: img[src])
-                const imgEls = doc.querySelectorAll('img[src]');
-                imgEls.forEach(img => {
-                    const src = img.getAttribute('src') || '';
-                    if (!src || src.startsWith('data:image') || src.includes('pixel') || src.includes('favicon')) return;
-                    const sel = getDomSelector(img);
-                    if (seenSelectors.has(sel)) return;
-                    seenSelectors.add(sel);
-
-                    const alt = img.getAttribute('alt') || '';
-                    scannedFields.push({
-                        type: 'image',
-                        label: `Hình Ảnh (${alt ? alt.substring(0, 20) : 'Banner/Logo'})`,
-                        selector: sel,
-                        value: src,
-                        extra: alt
-                    });
-                });
-
-                // 3. Quét Nút Kêu Gọi Hành Động (CTA Buttons / Links)
-                const ctaEls = doc.querySelectorAll('a.btn, a[class*="btn"], button, [data-role="cta"]');
-                ctaEls.forEach(btnEl => {
-                    const text = btnEl.textContent.trim().replace(/\s+/g, ' ');
-                    if (!text || text.length < 2 || text.length > 80) return;
-                    const sel = getDomSelector(btnEl);
-                    if (seenSelectors.has(sel)) return;
-                    seenSelectors.add(sel);
-
-                    const href = btnEl.getAttribute('href') || '';
-                    scannedFields.push({
-                        type: 'cta',
-                        label: `Nút Bấm CTA (${text.substring(0, 20)})`,
-                        selector: sel,
-                        value: text,
-                        extra: href
-                    });
-                });
-
-                // 4. Quét Liên Hệ (Hotline / Zalo / Email)
-                const contactEls = doc.querySelectorAll('a[href^="tel:"], a[href*="zalo.me"], a[href^="mailto:"]');
-                contactEls.forEach(cEl => {
-                    const href = cEl.getAttribute('href') || '';
-                    const sel = getDomSelector(cEl);
-                    if (seenSelectors.has(sel)) return;
-                    seenSelectors.add(sel);
-
-                    let cType = 'Hotline';
-                    if (href.includes('zalo.me')) cType = 'Zalo Link';
-                    else if (href.startsWith('mailto:')) cType = 'Email';
-
-                    scannedFields.push({
-                        type: 'contact',
-                        label: `Liên Hệ (${cType})`,
-                        selector: sel,
-                        value: href,
-                        extra: cEl.textContent.trim()
-                    });
-                });
-
-                renderCustomContentTable(scannedFields);
-
-                if (statusEl) {
-                    statusEl.innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> Bóc tách thành công ${scannedFields.length} phần tử từ HTML</span>`;
-                }
-            } catch (e) {
-                console.error('Lỗi scanLandingContentFields:', e);
-                if (statusEl) {
-                    statusEl.innerHTML = `<span class="text-rose-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Lỗi quét HTML: ${e.message}</span>`;
-                }
-            } finally {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-magnifying-glass mr-1"></i> <span>Quét Nội Dung Từ HTML</span>';
-                }
-            }
-        }
-
-        function renderCustomContentTable(fields) {
-            const tbody = document.getElementById('tbodyCustomContentFields');
-            if (!tbody) return;
-
-            if (!fields || fields.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="py-8 text-center text-slate-500 font-sans">
-                            <div class="max-w-md mx-auto space-y-2">
-                                <i class="fa-solid fa-layer-group text-slate-600 text-3xl mb-1"></i>
-                                <p class="text-slate-400 text-xs font-semibold">Chưa có trường tùy chỉnh nhanh nào cho Landing Page này.</p>
-                                <p class="text-slate-500 text-[11px]">Hãy nhập/dán mã code của bạn vào Code Studio rồi bấm <b class="text-cyan-400">"Quét Nội Dung Từ HTML"</b> bên trên để trích xuất các tiêu đề, hình ảnh và nút bấm có thể chỉnh sửa.</p>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            tbody.innerHTML = fields.map(f => {
-                let badgeHtml = '';
-                if (f.type === 'heading') {
-                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"><i class="fa-solid fa-heading"></i> Tiêu Đề</span>`;
-                } else if (f.type === 'image') {
-                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20"><i class="fa-solid fa-image"></i> Hình Ảnh</span>`;
-                } else if (f.type === 'cta') {
-                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><i class="fa-solid fa-arrow-pointer"></i> Nút CTA</span>`;
-                } else if (f.type === 'contact') {
-                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"><i class="fa-solid fa-phone"></i> Liên Hệ</span>`;
-                } else {
-                    badgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20"><i class="fa-solid fa-font"></i> Văn Bản</span>`;
-                }
-
-                let valueInputHtml = '';
-                if (f.type === 'heading') {
-                    valueInputHtml = `
-                        <div class="space-y-1">
-                            <textarea rows="2" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500">${escapeHtml(f.value || '')}</textarea>
-                        </div>
-                    `;
-                } else if (f.type === 'image') {
-                    valueInputHtml = `
-                        <div class="space-y-1">
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-[10px] text-slate-400 w-12 shrink-0">URL Ảnh:</span>
-                                <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}" placeholder="https://... hoặc assets/img.png">
-                            </div>
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-[10px] text-slate-400 w-12 shrink-0">Thẻ Alt:</span>
-                                <input type="text" class="custom-field-extra w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.extra || '')}" placeholder="Mô tả hình ảnh">
-                            </div>
-                        </div>
-                    `;
-                } else if (f.type === 'cta') {
-                    valueInputHtml = `
-                        <div class="space-y-1">
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-[10px] text-slate-400 w-14 shrink-0">Chữ Nút:</span>
-                                <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}">
-                            </div>
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-[10px] text-slate-400 w-14 shrink-0">Link Href:</span>
-                                <input type="text" class="custom-field-extra w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-indigo-300 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.extra || '')}" placeholder="#register hoặc https://...">
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    valueInputHtml = `
-                        <div class="space-y-1">
-                            <input type="text" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.value || '')}">
-                            ${f.extra ? `<input type="hidden" class="custom-field-extra" value="${escapeHtml(f.extra)}">` : ''}
-                        </div>
-                    `;
-                }
-
-                return `
-                    <tr data-custom-field-row data-field-type="${f.type}" class="hover:bg-slate-900/40 transition">
-                        <td class="py-2.5 px-3 align-top">
-                            ${badgeHtml}
-                        </td>
-                        <td class="py-2.5 px-3 align-top">
-                            <input type="text" class="custom-field-label w-full bg-slate-900/60 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-semibold mb-1 focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.label || '')}" placeholder="Tên gợi nhớ">
-                            <input type="text" class="custom-field-selector w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500" value="${escapeHtml(f.selector || '')}" placeholder="CSS Selector (vd: h1, #logo)">
-                        </td>
-                        <td class="py-2.5 px-3 align-top">
-                            ${valueInputHtml}
-                        </td>
-                        <td class="py-2.5 px-3 align-top text-center">
-                            <button type="button" onclick="removeContentFieldRow(this)" class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition flex items-center justify-center mx-auto" title="Xóa trường này">
-                                <i class="fa-solid fa-trash-can text-xs"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function addManualContentFieldRow() {
-            const tbody = document.getElementById('tbodyCustomContentFields');
-            if (!tbody) return;
-
-            if (tbody.querySelector('td[colspan="4"]')) {
-                tbody.innerHTML = '';
-            }
-
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-custom-field-row', 'true');
-            tr.setAttribute('data-field-type', 'heading');
-            tr.className = 'hover:bg-slate-900/40 transition';
-            tr.innerHTML = `
-                <td class="py-2.5 px-3 align-top">
-                    <select onchange="this.closest('tr').setAttribute('data-field-type', this.value)" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-500">
-                        <option value="heading">Tiêu Đề</option>
-                        <option value="image">Hình Ảnh</option>
-                        <option value="cta">Nút CTA</option>
-                        <option value="contact">Liên Hệ</option>
-                        <option value="text">Văn Bản</option>
-                    </select>
-                </td>
-                <td class="py-2.5 px-3 align-top">
-                    <input type="text" class="custom-field-label w-full bg-slate-900/60 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-semibold mb-1 focus:outline-none focus:border-cyan-500" value="Trường Tùy Chỉnh" placeholder="Tên gợi nhớ">
-                    <input type="text" class="custom-field-selector w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500" value="" placeholder="CSS Selector (vd: .banner-title)">
-                </td>
-                <td class="py-2.5 px-3 align-top">
-                    <textarea rows="2" class="custom-field-value w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500" placeholder="Nhập nội dung mới..."></textarea>
-                </td>
-                <td class="py-2.5 px-3 align-top text-center">
-                    <button type="button" onclick="removeContentFieldRow(this)" class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition flex items-center justify-center mx-auto" title="Xóa trường này">
-                        <i class="fa-solid fa-trash-can text-xs"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        }
-
-        function removeContentFieldRow(btn) {
-            const tr = btn.closest('tr');
-            if (tr) tr.remove();
-            const tbody = document.getElementById('tbodyCustomContentFields');
-            if (tbody && tbody.querySelectorAll('tr[data-custom-field-row]').length === 0) {
-                renderCustomContentTable([]);
-            }
-        }
 
         function closeLandingSettings() {
             document.getElementById('landingSettingsModal').classList.add('hidden');
@@ -1251,38 +761,30 @@
             const checkedBoxes = document.querySelectorAll('input[name="cfgSheetCheckbox"]:checked');
             const selectedSheetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value, 10)).filter(id => !isNaN(id));
 
-            const box1Top = document.getElementById('cfgBox1Top').value.trim();
-            const box1Btm = document.getElementById('cfgBox1Bottom').value.trim();
-            const box2Top = document.getElementById('cfgBox2Top').value.trim();
-            const box2Btm = document.getElementById('cfgBox2Bottom').value.trim();
-            const box3Top = document.getElementById('cfgBox3Top').value.trim();
-            const box3Btm = document.getElementById('cfgBox3Bottom').value.trim();
-
             const domainVal = (document.getElementById('cfgDomain')?.value || document.getElementById('cfgDomainSelect')?.value || '').trim();
             let pathPrefixVal = (document.getElementById('cfgPathPrefix')?.value || '/').trim();
             if (!pathPrefixVal.startsWith('/')) pathPrefixVal = '/' + pathPrefixVal;
             if (pathPrefixVal.length > 1) pathPrefixVal = pathPrefixVal.replace(/\/+$/, '');
 
-            // Bóc tách & thu thập các trường Custom Content Fields (Smart Dynamic Content)
-            const customFields = [];
-            document.querySelectorAll('#tbodyCustomContentFields tr[data-custom-field-row]').forEach(row => {
-                const type = row.getAttribute('data-field-type') || 'heading';
-                const selector = row.querySelector('.custom-field-selector')?.value?.trim() || '';
-                const label = row.querySelector('.custom-field-label')?.value?.trim() || '';
-                const value = row.querySelector('.custom-field-value')?.value || '';
-                const extra = row.querySelector('.custom-field-extra')?.value || '';
-                if (selector) {
-                    customFields.push({ type, selector, label, value, extra });
+            // Bảo toàn các key cấu hình không còn UI quản lý (hotline, zalo_link,
+            // form_mapping, brand_header, tieu_de, metric_boxes, thoi_gian_chia_se,
+            // khoa_hoc, form_config...) để không làm mất dữ liệu đang chạy.
+            // Hệ thống KHÔNG còn ghi đè nội dung landing từ các key này — HTML
+            // viết tay trong Code Studio là nguồn sự thật duy nhất.
+            let existingSettings = {};
+            try {
+                const gRes = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domainVal)}`);
+                if (gRes.ok) {
+                    const gData = await gRes.json();
+                    existingSettings = (gData.landing && gData.landing.settings) || {};
                 }
-            });
+            } catch (_) {}
 
-            const settings = {
+            const managedSettings = {
                 path_prefix: pathPrefixVal,
                 title: document.getElementById('cfgMetaTitle').value.trim(),
                 meta_description: document.getElementById('cfgMetaDesc').value.trim(),
                 og_image: document.getElementById('cfgOgImage').value.trim(),
-                hotline: document.getElementById('cfgHotline').value.trim(),
-                zalo_link: document.getElementById('cfgZaloLink').value.trim(),
                 facebook_pixel_id: document.getElementById('cfgFacebookPixel').value.trim(),
                 google_analytics_id: document.getElementById('cfgGoogleAnalytics').value.trim(),
                 tiktok_pixel_id: document.getElementById('cfgTikTokPixel').value.trim(),
@@ -1290,278 +792,10 @@
                 custom_body_scripts: document.getElementById('cfgCustomBody').value.trim(),
                 google_sheet_sync_mode: syncMode,
                 google_sheet_ids: selectedSheetIds,
-                custom_content_fields: customFields,
-                brand_header: {
-                    co_quan_1: document.getElementById('cfgBrandHeader1').value.trim(),
-                    co_quan_2: document.getElementById('cfgBrandHeader2').value.trim(),
-                    agency_1: document.getElementById('cfgBrandHeader1').value.trim(),
-                    agency_2: document.getElementById('cfgBrandHeader2').value.trim(),
-                    logo_url: document.getElementById('cfgBrandLogo').value.trim(),
-                    member_text: document.getElementById('cfgBrandMemberText').value.trim(),
-                },
-                tieu_de: {
-                    badge: document.getElementById('cfgBadgeText').value.trim(),
-                    line_1: document.getElementById('cfgTitleLine1').value.trim(),
-                    line_2: document.getElementById('cfgTitleLine2').value.trim(),
-                    mo_ta: document.getElementById('cfgSubtitle').value.trim(),
-                },
-                metric_boxes: {
-                    box_1: { top: box1Top, bottom: box1Btm },
-                    box_2: { top: box2Top, bottom: box2Btm },
-                    box_3: { top: box3Top, bottom: box3Btm },
-                },
-                thoi_gian_chia_se: {
-                    ngay: box1Top,
-                    gio: box1Btm,
-                    hien_thi: (box1Btm && box1Top) ? `${box1Btm} - ${box1Top}` : (box1Btm || box1Top || ''),
-                    hinh_thuc: (box2Top && box2Btm) ? `${box2Top} - ${box2Btm}` : (box2Top || box2Btm || ''),
-                    target_date: document.getElementById('cfgTargetDate').value.trim(),
-                },
-                khoa_hoc: {
-                    ten: document.getElementById('cfgEventTitle').value.trim(),
-                    suat_hoc: document.getElementById('cfgEventQuota').value.trim(),
-                },
-                form_config: {
-                    require_phone: true,
-                    require_name: true,
-                    success_redirect: document.getElementById('cfgSuccessRedirect').value.trim(),
-                },
-                form_mapping: (function() {
-                    const formSelector = document.getElementById('cfgFormSelector').value.trim();
-                    const fieldRows = document.querySelectorAll('#tbodyScannedInputs tr[data-field-row]');
-                    const mappingFields = [];
-                    fieldRows.forEach(row => {
-                        const sel = row.querySelector('.map-selector')?.value.trim() || '';
-                        const leadField = row.querySelector('.map-lead-field')?.value || 'ignore';
-                        const tag = row.getAttribute('data-tag') || 'input';
-                        const type = row.getAttribute('data-type') || 'text';
-                        const req = row.querySelector('.map-required')?.checked || false;
-                        const name = row.getAttribute('data-name') || '';
-                        const id = row.getAttribute('data-id') || '';
-                        const ph = row.getAttribute('data-ph') || '';
-                        if (sel && leadField !== 'ignore') {
-                            mappingFields.push({
-                                selector: sel,
-                                lead_field: leadField,
-                                tag: tag,
-                                type: type,
-                                name: name,
-                                id: id,
-                                placeholder: ph,
-                                required: req
-                            });
-                        }
-                    });
-                    return {
-                        form_selector: formSelector,
-                        fields: mappingFields,
-                        options: {
-                            validate_phone: document.getElementById('cfgOptValidatePhone').checked,
-                            honeypot: document.getElementById('cfgOptHoneypot').checked,
-                            utm_capture: document.getElementById('cfgOptUtmCapture').checked,
-                            cookie_180d: document.getElementById('cfgOptCookie180d').checked,
-                        }
-                    };
-                })()
             };
 
-            // Đồng bộ trực tiếp các trường Hero / Giao diện & Dynamic Content vào cây DOM file index.html
-            try {
-                let htmlCode = '';
-                if (currentStudioLanding && currentStudioLanding.page_id === pageId && typeof studioFileContents !== 'undefined') {
-                    htmlCode = studioFileContents['index.html'] || document.getElementById('csCodeEditor')?.value || '';
-                }
-                if (!htmlCode) {
-                    const gRes = await fetch(`/api/landings/get?page_id=${encodeURIComponent(pageId)}&domain=${encodeURIComponent(domainVal)}`);
-                    if (gRes.ok) {
-                        const gData = await gRes.json();
-                        htmlCode = gData.landing?.code_html || '';
-                        if (!htmlCode && gData.files && gData.files.length > 0) {
-                            const fIdx = gData.files.find(f => f.file_path === 'index.html');
-                            if (fIdx) htmlCode = fIdx.content || '';
-                        }
-                    }
-                }
-
-                if (htmlCode) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(htmlCode, 'text/html');
-                    let hasModified = false;
-
-                    // 1. Áp dụng các trường Brand Header
-                    const valBh1 = document.getElementById('cfgBrandHeader1')?.value?.trim();
-                    if (valBh1) {
-                        const el = doc.querySelector('.gov-text-1') || doc.querySelector('[data-config*="agency_1"]') || doc.querySelector('[data-config*="co_quan_1"]');
-                        if (el) { el.textContent = valBh1; hasModified = true; }
-                    }
-                    const valBh2 = document.getElementById('cfgBrandHeader2')?.value?.trim();
-                    if (valBh2) {
-                        const el = doc.querySelector('.gov-text-2') || doc.querySelector('[data-config*="agency_2"]') || doc.querySelector('[data-config*="co_quan_2"]');
-                        if (el) { el.textContent = valBh2; hasModified = true; }
-                    }
-                    const valLogo = document.getElementById('cfgBrandLogo')?.value?.trim();
-                    if (valLogo) {
-                        const img = doc.getElementById('brandLogoImg') || doc.querySelector('[data-config*="logo_url"]') || doc.querySelector('header img');
-                        if (img) { img.setAttribute('src', valLogo); hasModified = true; }
-                    }
-                    const valMember = document.getElementById('cfgBrandMemberText')?.value?.trim();
-                    if (valMember) {
-                        const el = doc.getElementById('brandMemberText') || doc.querySelector('.brand-member-text') || doc.querySelector('[data-config*="member_text"]');
-                        if (el) { el.textContent = valMember; hasModified = true; }
-                    }
-
-                    // 2. Áp dụng Tiêu đề & Huy hiệu Hero
-                    const valBadge = document.getElementById('cfgBadgeText')?.value?.trim();
-                    if (valBadge) {
-                        const el = doc.getElementById('heroBadgeText') || doc.querySelector('.hero-badge-text') || doc.querySelector('.gov-badge span:last-child') || doc.querySelector('[data-config*="tieu_de.badge"]');
-                        if (el) { el.textContent = valBadge; hasModified = true; }
-                    }
-                    const valTitle1 = document.getElementById('cfgTitleLine1')?.value?.trim();
-                    if (valTitle1) {
-                        const el = doc.getElementById('heroTitleLine1') || doc.querySelector('[data-config*="line_1"]') || doc.querySelector('[data-config*="title_1"]') || doc.querySelector('h1');
-                        if (el) { el.textContent = valTitle1; hasModified = true; }
-                    }
-                    const valTitle2 = document.getElementById('cfgTitleLine2')?.value?.trim();
-                    if (valTitle2) {
-                        const el = doc.getElementById('heroTitleLine2') || doc.querySelector('[data-config*="line_2"]') || doc.querySelector('[data-config*="title_2"]') || doc.querySelector('h2');
-                        if (el) { el.textContent = valTitle2; hasModified = true; }
-                    }
-                    const valSub = document.getElementById('cfgSubtitle')?.value?.trim();
-                    if (valSub) {
-                        const el = doc.getElementById('heroSubtitle') || doc.querySelector('.hero-subtitle') || doc.querySelector('[data-config*="subtitle"]') || doc.querySelector('[data-config*="mo_ta"]');
-                        if (el) { el.textContent = valSub; hasModified = true; }
-                    }
-
-                    // 3. Áp dụng 3 Khối Metric Box
-                    if (box1Top) {
-                        const el = doc.getElementById('infoEventDate') || doc.querySelector('[data-config*="box_1.top"]') || doc.querySelector('[data-config*="box_1_top"]') || doc.querySelector('[data-config*="thoi_gian_chia_se.ngay"]');
-                        if (el) { el.textContent = box1Top; hasModified = true; }
-                    }
-                    if (box1Btm) {
-                        const el = doc.getElementById('infoEventTime') || doc.querySelector('[data-config*="box_1.bottom"]') || doc.querySelector('[data-config*="box_1_bottom"]') || doc.querySelector('[data-config*="thoi_gian_chia_se.gio"]');
-                        if (el) { el.textContent = box1Btm; hasModified = true; }
-                    }
-                    if (box2Top) {
-                        const el = doc.getElementById('infoFormatTop') || doc.querySelector('[data-config*="box_2.top"]') || doc.querySelector('[data-config*="box_2_top"]');
-                        if (el) { el.textContent = box2Top; hasModified = true; }
-                    }
-                    if (box2Btm) {
-                        const el = doc.getElementById('infoFormatBottom') || doc.querySelector('[data-config*="box_2.bottom"]') || doc.querySelector('[data-config*="box_2_bottom"]');
-                        if (el) { el.textContent = box2Btm; hasModified = true; }
-                    }
-                    if (box3Top) {
-                        const el = doc.getElementById('infoDurationTop') || doc.querySelector('[data-config*="box_3.top"]') || doc.querySelector('[data-config*="box_3_top"]');
-                        if (el) { el.textContent = box3Top; hasModified = true; }
-                    }
-                    if (box3Btm) {
-                        const el = doc.getElementById('infoDurationBottom') || doc.querySelector('[data-config*="box_3.bottom"]') || doc.querySelector('[data-config*="box_3_bottom"]');
-                        if (el) { el.textContent = box3Btm; hasModified = true; }
-                    }
-
-                    // 4. Áp dụng các trường Dynamic Content Fields (nếu có)
-                    customFields.forEach(cf => {
-                        try {
-                            const el = doc.querySelector(cf.selector);
-                            if (el) {
-                                if (cf.type === 'heading' || cf.type === 'text') {
-                                    if (cf.value !== undefined) {
-                                        el.textContent = cf.value;
-                                        hasModified = true;
-                                    }
-                                } else if (cf.type === 'image') {
-                                    if (cf.value) {
-                                        el.setAttribute('src', cf.value);
-                                        hasModified = true;
-                                    }
-                                    if (cf.extra) {
-                                        el.setAttribute('alt', cf.extra);
-                                        hasModified = true;
-                                    }
-                                } else if (cf.type === 'cta') {
-                                    if (cf.value) {
-                                        el.textContent = cf.value;
-                                        hasModified = true;
-                                    }
-                                    if (cf.extra) {
-                                        el.setAttribute('href', cf.extra);
-                                        hasModified = true;
-                                    }
-                                } else if (cf.type === 'contact') {
-                                    if (cf.value) {
-                                        el.setAttribute('href', cf.value);
-                                        hasModified = true;
-                                    }
-                                    if (cf.extra && el.textContent.trim()) {
-                                        el.textContent = cf.extra;
-                                        hasModified = true;
-                                    }
-                                }
-                            }
-                        } catch (e) {}
-                    });
-
-                    // 5. Áp dụng Khóa học & Suất học
-                    const valEvTitle = document.getElementById('cfgEventTitle')?.value?.trim();
-                    if (valEvTitle) {
-                        const el = doc.getElementById('modalEventCourse') || doc.querySelector('[data-config*="khoa_hoc.ten"]');
-                        if (el) { el.textContent = valEvTitle; hasModified = true; }
-                    }
-                    const valEvQuota = document.getElementById('cfgEventQuota')?.value?.trim();
-                    if (valEvQuota) {
-                        const el = doc.getElementById('infoEventQuota') || doc.querySelector('[data-config*="khoa_hoc.suat_hoc"]');
-                        if (el) { el.textContent = valEvQuota; hasModified = true; }
-                    }
-
-                    // 6. Áp dụng Countdown Target Date
-                    const valTargetDate = document.getElementById('cfgTargetDate')?.value?.trim();
-                    if (valTargetDate) {
-                        hasModified = true;
-                    }
-
-                    if (hasModified) {
-                        let updatedHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-
-                        // Đồng bộ trực tiếp biến đếm ngược targetDate và window.APEX_LANDING_CONFIG trong mã HTML
-                        if (valTargetDate) {
-                            updatedHtml = updatedHtml.replace(/(let|const|var)\s+targetDate\s*=\s*new\s*Date\s*\(\s*["'][^"']+["']\s*\)/gi, `$1 targetDate = new Date("${valTargetDate}")`);
-                            updatedHtml = updatedHtml.replace(/(["']?target_date["']?\s*:\s*["'])[^"']+(["'])/gi, `$1${valTargetDate}$2`);
-                            updatedHtml = updatedHtml.replace(/(data-target-date\s*=\s*["'])[^"']+(["'])/gi, `$1${valTargetDate}$2`);
-                        }
-
-                        await fetch('/api/landings/code', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                page_id: pageId,
-                                domain: domainVal,
-                                code_html: updatedHtml
-                            })
-                        });
-                        await fetch('/api/landings/file', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                page_id: pageId,
-                                domain: domainVal,
-                                file_path: 'index.html',
-                                content: updatedHtml
-                            })
-                        });
-                        if (typeof studioFileContents !== 'undefined') {
-                            studioFileContents['index.html'] = updatedHtml;
-                            if (typeof activeStudioFile === 'undefined' || activeStudioFile === 'index.html') {
-                                const ed = document.getElementById('csCodeEditor');
-                                if (ed) ed.value = updatedHtml;
-                            }
-                            if (typeof refreshStudioPreview === 'function') {
-                                refreshStudioPreview();
-                            }
-                        }
-                    }
-                }
-            } catch (modErr) {
-                console.warn('Lỗi tự động cập nhật HTML:', modErr);
-            }
+            const settings = Object.assign({}, existingSettings, managedSettings);
+            settings.path_prefix = pathPrefixVal;
 
             const payload = {
                 page_id: pageId,
@@ -1609,8 +843,9 @@
 
 
 
-        function openLandingPreview(pageId) {
+        function openLandingPreview(pageId, domain) {
             currentModalPreviewPageId = pageId;
+            currentModalPreviewDomain = domain || '';
             document.getElementById('previewPageIdBadge').innerText = pageId;
             setModalPreviewDevice('pc');
             refreshModalPreview();
@@ -1657,12 +892,12 @@
         function refreshModalPreview() {
             if (!currentModalPreviewPageId) return;
             const iframe = document.getElementById('pvFrameIframe');
-            iframe.src = `/api/landings/preview?page_id=${encodeURIComponent(currentModalPreviewPageId)}&bypass=1&preview=1&v=${Date.now()}`;
+            iframe.src = `/api/landings/preview?page_id=${encodeURIComponent(currentModalPreviewPageId)}&domain=${encodeURIComponent(currentModalPreviewDomain || '')}&bypass=1&preview=1&v=${Date.now()}`;
         }
 
         function openModalPreviewNewTab() {
             if (!currentModalPreviewPageId) return;
-            window.open(`/api/landings/preview?page_id=${encodeURIComponent(currentModalPreviewPageId)}&bypass=1&preview=1`, '_blank');
+            window.open(`/api/landings/preview?page_id=${encodeURIComponent(currentModalPreviewPageId)}&domain=${encodeURIComponent(currentModalPreviewDomain || '')}&bypass=1&preview=1`, '_blank');
         }
 
         // Điều hướng sang Visual Web Builder (Studio Workspace độc lập)
