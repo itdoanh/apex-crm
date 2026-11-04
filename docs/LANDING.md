@@ -236,6 +236,34 @@ bảng `landing_files`**. Vì vậy sửa `tracker.js` trong git rồi `git pull
 > WHERE file_path = '<file>';
 > ```
 
+### 📁 Cây file & Upload từ máy (từ 2026-11-04)
+
+Mỗi landing có một cây file riêng trong bảng `landing_files`, quản lý từ
+**Code Studio → File Explorer** (panel bên trái).
+
+| Thao tác | Cách làm | Endpoint |
+|---|---|---|
+| Tạo thư mục | Nút "Mục" hoặc hover vào thư mục → `fa-folder-plus` | `POST /api/landings/folder/create` |
+| Tạo file | Nút "Tệp" | `POST /api/landings/file` |
+| **Upload file từ máy** | Nút **"Tải lên"** (header File Explorer) hoặc hover thư mục → icon cloud | `POST /api/landings/files/upload` |
+| Đổi tên | Hover file/thư mục → icon bút | `POST /api/landings/file/rename` / `folder/rename` |
+| Xoá | Hover file/thư mục → icon thùng | `DELETE /api/landings/file` / `folder/delete` |
+
+**Quy tắc lưu & deploy (quan trọng):**
+
+1. Bấm **"Lưu Code"** (`Ctrl+S`) → gửi **toàn bộ** file văn bản trong cây lên
+   `POST /api/landings/files/save`.
+2. Bấm **"Deploy"** (`Ctrl+Enter`) → gửi lại toàn bộ file lên
+   `POST /api/landings/deploy` (payload `files`), backend đồng bộ **tất cả** file
+   (ảnh, video, css, js…) sang domain đích — không chỉ `index.html`.
+
+> ⚠️ File nhị phân (ảnh/video/audio/font/pdf) được lưu thẳng vào `landing_files` lúc upload
+> (dạng `data:<mime>;base64,...`), **không** gửi lại qua JSON mỗi lần lưu (vì có thể
+> tới 100MB/tệp). Backend tự đồng bộ chúng sang domain đích khi deploy.
+
+> 💡 Upload vào domain rỗng (bản gốc) sẽ tự động tạo bản sao cho domain hiện tại.
+> Deploy sang domain mới sẽ copy toàn bộ cây file sang domain đó.
+
 ### UTM chuẩn
 
 | Tham số | Ý nghĩa | Ví dụ |

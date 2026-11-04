@@ -351,6 +351,9 @@
                                         <span class="truncate font-semibold text-slate-200 text-xs">${escapeHTML(item.name)}</span>
                                     </div>
                                     <div class="hidden group-hover/fld:flex items-center gap-0.5 text-[11px]" onclick="event.stopPropagation()">
+                                        <button onclick="openStudioUploadModal('${escapeHTML(item.path)}')" class="text-slate-400 hover:text-emerald-400 p-1" title="Tải tệp từ máy vào thư mục này">
+                                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                                        </button>
                                         <button onclick="openNewFileModal('${escapeHTML(item.path)}')" class="text-slate-400 hover:text-cyan-400 p-1" title="Tạo tệp">
                                             <i class="fa-solid fa-file-circle-plus"></i>
                                         </button>
@@ -907,31 +910,72 @@
             }
         }
 
+        // Gom toàn bộ nội dung file đang có trong File Manager thành mảng payload.
+        // Bao gồm cả file đang chỉnh sửa dở trong editor (đảm bảo không mất thay đổi).
+        //
+        // CHỈ gửi file VĂN BẢN (html/css/js/json/txt...).
+        // File nhị phân (ảnh, video, âm thanh, font, pdf) đã được lưu thẳng vào
+        // bảng `landing_files` lúc upload → không cần (và không nên) gửi lại base64
+        // trong JSON, vì có thể lên tới 100MB/tệp.
+        // Backend tự đồng bộ file nhị phân sang domain đích khi deploy.
+        function collectStudioFilesPayload() {
+            const editor = document.getElementById('csCodeEditor');
+            if (editor && activeStudioFile) {
+                studioFileContents[activeStudioFile] = editor.value;
+            }
+            return Object.keys(studioFileContents)
+                .filter(fp => !isBinaryStudioPath(fp))
+                .map(fp => ({
+                    file_path: fp,
+                    file_type: '',
+                    content: studioFileContents[fp] ?? ''
+                }));
+        }
+
+        // Kiểm tra 1 đường dẫn file có phải file nhị phân (ảnh/video/audio/font/pdf) hay không
+        function isBinaryStudioPath(filePath) {
+            const ext = (filePath.match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+            return [
+                '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico', '.bmp', '.avif',
+                '.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v',
+                '.mp3', '.wav', '.m4a', '.flac', '.aac',
+                '.woff', '.woff2', '.ttf', '.otf', '.eot',
+                '.pdf', '.zip', '.rar', '.7z', '.gz'
+            ].includes(ext);
+        }
+
         // Lưu mã nguồn (100% nguyên bản từ Shadow Source / AST, KHÔNG lấy từ DOM outerHTML)
+        //
+        // Yêu cầu 2026-11-04: lưu TOÀN BỘ file trong cây File Manager (không chỉ file
+        // đang mở) — bao gồm ảnh/video/âm thanh đã upload vào thư mục, để khi Deploy
+        // không bị thiếu tài nguyên.
         async function saveStudioCode() {
             if (!currentStudioLanding) return;
             const content = document.getElementById('csCodeEditor').value;
             studioFileContents[activeStudioFile] = content;
+
+            const files = collectStudioFilesPayload();
 
             const btn = document.getElementById('btnSaveCode') || document.getElementById('btnSaveDraft');
             const origText = btn ? btn.innerHTML : '';
             if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang lưu mã...';
 
             try {
-                const res = await fetch('/api/landings/file', {
+                const res = await fetch('/api/landings/files/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         domain: currentStudioLanding.domain,
                         page_id: currentStudioLanding.page_id,
-                        file_path: activeStudioFile,
-                        content: content
+                        files: files
                     })
                 });
                 if (!res.ok) throw new Error('Không thể lưu mã nguồn');
+                const result = await res.json();
 
                 studioEditorDirty = false;
-                document.getElementById('csSaveStatus').innerText = 'Đã lưu lúc ' + new Date().toLocaleTimeString('vi-VN');
+                const n = result.saved != null ? result.saved : files.length;
+                document.getElementById('csSaveStatus').innerText = `Đã lưu ${n} tệp lúc ${new Date().toLocaleTimeString('vi-VN')}`;
                 document.getElementById('csSaveStatus').className = 'text-[11px] text-emerald-400 font-bold font-mono ml-2';
                 refreshStudioPreview();
             } catch (e) {
@@ -943,6 +987,9 @@
         const saveCodeDraft = saveStudioCode;
 
         // Xuất bản chính thức (Deploy)
+        //
+        // Yêu cầu 2026-11-04: Deploy phải đưa TOÀN BỘ file trong thư mục lên domain
+        // đích (ảnh, video, css, js...), không chỉ index.html.
         async function deployCodeLive() {
             if (!currentStudioLanding) return;
             const content = document.getElementById('csCodeEditor').value;
@@ -953,31 +1000,35 @@
                 mainHtml = content;
             }
 
+            const files = collectStudioFilesPayload();
+
             const btn = document.getElementById('btnDeployLive');
             const origText = btn.innerHTML;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang Deploy...';
 
             try {
-                // 1. Lưu file hiện tại trước khi deploy
-                await fetch('/api/landings/file', {
+                // 1. Lưu TOÀN BỘ file vào DB trước khi deploy (1 request duy nhất)
+                const saveRes = await fetch('/api/landings/files/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         domain: currentStudioLanding.domain || '',
                         page_id: currentStudioLanding.page_id,
-                        file_path: activeStudioFile,
-                        content: content
+                        files: files
                     })
                 });
+                if (!saveRes.ok) throw new Error('Không thể lưu file trước khi deploy');
 
                 // 2. Kích hoạt Deploy chính thức lên hệ thống Multi-Domain & Edge Router
+                //    (kèm toàn bộ file để backend đồng bộ lên domain đích)
                 const res = await fetch('/api/landings/deploy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         domain: currentStudioLanding.domain || '',
                         page_id: currentStudioLanding.page_id,
-                        code_html: mainHtml
+                        code_html: mainHtml,
+                        files: files
                     })
                 });
                 if (!res.ok) throw new Error('Deploy thất bại');
@@ -988,15 +1039,16 @@
                     ? result.public_url
                     : `${window.location.origin}${result.public_url || ('/p/' + currentStudioLanding.page_id)}`;
 
+                const deployedCount = result.deployed_files != null ? result.deployed_files : files.length;
                 const statusLabel = result.is_custom_domain
-                    ? `🚀 ĐÃ DEPLOY LÊN TÊN MIỀN: ${result.domain}${result.path_prefix || ''}`
-                    : `🚀 ĐÃ XUẤT BẢN THÀNH CÔNG (${new Date().toLocaleTimeString('vi-VN')})`;
+                    ? `🚀 ĐÃ DEPLOY ${deployedCount} TỆP LÊN TÊN MIỀN: ${result.domain}${result.path_prefix || ''}`
+                    : `🚀 ĐÃ XUẤT BẢN ${deployedCount} TỆP THÀNH CÔNG (${new Date().toLocaleTimeString('vi-VN')})`;
 
                 document.getElementById('csSaveStatus').innerText = statusLabel;
                 document.getElementById('csSaveStatus').className = 'text-[11px] text-emerald-300 font-bold font-mono ml-2';
 
                 refreshStudioPreview();
-                if (confirm(`🎉 ${result.message}\n\nĐường dẫn trực tiếp: ${finalUrl}\n\nBạn có muốn mở trang web đã deploy trong tab mới để kiểm tra ngay không?`)) {
+                if (confirm(`🎉 ${result.message}\n\nĐã deploy ${deployedCount} tệp tin.\nĐường dẫn trực tiếp: ${finalUrl}\n\nBạn có muốn mở trang web đã deploy trong tab mới để kiểm tra ngay không?`)) {
                     window.open(finalUrl, '_blank');
                 }
             } catch (e) {
@@ -1423,6 +1475,138 @@
                 }
             } catch (e) {
                 alert('Lỗi xóa file: ' + e.message);
+            }
+        }
+
+        // ============================================================
+        // 17.14b. TẢI TỆP TỪ MÁY LÊN SERVER (Upload Assets)
+        // ------------------------------------------------------------
+        // Yêu cầu 2026-11-04: nút upload trong File Explorer panel.
+        // File được gửi lên endpoint /api/landings/files/upload với thư mục đích,
+        // lưu vào bảng `landing_files` (domain rỗng = bản gốc + domain đích).
+        // Sau đó Deploy sẽ đồng bộ TOÀN BỘ file lên domain đích.
+        // ============================================================
+        function openStudioUploadModal(parentFolder = '') {
+            if (!currentStudioLanding) {
+                alert('Vui lòng mở một Landing Page trước khi tải tệp lên.');
+                return;
+            }
+            populateFolderDropdowns(parentFolder);
+            const sel = document.getElementById('studioUploadFolder');
+            if (sel) {
+                sel.value = parentFolder || '';
+            }
+            const input = document.getElementById('studioUploadInput');
+            if (input) input.value = '';
+            const prog = document.getElementById('studioUploadProgress');
+            if (prog) prog.classList.add('hidden');
+            const btn = document.getElementById('btnStudioUploadConfirm');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = 'Tải Lên';
+            }
+            document.getElementById('studioUploadModal').classList.remove('hidden');
+        }
+
+        function closeStudioUploadModal() {
+            document.getElementById('studioUploadModal').classList.add('hidden');
+        }
+
+        /** Đồng bộ cây thư mục + nội dung file từ server sau khi upload. */
+        async function reloadStudioFilesAfterMutation() {
+            try {
+                const res = await fetch(`/api/landings/files?page_id=${encodeURIComponent(currentStudioLanding.page_id)}&domain=${encodeURIComponent(currentStudioLanding.domain || '')}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const files = data.files || [];
+
+                // Giữ lại nội dung đang chỉnh sửa trong editor (tránh mất dữ liệu)
+                const pending = {};
+                if (studioEditorDirty && activeStudioFile) {
+                    const editor = document.getElementById('csCodeEditor');
+                    if (editor) pending[activeStudioFile] = editor.value;
+                }
+
+                studioFolders = [];
+                const nextContents = {};
+                files.forEach(f => {
+                    if (f.file_type === 'folder') {
+                        if (!studioFolders.includes(f.file_path)) studioFolders.push(f.file_path);
+                    } else {
+                        nextContents[f.file_path] = f.content || '';
+                    }
+                });
+
+                // Ghi đè bằng nội dung đang sửa dở (nếu có)
+                Object.keys(pending).forEach(k => { nextContents[k] = pending[k]; });
+
+                studioFileContents = nextContents;
+                if (!studioFileContents['index.html'] && currentStudioLanding.code_html) {
+                    studioFileContents['index.html'] = currentStudioLanding.code_html;
+                }
+                renderStudioFileList();
+            } catch (_) { /* bỏ qua lỗi refresh phụ */ }
+        }
+
+        async function submitStudioUpload() {
+            if (!currentStudioLanding) return;
+
+            const input = document.getElementById('studioUploadInput');
+            const folder = (document.getElementById('studioUploadFolder')?.value || '').trim();
+            if (!input || !input.files || input.files.length === 0) {
+                alert('Vui lòng chọn ít nhất một tệp tin để tải lên.');
+                return;
+            }
+
+            const btn = document.getElementById('btnStudioUploadConfirm');
+            const origBtnText = btn ? btn.innerHTML : '';
+            const prog = document.getElementById('studioUploadProgress');
+            const bar = document.getElementById('studioUploadBar');
+            const status = document.getElementById('studioUploadStatus');
+
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang tải...'; }
+            if (prog) prog.classList.remove('hidden');
+            if (bar) bar.style.width = '0%';
+            if (status) status.innerText = 'Đang tải lên...';
+
+            const formData = new FormData();
+            formData.append('page_id', currentStudioLanding.page_id);
+            formData.append('domain', currentStudioLanding.domain || '');
+            formData.append('folder', folder);
+            for (let i = 0; i < input.files.length; i++) {
+                formData.append('files', input.files[i]);
+            }
+
+            try {
+                const res = await fetch('/api/landings/files/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(errText || 'Không thể tải tệp lên');
+                }
+                const result = await res.json();
+
+                if (bar) bar.style.width = '100%';
+                if (status) status.innerText = result.message || 'Tải lên thành công';
+
+                await reloadStudioFilesAfterMutation();
+
+                closeStudioUploadModal();
+                if (typeof showToastNotification === 'function') {
+                    showToastNotification(result.message || 'Đã tải lên tệp tin', 'success');
+                } else {
+                    alert(result.message || 'Đã tải lên tệp tin');
+                }
+            } catch (e) {
+                if (status) status.innerText = 'Lỗi: ' + e.message;
+                alert('Lỗi tải tệp lên: ' + e.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origBtnText;
+                }
             }
         }
 

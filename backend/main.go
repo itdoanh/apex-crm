@@ -144,6 +144,7 @@ func main() {
 	mux.HandleFunc("/api/landings/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeleteLanding)))
 	mux.HandleFunc("/api/landings/files", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleListFiles)))
 	mux.HandleFunc("/api/landings/file/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveFile)))
+	mux.HandleFunc("/api/landings/files/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveFilesBatch)))
 	mux.HandleFunc("/api/landings/files/upload", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleUploadFile)))
 	mux.HandleFunc("/api/landings/file/upload", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleUploadFile)))
 	mux.HandleFunc("/api/landings/file/raw", leadHandler.CORSMiddleware(landingHandler.HandleServeRawFile))

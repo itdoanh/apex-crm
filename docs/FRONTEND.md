@@ -121,9 +121,43 @@ studio.html
 | History 50 bước | Undo `Ctrl+Z` / Redo `Ctrl+Y`, dropdown lịch sử |
 | Layers | 7 nhóm: Text, Image, Button, Form, Section, Box, Icon |
 | Context menu | 20 hành động, xuyên thấu iframe, chống tràn mép màn hình |
-| Form scanner | Quét DOM tìm input → gợi ý mapping vào CSDL |
 | Hand mode | Nhấn giữ `Space` để pan canvas |
 | AST mapper | Đồng bộ DOM ↔ code, giữ `data-ve-id` xuyên suốt |
+| File Manager | Cây thư mục + tạo/đổi tên/xoá file & thư mục |
+| Upload từ máy | Nút "Tải lên" trong File Explorer → `POST /api/landings/files/upload` |
+
+### 📁 File Manager — lưu & deploy TOÀN BỘ file (từ 2026-11-04)
+
+**Vấn đề đã gặp**: trước đây `saveStudioCode()` chỉ POST **1 file đang mở** và
+`deployCodeLive()` chỉ đồng bộ `index.html` ⇒ file ảnh/video upload trong thư mục
+bị "mất" khi deploy lên domain.
+
+**Cách sửa**:
+
+| Hành động | Endpoint | Gửi gì |
+|---|---|---|
+| **Lưu Code** (`Ctrl+S`) | `POST /api/landings/files/save` | **Toàn bộ** file văn bản trong cây |
+| **Deploy** (`Ctrl+Enter`) | `POST /api/landings/files/save` + `POST /api/landings/deploy` | **Toàn bộ** file văn bản (payload `files`) |
+
+Hàm helper quan trọng trong `js/studio/file-manager.js`:
+
+| Hàm | Vai trò |
+|---|---|
+| `collectStudioFilesPayload()` | Gom `studioFileContents` thành mảng `{file_path, file_type, content}` — **chỉ file văn bản** |
+| `isBinaryStudioPath(path)` | Loại file nhị phân (ảnh/video/audio/font/pdf) khỏi payload |
+| `reloadStudioFilesAfterMutation()` | Refresh cây file từ server sau upload/xoá (giữ nội dung đang sửa dở) |
+| `openStudioUploadModal(folder)` | Mở modal upload, chọn thư mục đích |
+| `submitStudioUpload()` | `POST /api/landings/files/upload` (multipart, nhiều file) |
+
+> 💡 **Vì sao không gửi file nhị phân trong JSON?** File upload lên tới 100MB và được lưu
+> dạng base64 trong DB. Gửi lại qua JSON mỗi lần lưu sẽ làm request nặng và chậm.
+> Backend tự đồng bộ file nhị phân sang domain đích qua `SyncLandingFilesToDomain()`.
+
+> ⚠️ **Thứ tự deploy trong backend** (`HandleDeployLanding`):
+> 1. `SyncLandingFilesToDomain("", targetDomain, page_id)` — copy file có sẵn trong DB.
+> 2. Ghi đè bằng `payload.Files` — nội dung mới nhất.
+>
+> Đảo thứ tự sẽ khiến file upload bị bản gốc cũ đè mất.
 
 ### Keyboard shortcuts
 
@@ -131,7 +165,7 @@ studio.html
 |---|---|
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
-| `Ctrl+S` | Lưu code (POST `/api/landings/code`) |
+| `Ctrl+S` | Lưu code + toàn bộ file (`POST /api/landings/files/save`) |
 | `Space` (giữ) | Hand mode / pan |
 | `Delete` | Xoá element đang chọn |
 | `Esc` | Bỏ chọn |

@@ -182,13 +182,81 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 | `/api/landings/delete` | POST | Xoá landing |
 | `/api/landings/files` | GET | Cây file (File Manager) |
 | `/api/landings/file/save` | POST | Lưu 1 file |
+| `/api/landings/files/save` | POST | Lưu **nhiều file** trong 1 request (batch) |
 | `/api/landings/file/upload` | POST | Upload file (ảnh/video) |
+| `/api/landings/files/upload` | POST | Upload **nhiều file** từ máy (alias) |
 | `/api/landings/file/raw` | GET | Serve file nhị phân |
 | `/api/landings/file/rename` | POST | Đổi tên file |
 | `/api/landings/folder/create` | POST | Tạo thư mục |
 | `/api/landings/folder/rename` | POST | Đổi tên thư mục |
 | `/api/landings/folder/delete` | POST | Xoá thư mục |
 | `/api/landings/preview` | GET | Xem trước |
+
+### `POST /api/landings/files/save` — Admin (batch save)
+
+Lưu nhiều file của landing trong **1 request** (thay vì N request riêng lẻ).
+
+**Body:**
+```json
+{
+  "domain": "ads.giaodichhanghoatuonglai.com",
+  "page_id": "landing_cu",
+  "files": [
+    { "file_path": "index.html", "file_type": "html", "content": "<!DOCTYPE html>..." },
+    { "file_path": "assets/css/style.css", "file_type": "css", "content": "body {...}" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "saved": 2,
+  "failed": [],
+  "message": "Đã lưu 2/2 tệp tin"
+}
+```
+
+> 💡 Ghi chú: nếu `domain` khác rỗng, mỗi file cũng được ghi thêm vào bản gốc (`domain = ''`)
+> để khi Deploy sang domain khác không bị thiếu file.
+> File nhị phân (ảnh/video) **không** gửi qua endpoint này — chúng đã lưu sẵn trong DB lúc upload.
+
+### `POST /api/landings/files/upload` — Admin (upload từ máy)
+
+Upload file từ máy lên server vào một thư mục bất kỳ trong cây File Manager.
+
+**Multipart form fields:**
+
+| Field | Bắt buộc | Mô tả |
+|---|---|---|
+| `page_id` | ✅ | Mã landing |
+| `domain` | — | Domain đích (rỗng = bản gốc) |
+| `folder` | — | Thư mục đích, vd `assets/img` (rỗng = gốc) |
+| `files` | ✅ | File (có thể nhiều file, cùng tên field) |
+
+- Giới hạn 100MB/tệp.
+- File nhị phân được lưu dạng `data:<mime>;base64,...` trong `landing_files.content`.
+- Cấm các đuôi: `.exe .bat .cmd .sh .ps1 .php .jsp .asp`.
+- Tự động lưu cả bản gốc (`domain=''`) nếu `domain` khác rỗng.
+
+### `POST /api/landings/deploy` — Admin
+
+Deploy landing lên domain/path. Body:
+
+| Field | Mô tả |
+|---|---|
+| `domain` | Domain đích (rỗng = lấy từ route hiện tại) |
+| `page_id` | Mã landing |
+| `code_html` | Nội dung `index.html` |
+| `files` | *(mới)* Mảng file `{file_path, file_type, content}` — **toàn bộ** file trong cây File Manager |
+
+> ⚠️ **Từ 2026-11-04**: `files` cho phép deploy **toàn bộ** file (ảnh, video, css, js...)
+> chứ không chỉ `index.html`. Thứ tự trong backend:
+> 1. `SyncLandingFilesToDomain("", targetDomain, page_id)` — copy file có sẵn trong DB.
+> 2. Ghi đè bằng `files` — nội dung mới nhất.
+>
+> Response bổ sung field `deployed_files` (số file đã deploy).
 
 ### `GET /api/landing/config` — **Public**
 Trả config của landing mặc định (dùng để inject script & feature flag):

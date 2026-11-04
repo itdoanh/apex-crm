@@ -369,6 +369,13 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		Domain   string `json:"domain"`
 		PageID   string `json:"page_id"`
 		CodeHTML string `json:"code_html"`
+		// Files: toàn bộ file trong cây File Manager (đã bao gồm index.html).
+		// Deploy sẽ ghi TẤT CẢ file này xuống domain đích, không chỉ index.html.
+		Files []struct {
+			FilePath string `json:"file_path"`
+			FileType string `json:"file_type"`
+			Content  string `json:"content"`
+		} `json:"files"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -419,7 +426,27 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		cleanPrefix = strings.TrimRight(cleanPrefix, "/")
 	}
 
-	// 2. Cập nhật mã nguồn và trạng thái 'published' cho bản ghi gốc (domain "")
+	// 2. Ghi TOÀN BỘ file của landing (không chỉ index.html) vào bản gốc (domain "")
+	//
+	// Yêu cầu 2026-11-04: khi Deploy, mọi file trong cây File Manager (ảnh, video,
+	// âm thanh, css, js...) phải được lưu & deploy lên domain đích. Trước đây chỉ
+	// index.html được đồng bộ ⇒ file upload trong thư mục bị "mất" khi deploy.
+	deployedFiles := 0
+	for _, f := range payload.Files {
+		fp := strings.TrimPrefix(strings.TrimSpace(f.FilePath), "/")
+		if fp == "" || strings.Contains(fp, "..") {
+			continue
+		}
+		fileType := strings.TrimSpace(f.FileType)
+		if fileType == "" {
+			fileType = guessLandingFileType(fp)
+		}
+		if err := h.store.SaveLandingFile("", payload.PageID, fp, fileType, f.Content); err != nil {
+			continue
+		}
+		deployedFiles++
+	}
+
 	if err := h.store.UpdateLandingCode("", payload.PageID, payload.CodeHTML, "published"); err != nil {
 		http.Error(w, fmt.Sprintf("Lỗi xuất bản: %v", err), http.StatusInternalServerError)
 		return
@@ -434,7 +461,29 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		isCustomDomain = true
 		_ = h.store.UpdateLandingCode(targetDomain, payload.PageID, payload.CodeHTML, "published")
 		_ = h.store.SaveLandingFile(targetDomain, payload.PageID, "index.html", "html", payload.CodeHTML)
+
+		// Đồng bộ TẤT CẢ file (không chỉ index.html) sang domain đích.
+		//
+		// THỨ TỰ QUAN TRỌNG:
+		// 1) SyncLandingFilesToDomain copy các file đang lưu ở domain rỗng (bản gốc)
+		//    sang domain đích — bảo đảm file có sẵn trong DB cũng được deploy.
+		// 2) Sau đó ghi đè bằng payload.Files (nội dung mới nhất người dùng vừa lưu).
+		//    Nếu đảo thứ tự, file upload trong thư mục sẽ bị bản gốc cũ đè mất.
 		_ = h.store.SyncLandingFilesToDomain("", targetDomain, payload.PageID)
+
+		if len(payload.Files) > 0 {
+			for _, f := range payload.Files {
+				fp := strings.TrimPrefix(strings.TrimSpace(f.FilePath), "/")
+				if fp == "" || strings.Contains(fp, "..") {
+					continue
+				}
+				fileType := strings.TrimSpace(f.FileType)
+				if fileType == "" {
+					fileType = guessLandingFileType(fp)
+				}
+				_ = h.store.SaveLandingFile(targetDomain, payload.PageID, fp, fileType, f.Content)
+			}
+		}
 		_ = h.store.ToggleLandingActive(targetDomain, payload.PageID, true)
 		h.cache.Invalidate(targetDomain, payload.PageID)
 
@@ -508,6 +557,7 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		"is_custom_domain": isCustomDomain,
 		"domain":           targetDomain,
 		"path_prefix":      cleanPrefix,
+		"deployed_files":   deployedFiles,
 	})
 }
 
@@ -722,6 +772,138 @@ func (h *LandingHandler) HandleSaveFile(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Đã lưu tệp tin '%s'", payload.FilePath),
+	})
+}
+
+// guessLandingFileType suy ra loại file từ đuôi tên file để lưu vào landing_files.
+// Dùng chung cho HandleSaveFilesBatch & HandleDeployLanding.
+func guessLandingFileType(filePath string) string {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".html", ".htm":
+		return "html"
+	case ".css":
+		return "css"
+	case ".js":
+		return "js"
+	case ".json":
+		return "json"
+	case ".folder":
+		return "folder"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".mp4":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".ogg":
+		return "audio/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".m4a":
+		return "audio/mp4"
+	default:
+		return "text"
+	}
+}
+
+// HandleSaveFilesBatch lưu hàng loạt nhiều tệp tin của landing trong 1 request.
+//
+// BỐI CẢNH (yêu cầu 2026-11-04):
+// Code Studio cho phép upload file từ máy lên server (ảnh, video, âm thanh, tài liệu...)
+// vào bất kỳ thư mục nào trong cây File Manager. Khi bấm "Lưu Code" hoặc "Deploy",
+// toàn bộ file trong thư mục phải được lưu & deploy lên domain đích — không chỉ index.html.
+//
+// Endpoint này nhận danh sách file (file_path + content) và ghi tất cả vào bảng
+// `landing_files` trong 1 lần gọi DB, thay vì N request riêng lẻ.
+func (h *LandingHandler) HandleSaveFilesBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Domain string `json:"domain"`
+		PageID string `json:"page_id"`
+		Files  []struct {
+			FilePath string `json:"file_path"`
+			FileType string `json:"file_type"`
+			Content  string `json:"content"`
+		} `json:"files"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "JSON không hợp lệ", http.StatusBadRequest)
+		return
+	}
+
+	payload.PageID = strings.TrimSpace(payload.PageID)
+	if payload.PageID == "" {
+		http.Error(w, "Thiếu page_id", http.StatusBadRequest)
+		return
+	}
+	if len(payload.Files) == 0 {
+		http.Error(w, "Không có tệp tin nào để lưu", http.StatusBadRequest)
+		return
+	}
+
+	saved := 0
+	failed := make([]string, 0)
+	indexHTML := ""
+
+	for _, f := range payload.Files {
+		fp := strings.TrimPrefix(strings.TrimSpace(f.FilePath), "/")
+		if fp == "" {
+			continue
+		}
+		// Chặn path traversal
+		if strings.Contains(fp, "..") {
+			failed = append(failed, f.FilePath)
+			continue
+		}
+
+		fileType := strings.TrimSpace(f.FileType)
+		if fileType == "" {
+			fileType = guessLandingFileType(fp)
+		}
+
+		if err := h.store.SaveLandingFile(payload.Domain, payload.PageID, fp, fileType, f.Content); err != nil {
+			failed = append(failed, fp)
+			continue
+		}
+		// Giữ bản gốc (domain rỗng) luôn đồng bộ với bản theo domain,
+		// để khi Deploy sang domain khác thì không bị thiếu file.
+		if payload.Domain != "" {
+			_ = h.store.SaveLandingFile("", payload.PageID, fp, fileType, f.Content)
+		}
+		saved++
+		if fp == "index.html" {
+			indexHTML = f.Content
+		}
+	}
+
+	// Nếu có index.html → cập nhật landing_pages.code_html + làm mới cache RAM
+	if indexHTML != "" {
+		_ = h.store.UpdateLandingCode(payload.Domain, payload.PageID, indexHTML, "published")
+		h.cache.Invalidate(payload.Domain, payload.PageID)
+		p, _ := h.store.GetLandingPage(payload.Domain, payload.PageID)
+		if p != nil {
+			h.cache.Set(p)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  saved > 0,
+		"saved":    saved,
+		"failed":   failed,
+		"message":  fmt.Sprintf("Đã lưu %d/%d tệp tin", saved, len(payload.Files)),
 	})
 }
 
