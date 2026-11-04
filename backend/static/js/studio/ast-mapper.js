@@ -280,13 +280,39 @@
                     `    window.__APEX_STUDIO_LANDING_ID__ = ${JSON.stringify(this.studioLandingId || '')};\n` +
                     `    window.__APEX_STUDIO_DOMAIN__ = ${JSON.stringify(this.studioDomain || '')};\n` +
                     `    window.__APEX_STUDIO_LANDING_NAME__ = ${JSON.stringify(this.studioLandingName || '')};\n` +
-                    `    try {\n` +
-                    `        window.APEX_LANDING_CONFIG = Object.assign({}, window.APEX_LANDING_CONFIG || {}, {\n` +
-                    `            landing_id: window.__APEX_STUDIO_LANDING_ID__,\n` +
-                    `            domain: window.__APEX_STUDIO_DOMAIN__,\n` +
-                    `            name: window.__APEX_STUDIO_LANDING_NAME__\n` +
-                    `        });\n` +
-                    `    } catch(e) {}\n` +
+                    // BẪY GHI ĐÈ (property trap): script trong HTML template thường gán
+                    // `window.APEX_LANDING_CONFIG = { landing_id: 'mxv_080_online', ... }`
+                    // ở phía SAU helper script này → ghi đè mất landing đang mở trong
+                    // Studio và preview hiển thị sai landing.
+                    // Dùng defineProperty với setter để ép lại đúng landing mở trong
+                    // Studio mỗi khi HTML gán lại config.
+                    `    (function(){\n` +
+                    `        var __apexStudioCfg = window.APEX_LANDING_CONFIG || {};\n` +
+                    `        __apexStudioCfg.landing_id = window.__APEX_STUDIO_LANDING_ID__;\n` +
+                    `        __apexStudioCfg.domain = window.__APEX_STUDIO_DOMAIN__;\n` +
+                    `        __apexStudioCfg.name = window.__APEX_STUDIO_LANDING_NAME__;\n` +
+                    `        try {\n` +
+                    `            Object.defineProperty(window, 'APEX_LANDING_CONFIG', {\n` +
+                    `                configurable: true,\n` +
+                    `                enumerable: true,\n` +
+                    `                get: function() { return __apexStudioCfg; },\n` +
+                    `                set: function(v) {\n` +
+                    `                    if (v && typeof v === 'object') {\n` +
+                    `                        v.landing_id = window.__APEX_STUDIO_LANDING_ID__;\n` +
+                    `                        v.domain = window.__APEX_STUDIO_DOMAIN__;\n` +
+                    `                        v.name = window.__APEX_STUDIO_LANDING_NAME__;\n` +
+                    `                    }\n` +
+                    `                    __apexStudioCfg = v || __apexStudioCfg;\n` +
+                    `                }\n` +
+                    `            });\n` +
+                    `        } catch(e) {\n` +
+                    `            window.APEX_LANDING_CONFIG = Object.assign({}, window.APEX_LANDING_CONFIG || {}, {\n` +
+                    `                landing_id: window.__APEX_STUDIO_LANDING_ID__,\n` +
+                    `                domain: window.__APEX_STUDIO_DOMAIN__,\n` +
+                    `                name: window.__APEX_STUDIO_LANDING_NAME__\n` +
+                    `            });\n` +
+                    `        }\n` +
+                    `    })();\n` +
                     `    window.redirectToChucMung = function() { console.log('[Studio] Blocked redirectToChucMung call'); };\n` +
                     `    document.addEventListener('DOMContentLoaded', function() {\n` +
                     `        var observer = new MutationObserver(function(mutations) {\n` +
