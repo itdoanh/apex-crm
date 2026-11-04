@@ -600,6 +600,11 @@
             try {
                 const zaloLinks = document.querySelectorAll('a[href*="zalo.me"]');
                 zaloLinks.forEach(function(a) {
+                    // KHÔNG ghi đè link nhóm Zalo (/zalo.me/g/...) — đây là link cố định
+                    // do Admin/Ladi Studio cấu hình trực tiếp trong HTML (vd: nút "Tham gia
+                    // nhóm Zalo", mã QR). Ghi đè sẽ biến nút thành chat 1-1 theo SĐT.
+                    const href = a.getAttribute('href') || '';
+                    if (href.includes('zalo.me/g/')) return;
                     a.setAttribute('href', zaloVal);
                 });
             } catch (_) {}

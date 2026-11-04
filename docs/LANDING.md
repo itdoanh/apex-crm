@@ -174,6 +174,25 @@ FROM domain_routes r JOIN domains d ON d.id = r.domain_id;
 
 Backend tự inject vào HTML khi render (`InjectDynamicScripts`).
 
+### Hotline & Zalo link
+
+Đặt trong `settings` của landing trong CRM:
+- `hotline` — số điện thoại hiển thị & link `tel:` (vd: `0984386538`)
+- `zalo_link` — link Zalo mặc định (chat 1-1 theo SĐT: `https://zalo.me/0984386538`,
+  hoặc link nhóm: `https://zalo.me/g/xxxxx`)
+
+`tracker.js` (`applyConfigToDOM`) tự ghi đè các thẻ `<a href*="zalo.me">` và `<a href^="tel:">`
+bằng giá trị trên.
+
+> ⚠️ **Ngoại lệ link nhóm Zalo**: `tracker.js` **không** ghi đè các thẻ có `href` chứa
+> `zalo.me/g/` — đây là link nhóm cố định do Admin/Ladi Studio cấu hình trực tiếp trong HTML
+> (vd: nút "ThAM GIA NHÓM ZALO NGAY", mã QR trên `chucmung.html`). Nếu ghi đè, nút sẽ bị biến
+> thành chat 1-1 theo SĐT và người dùng không vào được nhóm.
+>
+> Nếu muốn đổi link nhóm: sửa trực tiếp trong HTML của landing (CRM → Code Studio) **và**
+> cập nhật `settings.zalo_link` cho khớp — hoặc chỉ sửa `settings.zalo_link` nếu muốn áp dụng
+> cho toàn bộ link Zalo trên landing.
+
 ### UTM chuẩn
 
 | Tham số | Ý nghĩa | Ví dụ |
