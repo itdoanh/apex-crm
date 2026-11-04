@@ -1532,6 +1532,7 @@
 
                 studioFolders = [];
                 const nextContents = {};
+                currentStudioFiles = files;
                 files.forEach(f => {
                     if (f.file_type === 'folder') {
                         if (!studioFolders.includes(f.file_path)) studioFolders.push(f.file_path);
