@@ -307,34 +307,33 @@
 
             const code = editor.value;
             const startOffset = Math.min(node.startOffset, code.length);
-            const endOffset = Math.min(node.endOffset !== undefined ? node.endOffset : (node.openTagEnd || (node.startOffset + 10)), code.length);
+            // QUAN TRỌNG: Chỉ chọn/highlight phần thẻ mở <tag ...> chứ KHÔNG bôi đen đến tận thẻ đóng
+            // để tránh nhảy vọt xuống cuối khối làm lệch vị trí hiển thị code
+            const endOffset = Math.min(node.openTagEnd || (node.startOffset + 15), code.length);
 
-            // Tính số dòng bắt đầu và kết thúc
+            // Tính số dòng bắt đầu
             const textBefore = code.substring(0, startOffset);
             const startLine = (textBefore.match(/\n/g) || []).length + 1;
-            const textToNodeEnd = code.substring(0, endOffset);
-            const endLine = (textToNodeEnd.match(/\n/g) || []).length + 1;
 
-            // Highlight vùng code trong textarea (selection range)
+            // Highlight vùng code thẻ mở trong textarea
             try {
-                editor.focus({ preventScroll: true });
                 editor.setSelectionRange(startOffset, endOffset);
             } catch(e) {}
 
-            // Cuộn mượt code editor đến đúng dòng của thẻ
+            // Cuộn mượt code editor đến đúng dòng của thẻ (cách đỉnh 3 dòng)
             const lineHeight = 24; // 24px line-height
-            const targetScrollTop = Math.max(0, (startLine - 4) * lineHeight);
+            const targetScrollTop = Math.max(0, (startLine - 3) * lineHeight);
             editor.scrollTop = targetScrollTop;
 
             // Đồng bộ thanh số dòng với dải màu cyan nổi bật
             if (typeof updateEditorStats === 'function') {
-                updateEditorStats(false, { startLine, endLine, startOffset, endOffset });
+                updateEditorStats(false, { startLine, endLine: startLine, startOffset, endOffset });
             }
 
             // Cập nhật thông tin dòng trên status bar
             const lineColEl = document.getElementById('csLineCol');
             if (lineColEl) {
-                lineColEl.innerHTML = `<span class="text-cyan-300 font-bold">Dòng ${startLine}${endLine > startLine ? ' - ' + endLine : ''}</span> | <span class="text-amber-300 font-mono">&lt;${node.tag || ''}&gt;</span>`;
+                lineColEl.innerHTML = `<span class="text-cyan-300 font-bold">Dòng ${startLine}</span> | <span class="text-amber-300 font-mono">&lt;${node.tag || ''}&gt;</span>`;
             }
 
             // Nháy sáng nhẹ viền editor container để báo hiệu đã nhảy đến code thẻ
@@ -807,26 +806,56 @@
             if (!selectedAstNodeId) return;
             const node = astMapper.astMap[selectedAstNodeId];
             const updated = astMapper.moveNodeUp(selectedAstNodeId);
-            syncCodeEditorFromAst(updated);
-            pushStudioHistory(`Di chuyển <${node ? node.tag : 'thẻ'}> lên trước`, updated, selectedAstNodeId);
-            refreshStudioPreview();
+            const nextNodeId = (updated && updated.newNodeId) ? updated.newNodeId : (astMapper.lastMovedNodeId || selectedAstNodeId);
+            selectedAstNodeId = nextNodeId;
+            const updatedHtml = (typeof updated === 'object' && updated.html) ? updated.html : updated;
+            syncCodeEditorFromAst(updatedHtml);
+            pushStudioHistory(`Di chuyển <${node ? node.tag : 'thẻ'}> lên trước`, updatedHtml, nextNodeId);
+
+            // Di chuyển DOM trực tiếp trong iframe để UI phản hồi tức thì và không bị nháy
+            try {
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentDocument) {
+                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    if (el && el.previousElementSibling) {
+                        el.parentNode.insertBefore(el, el.previousElementSibling);
+                    }
+                }
+            } catch(e) {}
+
+            refreshStudioPreview(true);
             renderAstLayerTree();
             setTimeout(() => {
                 if (selectedAstNodeId) selectAstNode(selectedAstNodeId);
-            }, 300);
+            }, 250);
         }
 
         function moveCurrentNodeDown() {
             if (!selectedAstNodeId) return;
             const node = astMapper.astMap[selectedAstNodeId];
             const updated = astMapper.moveNodeDown(selectedAstNodeId);
-            syncCodeEditorFromAst(updated);
-            pushStudioHistory(`Di chuyển <${node ? node.tag : 'thẻ'}> xuống sau`, updated, selectedAstNodeId);
-            refreshStudioPreview();
+            const nextNodeId = (updated && updated.newNodeId) ? updated.newNodeId : (astMapper.lastMovedNodeId || selectedAstNodeId);
+            selectedAstNodeId = nextNodeId;
+            const updatedHtml = (typeof updated === 'object' && updated.html) ? updated.html : updated;
+            syncCodeEditorFromAst(updatedHtml);
+            pushStudioHistory(`Di chuyển <${node ? node.tag : 'thẻ'}> xuống sau`, updatedHtml, nextNodeId);
+
+            // Di chuyển DOM trực tiếp trong iframe để UI phản hồi tức thì và không bị nháy
+            try {
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentDocument) {
+                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    if (el && el.nextElementSibling) {
+                        el.parentNode.insertBefore(el.nextElementSibling, el);
+                    }
+                }
+            } catch(e) {}
+
+            refreshStudioPreview(true);
             renderAstLayerTree();
             setTimeout(() => {
                 if (selectedAstNodeId) selectAstNode(selectedAstNodeId);
-            }, 300);
+            }, 250);
         }
 
         function quickAlignNode(align) {
@@ -1596,16 +1625,27 @@
 
             let html = '';
             propKeys.forEach(prop => {
-                const val = activeStyles[prop];
+                const val = activeStyles[prop] || '';
                 const isCustom = (customProps[prop] !== undefined && customProps[prop] !== null);
+                const isLongVal = (val.length > 28 || val.includes(',') || val.includes('\n') || val.includes('('));
                 html += `
-                    <div class="flex items-center gap-1.5 bg-slate-900 border ${isCustom ? 'border-cyan-500/50 bg-slate-900/90' : 'border-slate-800'} rounded-lg p-1.5 hover:border-slate-700 transition">
-                        <span class="text-[11px] font-mono text-cyan-400 font-semibold w-28 truncate" title="${prop}">${prop}</span>
-                        ${isCustom ? '<span class="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex-shrink-0" title="Tùy biến riêng cho thiết bị này">Tùy biến</span>' : ''}
-                        <input type="text" value="${escapeHTML(val)}" onchange="onCssPropertyEdit('${prop}', this.value)" class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500">
-                        <button type="button" onclick="removeCssProperty('${prop}')" class="text-slate-500 hover:text-rose-400 p-1 rounded transition" title="Xóa thuộc tính CSS">
-                            <i class="fa-solid fa-trash-can text-[10px]"></i>
-                        </button>
+                    <div class="flex flex-col gap-1.5 bg-slate-900 border ${isCustom ? 'border-cyan-500/50 bg-slate-900/90' : 'border-slate-800'} rounded-lg p-2 hover:border-slate-700 transition">
+                        <div class="flex items-center justify-between gap-1.5">
+                            <span class="text-[11px] font-mono text-cyan-400 font-semibold break-all leading-snug select-text" title="${prop}">${escapeHTML(prop)}</span>
+                            <div class="flex items-center gap-1.5 flex-shrink-0">
+                                ${isCustom ? '<span class="text-[8px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30" title="Tùy biến riêng cho thiết bị này">Tùy biến</span>' : ''}
+                                <button type="button" onclick="removeCssProperty('${prop}')" class="text-slate-500 hover:text-rose-400 p-0.5 rounded transition" title="Xóa thuộc tính CSS">
+                                    <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="w-full">
+                            ${isLongVal ? `
+                                <textarea rows="${Math.min(4, Math.max(2, Math.ceil(val.length / 32)))}" onchange="onCssPropertyEdit('${prop}', this.value)" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500 whitespace-pre-wrap break-all resize-y leading-relaxed">${escapeHTML(val)}</textarea>
+                            ` : `
+                                <input type="text" value="${escapeHTML(val)}" onchange="onCssPropertyEdit('${prop}', this.value)" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-white font-mono focus:outline-none focus:border-cyan-500 break-all">
+                            `}
+                        </div>
                     </div>
                 `;
             });

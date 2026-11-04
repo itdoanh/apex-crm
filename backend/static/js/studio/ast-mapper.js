@@ -888,16 +888,17 @@
 
             moveNodeUp(nodeId) {
                 const node = this.astMap[nodeId];
-                if (!node) return this.rawHTML;
+                if (!node) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
-                const siblings = (node.parentId && this.astMap[node.parentId])
-                    ? this.astMap[node.parentId].children
+                const parentId = node.parentId;
+                const siblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
                     : this.tree;
                 const idx = siblings.indexOf(nodeId);
-                if (idx <= 0) return this.rawHTML;
+                if (idx <= 0) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const prevNode = this.astMap[siblings[idx - 1]];
-                if (!prevNode) return this.rawHTML;
+                if (!prevNode) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const pStart = prevNode.startOffset;
                 const pEnd = prevNode.endOffset;
@@ -910,21 +911,29 @@
 
                 this.rawHTML = this.rawHTML.substring(0, pStart) + currText + inBetween + prevText + this.rawHTML.substring(cEnd);
                 this.parse(this.rawHTML);
-                return this.rawHTML;
+
+                const newSiblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
+                    : this.tree;
+                const newNodeId = (newSiblings && newSiblings[idx - 1]) ? newSiblings[idx - 1] : nodeId;
+                this.lastMovedNodeId = newNodeId;
+
+                return { html: this.rawHTML, newNodeId: newNodeId, toString() { return this.html; } };
             }
 
             moveNodeDown(nodeId) {
                 const node = this.astMap[nodeId];
-                if (!node) return this.rawHTML;
+                if (!node) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
-                const siblings = (node.parentId && this.astMap[node.parentId])
-                    ? this.astMap[node.parentId].children
+                const parentId = node.parentId;
+                const siblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
                     : this.tree;
                 const idx = siblings.indexOf(nodeId);
-                if (idx === -1 || idx >= siblings.length - 1) return this.rawHTML;
+                if (idx === -1 || idx >= siblings.length - 1) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const nextNode = this.astMap[siblings[idx + 1]];
-                if (!nextNode) return this.rawHTML;
+                if (!nextNode) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const cStart = node.startOffset;
                 const cEnd = node.endOffset;
@@ -937,21 +946,29 @@
 
                 this.rawHTML = this.rawHTML.substring(0, cStart) + nextText + inBetween + currText + this.rawHTML.substring(nEnd);
                 this.parse(this.rawHTML);
-                return this.rawHTML;
+
+                const newSiblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
+                    : this.tree;
+                const newNodeId = (newSiblings && newSiblings[idx + 1]) ? newSiblings[idx + 1] : nodeId;
+                this.lastMovedNodeId = newNodeId;
+
+                return { html: this.rawHTML, newNodeId: newNodeId, toString() { return this.html; } };
             }
 
             moveNodeToTop(nodeId) {
                 const node = this.astMap[nodeId];
-                if (!node) return this.rawHTML;
+                if (!node) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
-                const siblings = (node.parentId && this.astMap[node.parentId])
-                    ? this.astMap[node.parentId].children
+                const parentId = node.parentId;
+                const siblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
                     : this.tree;
                 const idx = siblings.indexOf(nodeId);
-                if (idx <= 0) return this.rawHTML;
+                if (idx <= 0) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const firstNode = this.astMap[siblings[0]];
-                if (!firstNode) return this.rawHTML;
+                if (!firstNode) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const cStart = node.startOffset;
                 const cEnd = node.endOffset;
@@ -964,21 +981,29 @@
 
                 this.rawHTML = beforeFirst + currText + '\n' + between + afterCurr;
                 this.parse(this.rawHTML);
-                return this.rawHTML;
+
+                const newSiblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
+                    : this.tree;
+                const newNodeId = (newSiblings && newSiblings[0]) ? newSiblings[0] : nodeId;
+                this.lastMovedNodeId = newNodeId;
+
+                return { html: this.rawHTML, newNodeId: newNodeId, toString() { return this.html; } };
             }
 
             moveNodeToBottom(nodeId) {
                 const node = this.astMap[nodeId];
-                if (!node) return this.rawHTML;
+                if (!node) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
-                const siblings = (node.parentId && this.astMap[node.parentId])
-                    ? this.astMap[node.parentId].children
+                const parentId = node.parentId;
+                const siblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
                     : this.tree;
                 const idx = siblings.indexOf(nodeId);
-                if (idx === -1 || idx >= siblings.length - 1) return this.rawHTML;
+                if (idx === -1 || idx >= siblings.length - 1) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const lastNode = this.astMap[siblings[siblings.length - 1]];
-                if (!lastNode) return this.rawHTML;
+                if (!lastNode) return { html: this.rawHTML, newNodeId: nodeId, toString() { return this.html; } };
 
                 const cStart = node.startOffset;
                 const cEnd = node.endOffset;
@@ -991,7 +1016,14 @@
 
                 this.rawHTML = beforeCurr + between + '\n' + currText + afterLast;
                 this.parse(this.rawHTML);
-                return this.rawHTML;
+
+                const newSiblings = (parentId && this.astMap[parentId])
+                    ? this.astMap[parentId].children
+                    : this.tree;
+                const newNodeId = (newSiblings && newSiblings[newSiblings.length - 1]) ? newSiblings[newSiblings.length - 1] : nodeId;
+                this.lastMovedNodeId = newNodeId;
+
+                return { html: this.rawHTML, newNodeId: newNodeId, toString() { return this.html; } };
             }
 
             changeNodeTag(nodeId, newTagName) {

@@ -50,6 +50,13 @@
                 return;
             }
 
+            // Alt + Z: Toggle Word Wrap
+            if (e.altKey && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                toggleCodeWordWrap();
+                return;
+            }
+
             // Khi đang gõ trong input text của Inspector hay ô tìm kiếm thì bỏ qua các phím dưới
             if (isInputActive) return;
 
@@ -405,6 +412,7 @@
             studioEditorDirty = false;
             document.getElementById('csSaveStatus').innerText = 'Đã đồng bộ';
             document.getElementById('csSaveStatus').className = 'text-[11px] text-slate-400 font-mono ml-2';
+            initCodeWordWrap();
 
             if (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm')) {
                 astMapper.parse(content);
@@ -521,6 +529,54 @@
                 e.preventDefault();
                 deployCodeLive();
             }
+
+            // Alt + Z: Toggle Word Wrap
+            if (e.altKey && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleCodeWordWrap();
+            }
+        }
+
+        // Tự động ngắt dòng trong Code Editor (Alt + Z)
+        function toggleCodeWordWrap() {
+            const editor = document.getElementById('csCodeEditor');
+            if (!editor) return;
+            const isWrapped = editor.classList.contains('whitespace-pre-wrap');
+            if (isWrapped) {
+                editor.classList.remove('whitespace-pre-wrap', 'break-words');
+                editor.classList.add('whitespace-pre');
+                editor.setAttribute('wrap', 'off');
+                localStorage.setItem('studio_code_word_wrap', 'off');
+                updateWordWrapButtonState(false);
+            } else {
+                editor.classList.remove('whitespace-pre');
+                editor.classList.add('whitespace-pre-wrap', 'break-words');
+                editor.setAttribute('wrap', 'soft');
+                localStorage.setItem('studio_code_word_wrap', 'on');
+                updateWordWrapButtonState(true);
+            }
+        }
+
+        function updateWordWrapButtonState(isWrapped) {
+            const btn = document.getElementById('btnCodeWordWrap');
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-text-width text-[10px]"></i> <span>Wrap: ${isWrapped ? '<b class="text-cyan-400">BẬT</b>' : 'TẮT'}</span>`;
+                btn.title = `Tự động ngắt dòng (Alt + Z) - Hiện tại: ${isWrapped ? 'BẬT' : 'TẮT'}`;
+            }
+        }
+
+        function initCodeWordWrap() {
+            const saved = localStorage.getItem('studio_code_word_wrap');
+            const editor = document.getElementById('csCodeEditor');
+            if (saved === 'on' && editor) {
+                editor.classList.remove('whitespace-pre');
+                editor.classList.add('whitespace-pre-wrap', 'break-words');
+                editor.setAttribute('wrap', 'soft');
+                updateWordWrapButtonState(true);
+            } else {
+                updateWordWrapButtonState(false);
+            }
         }
 
         // Bắt sự kiện click chuột hoặc di chuyển con trỏ trong Code Editor để đồng bộ ngược chọn Layer và Gizmo
@@ -530,7 +586,8 @@
             const offset = editor.selectionStart;
             const node = findNodeAtOffset(offset);
             if (node && node.id && node.id !== selectedAstNodeId) {
-                selectAstNode(node.id, true);
+                // fromCodeEditor = true để TUYỆT ĐỐI không làm nhảy trỏ chuột, không bôi đen đè lên vị trí con trỏ của người dùng và không cuộn editor đi chỗ khác!
+                selectAstNode(node.id, true, true);
             }
         }
 
@@ -715,11 +772,20 @@
             setStudioViewMode(studioViewMode === 'code' ? 'split' : 'code');
         }
 
-        // Tải lại bản xem trước: Sử dụng Instrumented HTML trực tiếp từ AST
-        function refreshStudioPreview() {
+        // Tải lại bản xem trước: Sử dụng Instrumented HTML trực tiếp từ AST (bảo toàn vị trí cuộn iframe)
+        function refreshStudioPreview(preserveScroll = true) {
             if (!currentStudioLanding) return;
             const iframe = document.getElementById('csPreviewIframe');
             if (!iframe) return;
+
+            let savedScrollTop = 0;
+            let savedScrollLeft = 0;
+            try {
+                if (iframe.contentWindow) {
+                    savedScrollTop = iframe.contentWindow.scrollY || (iframe.contentDocument && iframe.contentDocument.documentElement ? iframe.contentDocument.documentElement.scrollTop : 0) || 0;
+                    savedScrollLeft = iframe.contentWindow.scrollX || (iframe.contentDocument && iframe.contentDocument.documentElement ? iframe.contentDocument.documentElement.scrollLeft : 0) || 0;
+                }
+            } catch(e) {}
 
             const htmlContent = studioFileContents[activeStudioFile] || (currentStudioLanding ? currentStudioLanding.code_html : '');
             if (activeStudioFile.endsWith('.html') || activeStudioFile.endsWith('.htm')) {
@@ -730,6 +796,17 @@
 
                 const instrumented = astMapper.generateInstrumentedHTML();
                 iframe.srcdoc = instrumented;
+
+                if (preserveScroll && (savedScrollTop > 0 || savedScrollLeft > 0)) {
+                    const restoreScroll = () => {
+                        try {
+                            if (iframe.contentWindow) {
+                                iframe.contentWindow.scrollTo(savedScrollLeft, savedScrollTop);
+                            }
+                        } catch(e) {}
+                    };
+                    iframe.addEventListener('load', restoreScroll, { once: true });
+                }
             } else {
                 iframe.src = `/api/landings/preview?page_id=${encodeURIComponent(currentStudioLanding.page_id)}&draft=1&bypass=1&preview=1&v=${Date.now()}`;
             }

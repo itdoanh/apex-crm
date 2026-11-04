@@ -226,12 +226,27 @@
             if (!selectedAstNodeId) return;
             const node = astMapper.astMap[selectedAstNodeId];
             const updated = astMapper.moveNodeToTop(selectedAstNodeId);
-            syncCodeEditorFromAst(updated);
-            pushStudioHistory(`Đưa <${node ? node.tag : 'thẻ'}> lên đầu`, updated, selectedAstNodeId);
-            refreshStudioPreview();
+            const nextNodeId = (updated && updated.newNodeId) ? updated.newNodeId : (astMapper.lastMovedNodeId || selectedAstNodeId);
+            selectedAstNodeId = nextNodeId;
+            const updatedHtml = (typeof updated === 'object' && updated.html) ? updated.html : updated;
+            syncCodeEditorFromAst(updatedHtml);
+            pushStudioHistory(`Đưa <${node ? node.tag : 'thẻ'}> lên đầu`, updatedHtml, nextNodeId);
+
+            // Trực tiếp di chuyển DOM trong iframe để phản hồi tức thì
+            try {
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentDocument) {
+                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    if (el && el.parentNode && el.parentNode.firstElementChild !== el) {
+                        el.parentNode.insertBefore(el, el.parentNode.firstElementChild);
+                    }
+                }
+            } catch(e) {}
+
+            refreshStudioPreview(true);
             setTimeout(() => {
-                selectAstNode(selectedAstNodeId);
-            }, 250);
+                selectAstNode(nextNodeId);
+            }, 200);
             renderAstLayerTree();
             showToastNotification('Đã đưa phần tử lên đầu cùng cấp');
         }
@@ -240,12 +255,27 @@
             if (!selectedAstNodeId) return;
             const node = astMapper.astMap[selectedAstNodeId];
             const updated = astMapper.moveNodeToBottom(selectedAstNodeId);
-            syncCodeEditorFromAst(updated);
-            pushStudioHistory(`Đưa <${node ? node.tag : 'thẻ'}> xuống cuối`, updated, selectedAstNodeId);
-            refreshStudioPreview();
+            const nextNodeId = (updated && updated.newNodeId) ? updated.newNodeId : (astMapper.lastMovedNodeId || selectedAstNodeId);
+            selectedAstNodeId = nextNodeId;
+            const updatedHtml = (typeof updated === 'object' && updated.html) ? updated.html : updated;
+            syncCodeEditorFromAst(updatedHtml);
+            pushStudioHistory(`Đưa <${node ? node.tag : 'thẻ'}> xuống cuối`, updatedHtml, nextNodeId);
+
+            // Trực tiếp di chuyển DOM trong iframe để phản hồi tức thì
+            try {
+                const iframe = document.getElementById('csPreviewIframe');
+                if (iframe && iframe.contentDocument) {
+                    const el = iframe.contentDocument.querySelector(`[data-ast-id="${node ? node.id : ''}"]`);
+                    if (el && el.parentNode) {
+                        el.parentNode.appendChild(el);
+                    }
+                }
+            } catch(e) {}
+
+            refreshStudioPreview(true);
             setTimeout(() => {
-                selectAstNode(selectedAstNodeId);
-            }, 250);
+                selectAstNode(nextNodeId);
+            }, 200);
             renderAstLayerTree();
             showToastNotification('Đã đưa phần tử xuống cuối cùng cấp');
         }
@@ -361,8 +391,8 @@
             }
         }
 
-        // Chọn node từ Cây Layer hoặc Breadcrumb (Hỗ trợ cuộn mượt Iframe)
-        function selectAstNode(nodeId, scrollToIframe = false) {
+        // Chọn node từ Cây Layer hoặc Breadcrumb hoặc Preview (Hỗ trợ cuộn mượt Iframe)
+        function selectAstNode(nodeId, scrollToIframe = false, fromCodeEditor = false) {
             selectedAstNodeId = nodeId;
             if (typeof expandAncestorsInLayerTree === 'function') {
                 expandAncestorsInLayerTree(nodeId);
@@ -379,11 +409,13 @@
                 selectedNodeMeta = nodeData;
                 populateInspectorWithNode(nodeData);
 
-                // Đồng bộ và highlight dòng code trong Code Editor
-                if (typeof syncAndHighlightCodeForNode === 'function') {
-                    syncAndHighlightCodeForNode(nodeId);
-                } else if (typeof highlightCodeAtOffset === 'function') {
-                    highlightCodeAtOffset(node.startOffset);
+                // Đồng bộ và highlight dòng code trong Code Editor (chỉ khi KHÔNG phải do click chuột trong Code Editor)
+                if (!fromCodeEditor) {
+                    if (typeof syncAndHighlightCodeForNode === 'function') {
+                        syncAndHighlightCodeForNode(nodeId);
+                    } else if (typeof highlightCodeAtOffset === 'function') {
+                        highlightCodeAtOffset(node.startOffset);
+                    }
                 }
             }
             requestNodeRect(nodeId, scrollToIframe);
