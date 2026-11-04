@@ -69,6 +69,12 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 | Hiệu Quả Landing | So sánh CR% giữa các landing |
 | Bảo Mật & Bot | Spam quarantine + security stats |
 | Đồng Bộ Google Sheets | Config, mapping matrix, sync logs |
+
+> Trong modal "Thêm kết nối Sheet" → phần **3. Kiểm Tra & Gửi Dòng Thử Nghiệm (Test Row)**:
+> nút "Gửi Dòng Thử Nghiệm Ngay" gọi `POST /api/integrations/sheets/test`. Dòng ghi ra luôn có tên
+> dạng `Test <3 số ngẫu nhiên>` (vd: `Test 734`) với dữ liệu mô phỏng người dùng thật (SĐT VN,
+> nhà mạng, IP, tỉnh/thành, ISP, thiết bị, trình duyệt, UTM, URL landing...). UI hiển thị mã dòng
+> để anh dễ tìm & xoá sau khi kiểm tra. Xem `docs/API.md` mục 9.1.
 | Quản Lý Landing | CRUD + Code Studio + Live Preview |
 | Quản Lý Tên Miền | DNS check, SSL check, deploy route |
 | Nhật Ký & Phiên | Active sessions + audit logs |

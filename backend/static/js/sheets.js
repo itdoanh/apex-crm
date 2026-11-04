@@ -654,6 +654,7 @@
                             <span>${json.message}</span>
                         </div>
                         <div>Dòng cập nhật trên Sheet: <b class="text-emerald-400">${json.updated_range || 'OK'}</b></div>
+                        ${json.test_code ? `<div>Mã dòng thử nghiệm: <b class="text-emerald-400 font-mono">Test ${json.test_code}</b> <span class="text-slate-400">(dùng để xoá sau khi kiểm tra)</span></div>` : ''}
                         <div class="text-[11px] text-slate-400">Hãy mở Google Sheet để xem dòng dữ liệu vừa được chèn vào!</div>
                     `;
                 } else {
@@ -806,7 +807,7 @@
 
                 const testJson = await testRes.json();
                 if (testJson.success) {
-                    alert(`Gửi dòng test thành công vào Sheet "${c.name}"!\nDòng đã ghi: ${testJson.updated_range}\n\nHãy mở Google Sheet để kiểm tra dữ liệu.`);
+                    alert(`Gửi dòng test thành công vào Sheet "${c.name}"!\nDòng đã ghi: ${testJson.updated_range}${testJson.test_code ? `\nMã dòng thử nghiệm: Test ${testJson.test_code}` : ''}\n\nHãy mở Google Sheet để kiểm tra dữ liệu.`);
                     loadGoogleSheetsConfigs();
                 } else {
                     alert(`Lỗi khi gửi dòng test:\n${testJson.error}`);

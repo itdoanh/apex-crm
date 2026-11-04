@@ -274,7 +274,7 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 | `POST /api/integrations/sheets/meta` | Đọc metadata (tabs, dims) từ link Sheet |
 | `GET /api/integrations/sheets/headers` | Headers của tab |
 | `POST /api/integrations/sheets/create-headers` | Tạo dòng tiêu đề |
-| `POST /api/integrations/sheets/test` | Gửi dòng test |
+| `POST /api/integrations/sheets/test` | Gửi dòng test (tên dòng luôn có dạng `Test <3 số ngẫu nhiên>`) |
 | `GET /api/integrations/sheets/drive-files` | List file Drive |
 | `GET/POST/DELETE /api/integrations/sheets/configs` | CRUD cấu hình |
 | `GET /api/integrations/sheets/configs/get` | Chi tiết config |
@@ -318,6 +318,29 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 `utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
 
 Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/defaults` (`available_fields`).
+
+### 9.1. Dòng thử nghiệm (Test Row)
+
+`POST /api/integrations/sheets/test` ghi 1 dòng mẫu lên Google Sheet để kiểm tra kết nối Service
+Account + ánh xạ cột. Đặc điểm:
+
+- **Tên dòng luôn có dạng `Test <3 chữ số ngẫu nhiên>`** (vd: `Test 734`, `Test 089`) — sinh bằng
+  `crypto/rand` trong `backend/handlers/google_sheet_handler.go` (`randomTestCode()`), để dễ nhận biết
+  & xoá sau khi kiểm tra. Nếu client truyền `test_lead.fullName` thì tên sẽ là `Test 734 - <tên>`.
+- **Các trường còn lại mô phỏng người dùng thật**: số điện thoại VN 10 số, nhà mạng, IP, tỉnh/thành,
+  ISP, thiết bị, trình duyệt, hệ điều hành, viewport, UTM đầy đủ, thời gian xem trang, tỷ lệ cuộn,
+  số click, session/visitor id, referrer và URL landing kèm UTM.
+- Response trả thêm `test_code` để UI hiển thị mã dòng vừa ghi.
+
+```json
+{
+  "success": true,
+  "message": "Gửi dòng dữ liệu thử nghiệm thành công! (Test 734)",
+  "test_code": "734",
+  "updated_range": "Sheet1!A100:O100",
+  "row_values": ["...", "Test 734", "..."]
+}
+```
 
 ---
 

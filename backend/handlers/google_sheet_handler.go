@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -226,8 +227,11 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 		req.FieldMappings = googlesheets.GetStandardDefaultMappings()
 	}
 
-	// Chuẩn bị Mock Lead nếu client không truyền
+	// Chuẩn bị Mock Lead nếu client không truyền.
+	// Tên dòng thử nghiệm luôn có dạng "Test <3 chữ số ngẫu nhiên>" (vd: Test 734)
+	// để dễ nhận biết & xoá sau khi kiểm tra kết nối.
 	nowStr := time.Now().Format("2006-01-02 15:04:05")
+	testCode := randomTestCode()
 	mockLead := &models.Lead{
 		ID:        999999,
 		CreatedAt: nowStr,
@@ -235,36 +239,54 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 		Nguon:     "google_ads_test",
 		Phone:     "0984386538",
 		TrangThai: "moi",
-		GhiChu:    "Dòng kiểm tra kết nối từ Admin Apex CRM",
-		URL:       "https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test",
+		GhiChu:    fmt.Sprintf("Dòng kiểm tra kết nối từ Admin Apex CRM - Test %s", testCode),
+		URL:       fmt.Sprintf("https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test_%s", testCode),
 	}
 
 	mockTracking := map[string]interface{}{
-		"fullName":         "Nguyễn Văn Thử Nghiệm",
+		"fullName":         "Test " + testCode,
 		"so_dien_thoai":    "0984386538",
 		"carrier":          "Viettel",
 		"landing_id":       "mxv_080_online",
 		"nguon":            "google_ads_test",
 		"is_autofill":      true,
+		"autofill_source":  "browser_autofill",
 		"fill_duration_ms": 1250,
 		"time_on_page":     45,
 		"max_scroll":       85,
+		"clicks_count":     3,
 		"device_type":      "mobile",
+		"screen_res":       "390x844",
+		"browser":          "Chrome Mobile 151.0.0.0",
+		"os":               "Android 13",
 		"ip_address":       "113.190.234.12",
+		"city":             "Hà Nội",
+		"region":           "Miền Bắc",
+		"country":          "Việt Nam",
+		"isp":              "Viettel Telecom",
+		"ad_platform":      "Google Ads",
+		"ad_placement":     "GDN",
+		"ad_source_tag":    "google_ads_test",
 		"utm_campaign":     "Chien_Dich_Test_2026",
 		"utm_source":       "google",
 		"utm_medium":       "cpc",
-		"session_id":       "test_sess_abc123",
-		"url":              "https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test",
-		"referrer":         "https://www.facebook.com/",
+		"utm_content":      "reels_test",
+		"utm_term":         "dau tu hang hoa",
+		"session_id":       "test_sess_" + testCode,
+		"visitor_id":       "test_visitor_" + testCode,
+		"url":              fmt.Sprintf("https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test_%s", testCode),
+		"entry_url":        fmt.Sprintf("https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test_%s", testCode),
+		"referrer":         "https://www.google.com/",
 	}
 
 	if req.TestLead != nil {
 		for k, v := range req.TestLead {
 			mockTracking[k] = v
 		}
-		if name, ok := req.TestLead["fullName"]; ok && name != nil {
-			mockTracking["fullName"] = name
+		// Tên khách hàng luôn phải chứa mã dòng thử nghiệm để dễ nhận biết & xoá sau.
+		// Nếu client truyền tên riêng thì ghép sau mã, vd: "Test 734 - Nguyễn Văn A"
+		if name, ok := req.TestLead["fullName"]; ok && name != nil && fmt.Sprintf("%v", name) != "" {
+			mockTracking["fullName"] = fmt.Sprintf("Test %s - %v", testCode, name)
 		}
 		if phone, ok := req.TestLead["so_dien_thoai"]; ok && phone != nil {
 			mockLead.Phone = fmt.Sprintf("%v", phone)
@@ -291,7 +313,8 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":       true,
-		"message":       "Gửi dòng dữ liệu thử nghiệm thành công!",
+		"message":       fmt.Sprintf("Gửi dòng dữ liệu thử nghiệm thành công! (Test %s)", testCode),
+		"test_code":     testCode,
 		"updated_range": updatedRange,
 		"row_values":    rowValues,
 	})
@@ -663,4 +686,15 @@ func (h *GoogleSheetHandler) HandleGetDefaultMappings(w http.ResponseWriter, r *
 		"default_mappings": defaultMappings,
 		"available_fields": availableFields,
 	})
+}
+
+// randomTestCode sinh mã 3 chữ số ngẫu nhiên (100-999) dùng cho tên dòng thử nghiệm.
+// Dùng crypto/rand để tránh trường hợp nhiều request đồng thời trùng mã.
+func randomTestCode() string {
+	var b [3]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback: dùng nanosecond hiện tại nếu crypto/rand lỗi (hiếm gặp)
+		return fmt.Sprintf("%03d", time.Now().UnixNano()%900+100)
+	}
+	return fmt.Sprintf("%03d", int(b[0])%900+100)
 }
