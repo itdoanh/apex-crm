@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1390,7 +1391,18 @@ window.redirectToChucMung = function() { console.log('Bypass redirectToChucMung 
 }
 
 // InjectDynamicScripts tự động chèn SEO meta, Facebook Pixel, TikTok Pixel, Google Analytics, và custom scripts
+//
+// `basePath` là prefix của URL đang phục vụ landing (vd: `/p/landing_cu`, `/landing`).
+// Dùng để ghi đè các đường dẫn tài nguyên TƯƠNG ĐỐI (`tracker.js`, `config.json`)
+// thành TUYỆT ĐỐI — tránh việc trình duyệt phân giải sai do thẻ `<base>` đặt sai
+// chỗ trong HTML (bug tracker.js 404 — 2026-11-05). Xem `rewriteRelativeAssetPaths`.
 func (h *LandingHandler) InjectDynamicScripts(rawHTML string, p *models.LandingPage) string {
+	return h.InjectDynamicScriptsWithBase(rawHTML, p, "")
+}
+
+// InjectDynamicScriptsWithBase giống `InjectDynamicScripts` nhưng có thêm `basePath`
+// để ghi đè đường dẫn tài nguyên tương đối thành tuyệt đối.
+func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.LandingPage, basePath string) string {
 	if rawHTML == "" {
 		rawHTML = `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Landing Page</title></head><body><h1>Trang Landing Mới</h1></body></html>`
 	}
@@ -1595,9 +1607,17 @@ gtag('config', '%s');
 			fmt.Sprintf(`<script src="tracker.js" data-landing-id="%s" data-nguon=`, p.PageID))
 	}
 
-	// Tự động kiểm tra và chèn tracker.js kèm form interceptor nếu trang chưa có
+	// Tự động kiểm tra và chèn tracker.js kèm form interceptor nếu trang chưa có.
+	//
+	// Dùng `basePath` (prefix của URL đang phục vụ) để trỏ đúng vào tracker.js
+	// CỦA CHÍNH landing này — tránh dùng `/tracker.js` ở gốc, vì gốc có thể trỏ
+	// tới landing KHÁC (bug chồng chéo landing — 2026-11-05).
+	trackerHref := "/tracker.js"
+	if basePath != "" && basePath != "/" {
+		trackerHref = basePath + "/tracker.js"
+	}
 	if !strings.Contains(result, "tracker.js") {
-		trackerScript := fmt.Sprintf("\n<!-- [APEX AUTO-INJECT TRACKER & FORM INTERCEPTOR] -->\n<script src=\"/tracker.js\" data-landing-id=\"%s\"></script>\n", p.PageID)
+		trackerScript := fmt.Sprintf("\n<!-- [APEX AUTO-INJECT TRACKER & FORM INTERCEPTOR] -->\n<script src=\"%s\" data-landing-id=\"%s\"></script>\n", trackerHref, p.PageID)
 		if strings.Contains(strings.ToLower(result), "</body>") {
 			idx := strings.Index(strings.ToLower(result), "</body>")
 			result = result[:idx] + trackerScript + result[idx:]
@@ -1606,7 +1626,127 @@ gtag('config', '%s');
 		}
 	}
 
+	result = injectRegistrationFormGuard(result)
+
+	// Ghi đè đường dẫn tài nguyên tương đối → tuyệt đối (bug tracker.js 404).
+	// PHẢI làm SAU cùng với việc chèn/gắn `data-landing-id` ở trên để thẻ
+	// `<script src="tracker.js">` đã chuẩn hoá về 1 định dạng duy nhất.
+	result = rewriteRelativeAssetPaths(result, basePath)
+
 	return result
+}
+
+// rewriteRelativeAssetPaths đổi các đường dẫn tài nguyên TƯƠNG ĐỐI trong HTML
+// thành đường dẫn TUYỆT ĐỐI, dựa trên `basePath` (prefix của URL đang phục vụ).
+//
+// BỐI CẢNH (bug tracker.js 404 — 2026-11-05):
+//   Landing HTML do LadiPage export có thể chứa `<base href="/landing/">` ĐẶT SAU
+//   thẻ `<script src="tracker.js">`. Theo HTML spec, `<base>` chỉ có hiệu lực với
+//   các URL được phân giải SAU khi thẻ `<base>` được parse. Vì vậy trình duyệt
+//   phân giải `src="tracker.js"` theo URL của DOCUMENT, KHÔNG theo `<base>`.
+//
+//   Hậu quả trên production:
+//     - Landing phục vụ tại `/p/landing_cu` ⇒ trình duyệt gọi `/p/tracker.js`
+//       ⇒ 404 ⇒ `window.ApexTracker` KHÔNG tồn tại ⇒ landing tự gửi lead không
+//       được (hàm `if (window.ApexTracker && ...)` bị bỏ qua).
+//     - Landing phục vụ tại `/landing/` ⇒ gọi `/landing/tracker.js` ⇒ OK.
+//
+//   ⇒ Sửa bằng cách ghi đè `src` của các tài nguyên dùng chung thành đường dẫn
+//     TUYỆT ĐỐI theo `basePath` (ví dụ `/p/landing_cu/tracker.js`), không phụ thuộc
+//     vị trí của thẻ `<base>` trong HTML.
+//
+// LƯU Ý: chỉ sửa các đường dẫn tài nguyên dùng chung (tracker.js, config.json).
+// Đường dẫn tuyệt đối NGOÀI domain (bắt đầu bằng `http://`, `https://`, `//`) được
+// giữ nguyên. Đường dẫn gốc `/tracker.js` cũng được ghi đè khi `basePath` khác
+// `/`, vì gốc có thể trỏ tới landing KHÁC (bug chồng chéo landing — 2026-11-05).
+func rewriteRelativeAssetPaths(html string, basePath string) string {
+	if basePath == "" {
+		return html
+	}
+	basePath = strings.TrimSuffix(basePath, "/")
+
+	// `<script src="tracker.js" ...>` và `<script src="config.json" ...>`
+	reScript := regexp.MustCompile(`(?i)(<script\b[^>]*\bsrc=")(tracker\.js|config\.json)(")`)
+	html = reScript.ReplaceAllString(html, "${1}"+basePath+"/${2}${3}")
+
+	// `<link ... href="config.json">` / `href="tracker.js"` (hiếm gặp nhưng có thể có)
+	reLink := regexp.MustCompile(`(?i)(<link\b[^>]*\bhref=")(tracker\.js|config\.json)(")`)
+	html = reLink.ReplaceAllString(html, "${1}"+basePath+"/${2}${3}")
+
+	// Đường dẫn GỐC `/tracker.js` → gắn thêm prefix của landing đang phục vụ.
+	if basePath != "" && basePath != "/" {
+		reRootScript := regexp.MustCompile(`(?i)(<script\b[^>]*\bsrc=")/(tracker\.js|config\.json)(")`)
+		html = reRootScript.ReplaceAllString(html, "${1}"+basePath+"/${2}${3}")
+		reRootLink := regexp.MustCompile(`(?i)(<link\b[^>]*\bhref=")/(tracker\.js|config\.json)(")`)
+		html = reRootLink.ReplaceAllString(html, "${1}"+basePath+"/${2}${3}")
+	}
+
+	return html
+}
+
+// injectRegistrationFormGuard đặt cờ `window.__REGISTRATION_FORM_HANDLED__ = true`
+// cho các landing TỰ XỬ LÝ form đăng ký của riêng nó.
+//
+// BỐI CẢNH (bug 2026-11-05 — lead thật bị gắn nhầm "Lỗi Proof-of-Work"):
+//   `tracker.js` có sẵn "form interceptor" (initAutoFormInterceptor) gắn listener
+//   submit cho mọi form. Landing nào đã có handler riêng (capture listener +
+//   `onsubmit="handleFormSubmit"`) mà KHÔNG báo cho tracker.js biết ⇒ 1 lần bấm
+//   sinh 3 POST /api/leads với CÙNG `challenge_id` + `challenge_solution` ⇒
+//   request thứ 2, #3 bị server ghi vào `spam_quarantine` với lý do "Replay attack
+//   detected" ⇒ LEAD THẬT hiển thị sai là "Lỗi Proof-of-Work" trong tab
+//   Bảo mật & Bot (dù lead vẫn về CRM + Google Sheets đúng).
+//
+//   Việc sửa trong HTML template (`frontend/landing/index.html`) là KHÔNG ĐỦ,
+//   vì HTML thực tế của mỗi landing nằm trong CSDL (`landing_pages.code_html`)
+//   và được người dùng sửa trong Code Studio.
+//
+// ⇒ Vì vậy, server tự động đặt cờ khi phát hiện landing TỰ GỌI
+//   `sendLeadToBackend` cho form `registrationForm` mà chưa khai báo cờ.
+//   Đây là lớp bảo vệ CUỐI CÙNG — không phụ thuộc nội dung HTML trong DB.
+//
+// ĐIỀU KIỆN đặt cờ (cả 3 phải đúng):
+//   1. HTML có gọi `sendLeadToBackend` (landing tự gửi lead).
+//   2. HTML có form `registrationForm`.
+//   3. HTML CHƯA tự đặt `__REGISTRATION_FORM_HANDLED__` (tránh ghi đè ý định
+//      của người dùng — ví dụ landing muốn tracker.js gửi thay).
+//
+// ⇒ Cờ được đặt ở ĐẦU <head> để chắc chắn có hiệu lực TRƯỚC khi
+//   `initAutoFormInterceptor` chạy.
+func injectRegistrationFormGuard(html string) string {
+	if !strings.Contains(html, "sendLeadToBackend") {
+		return html
+	}
+	if !strings.Contains(html, "registrationForm") {
+		return html
+	}
+	// Đã có cờ do landing tự khai báo → không ghi đè.
+	if strings.Contains(html, "__REGISTRATION_FORM_HANDLED__") {
+		return html
+	}
+
+	guard := `<script>
+/* [APEX FORM GUARD] Landing này tự xử lý form đăng ký (đã gọi ApexTracker.sendLeadToBackend).
+   Báo cho tracker.js BỎ QUA form registrationForm để 1 lần bấm chỉ sinh 1 request /api/leads.
+   Nếu không, tracker.js gửi thêm 1 lần với cùng challenge_id + challenge_solution
+   ⇒ server ghi vào spam_quarantine ("Lỗi Proof-of-Work") ⇒ lead thật bị lọc nhầm. */
+window.__REGISTRATION_FORM_HANDLED__ = true;
+</script>
+`
+
+	// Ưu tiên chèn ngay sau <head> để chạy TRƯỚC tracker.js.
+	lower := strings.ToLower(html)
+	if idx := strings.Index(lower, "<head>"); idx != -1 {
+		insertAt := idx + len("<head>")
+		return html[:insertAt] + "\n" + guard + html[insertAt:]
+	}
+	if idx := strings.Index(lower, "<head"); idx != -1 {
+		// <head ...> — tìm điểm kết thúc thẻ mở.
+		if gt := strings.Index(lower[idx:], ">"); gt != -1 {
+			insertAt := idx + gt + 1
+			return html[:insertAt] + "\n" + guard + html[insertAt:]
+		}
+	}
+	return guard + html
 }
 
 // ============================================================
@@ -1707,7 +1847,11 @@ func (h *LandingHandler) ServePublicLanding(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Trang hoạt động bình thường -> Render mã HTML kèm Auto-Injection
-	renderedHTML := h.InjectDynamicScripts(p.CodeHTML, p)
+	//
+	// `basePath` = `/p/<page_id>` ⇒ các tài nguyên tương đối (`tracker.js`,
+	// `config.json`) được ghi đè thành đường dẫn TUYỆT ĐỐI, không phụ thuộc vị
+	// trí thẻ `<base>` trong HTML (bug tracker.js 404 — 2026-11-05).
+	renderedHTML := h.InjectDynamicScriptsWithBase(p.CodeHTML, p, "/p/"+pageID)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// HTML landing chứa `data-landing-id` + `window.APEX_LANDING_CONFIG` quyết định
 	// analytics ghi về landing nào ⇒ KHÔNG được trình duyệt cache lại.

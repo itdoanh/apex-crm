@@ -171,6 +171,32 @@ CREATE TABLE landing_pages (
 
 ---
 
+## 3.1 `landing_files` — cây file của landing
+
+```sql
+CREATE TABLE landing_files (
+    id          SERIAL PRIMARY KEY,
+    page_id     VARCHAR(100) NOT NULL,
+    domain      VARCHAR(255) NOT NULL DEFAULT '',
+    file_path   VARCHAR(500) NOT NULL DEFAULT '',
+    file_type   VARCHAR(50)  NOT NULL DEFAULT 'html',
+    content     TEXT         NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+| Hàm store | Quy tắc |
+|---|---|
+| `GetLandingFile(domain, pageID, filePath)` | `WHERE (domain = $1 OR domain = '')` + `ORDER BY (CASE WHEN domain = $1 AND $1 <> '' THEN 0 ELSE 1 END) ASC, updated_at DESC` ⇒ **bản domain khớp chính xác** thắng bản `domain = ''` dù chung; cùng nhóm thì lấy bản cập nhật gần nhất. Không có `ORDER BY` này ⇒ server serve **bản `tracker.js` cũ** ⇒ mất lớp chống submit trùng phía client. |
+| `SyncSharedStaticFilesToDB()` | `SELECT domain, page_id FROM landing_pages UNION SELECT domain, page_id FROM landing_files` ⇒ file tĩnh (orphan trong `landing_files` mà không còn trong `landing_pages`) vẫn được đồng bộ từ đĩa lúc khởi động server. |
+
+> ⚠️ Vì `landing_files` cho phép `domain = ''` (bản dùng chung), cùng một `file_path`
+> có thể tồn tại 2 row. Quy tắc ưu tiên domain khớp chính xác là **bất biến** —
+> không được bỏ `ORDER BY`.
+
+---
+
 ## 4. `domains` & `domain_routes`
 
 ```sql

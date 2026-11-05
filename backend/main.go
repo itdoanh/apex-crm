@@ -461,7 +461,12 @@ func main() {
 		}
 
 		// 2. Tra cứu Dynamic Multi-Domain Routing từ RAM Cache
-		landingID, _, subPath, redirectURL, found := domainCache.ResolveRoute(r.Host, reqPath)
+		//
+		// `routePrefix` là prefix của route khớp (vd: `/landing`, `/chucmung`, `/`).
+		// Dùng để ghi đè đường dẫn tài nguyên tương đối (`tracker.js`) thành tuyệt
+		// đối, không phụ thuộc vị trí thẻ `<base>` trong HTML (bug tracker.js 404 —
+		// 2026-11-05).
+		landingID, routePrefix, subPath, redirectURL, found := domainCache.ResolveRoute(r.Host, reqPath)
 		if found {
 			if redirectURL != "" {
 				http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -514,7 +519,10 @@ func main() {
 
 					serveChucMung := func(content string) {
 						if cmLanding != nil {
-							rendered := landingHandler.InjectDynamicScripts(content, cmLanding)
+							// `routePrefix` = prefix của route đang phục vụ (vd: `/chucmung`,
+							// `/`). Ghi đè đường dẫn tài nguyên tương đối (`tracker.js`)
+							// thành tuyệt đối để luôn tải được (bug tracker.js 404 — 2026-11-05).
+							rendered := landingHandler.InjectDynamicScriptsWithBase(content, cmLanding, routePrefix)
 							w.Header().Set("Content-Type", "text/html; charset=utf-8")
 							setNoCache()
 							_, _ = w.Write([]byte(rendered))
@@ -639,7 +647,10 @@ func main() {
 					return
 				}
 
-				renderedHTML := landingHandler.InjectDynamicScripts(p.CodeHTML, p)
+				// `routePrefix` = prefix của route đang phục vụ (vd: `/landing`, `/`).
+				// Ghi đè đường dẫn tài nguyên tương đối thành tuyệt đối để
+				// `tracker.js` luôn tải được (bug tracker.js 404 — 2026-11-05).
+				renderedHTML := landingHandler.InjectDynamicScriptsWithBase(p.CodeHTML, p, routePrefix)
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				// HTML landing chứa `data-landing-id` + `window.APEX_LANDING_CONFIG`
 				// quyết định analytics ghi về landing nào ⇒ không được cache lại.

@@ -142,6 +142,44 @@ trong tab **Bảo mật & Bot** (dù lead vẫn về CRM + Google Sheets).
 > 📌 Chi tiết cơ chế fingerprint phía server (phân biệt "gửi trùng do client" với
 > "bot replay payload") xem `docs/SECURITY.md` mục 2.
 
+### 🔴 3 nguyên nhân gốc khiến 1 lần bấm sinh N request (fix 2026-11-05)
+
+Ngoài việc "3 handler cùng gọi", còn **3 lỗi hệ thống** khiến lớp bảo vệ phía client
+vô hiệu hoá. Cả 3 đều đã được sửa trong backend:
+
+| # | Nguyên nhân | Triệu chứng | Cách sửa |
+|---|---|---|---|
+| 1 | `GetLandingFile()` không có `ORDER BY` | Trả về bản `domain=''` **cũ** thay vì bản khớp domain ⇒ landing chạy `tracker.js` cũ **không có** `LEAD_DEDUP_WINDOW_MS` | `backend/db/landings.go` — `ORDER BY (CASE WHEN domain = $1 AND $1 <> '' THEN 0 ELSE 1 END) ASC, updated_at DESC` ⇒ ưu tiên domain khớp chính xác, mới nhất |
+| 2 | `SyncSharedStaticFilesToDB()` chỉ đọc `landing_pages` | Bỏ sót các cặp `(domain, page_id)` chỉ tồn tại trong `landing_files` (vd `('', 'landing_cu')`, `('hanghoaphaisinh.net','mxv_080_online')`) ⇒ chúng giữ bản `tracker.js` cũ | `backend/db/landings.go` — query `UNION` của `landing_pages` **và** `landing_files` |
+| 3 | `<base href>` đặt **SAU** `<script src="tracker.js">` | Theo HTML spec, `<base>` chỉ có hiệu lực với URL phân giải **sau** khi nó được parse ⇒ trình duyệt gọi `/p/tracker.js` (404) thay vì `/landing/tracker.js` ⇒ `window.ApexTracker` **không tồn tại** ⇒ landing tự gửi lead không được, interceptor cũng không chạy | `backend/handlers/landing_handler.go` — `rewriteRelativeAssetPaths()` ghi đè `tracker.js`/`config.json` thành đường dẫn **tuyệt đối** theo `basePath` của URL đang phục vụ |
+
+> 🚨 **Lưu ý #3 rất dễ tái phát**: HTML export từ LadiPage luôn đặt `<base>` ở giữa
+> `<head>`, còn thẻ `<script src="tracker.js">` nằm ở đầu. Vì vậy **không được** viết
+> `<script src="tracker.js">` trong HTML và tin rằng trình duyệt sẽ tự resolve đúng.
+> Backend đã tự ghi đè — nhưng nếu bạn thêm script asset khác dùng đường dẫn tương đối
+> (`style.css`, `main.js`…) thì hãy dùng đường dẫn **tuyệt đối** (`/landing/style.css`).
+
+**Đường dẫn `tracker.js` đúng theo từng kiểu phục vụ:**
+
+| Kiểu phục vụ | `basePath` | `tracker.js` được trỏ tới |
+|---|---|---|
+| Domain route có prefix | `/landing` | `/landing/tracker.js` |
+| Domain route gốc | `/` | `/tracker.js` |
+| Multi-landing public | `/p/<page_id>` | `/p/<page_id>/tracker.js` |
+
+### 🧪 Kiểm thử tự động
+
+```bash
+# 1 lần bấm = 1 request /api/leads, 0 bản ghi spam_quarantine
+python backend/tests/e2e_browser_single_submit_test.py
+
+# tracker.js nạp đúng ở mọi kiểu phục vụ (dùng Host header giả lập)
+python backend/tests/e2e_browser_edge_router_test.py
+```
+
+Cả 2 script dùng **Playwright Chromium thật** (không phải jsdom) — chỉ bằng cách đó
+mới bắt được lỗi phân giải `<base>`.
+
 ---
 
 ## 4. `config.json` — cấu hình per-landing
@@ -281,6 +319,8 @@ khác số liệu view/lead. Để điều này đúng, 4 điểm sau phải đ�
 | 3 | `tracker.js` biết chắc landing nào đang phục vụ | Thẻ `<script src="tracker.js" data-landing-id="<page_id>">` — backend luôn gắn |
 | 4 | `chucmung.html` cũng có ngữ cảnh landing | Serve qua `InjectDynamicScripts()` (không serve thẳng từ đĩa) |
 | 5 | Trình duyệt không cache HTML cũ | Mọi response HTML landing có `Cache-Control: no-cache, no-store, must-revalidate` |
+| 6 | `tracker.js` được nạp đúng bản CỦA landing này | `GetLandingFile()` ưu tiên domain khớp chính xác + mới nhất (fix 2026-11-05) |
+| 7 | `tracker.js` được nạp đúng **đường dẫn** | `rewriteRelativeAssetPaths()` ghi đè thành đường dẫn tuyệt đối theo `basePath` (fix 2026-11-05) |
 
 > ⚠️ **Đừng bao giờ** để `window.APEX_LANDING_CONFIG` của template ghi đè giá trị
 > backend inject. Luôn dùng property trap (`Object.defineProperty` + setter merge).

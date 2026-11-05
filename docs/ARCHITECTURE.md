@@ -135,6 +135,23 @@ Khi render landing HTML, backend chèn tự động:
 - Facebook Pixel / Google Analytics / TikTok Pixel (nếu cấu hình trong `settings`)
 - Custom head/body scripts
 
+Ngoài ra backend chuẩn hoá HTML trả về:
+
+| Việc | Hàm | Mục đích |
+|---|---|---|
+| Gắn `data-landing-id` vào thẻ `<script src="tracker.js">` | `InjectDynamicScripts()` | `tracker.js` biết chắc landing nào đang phục vụ (chống chồng chéo landing) |
+| Đặt cờ `window.__REGISTRATION_FORM_HANDLED__ = true` | `injectRegistrationFormGuard()` | Landing tự gửi lead ⇒ interceptor của `tracker.js` bỏ qua ⇒ **1 lần bấm = 1 request** |
+| Ghi đè đường dẫn tài nguyên tương đối → **tuyệt đối** | `rewriteRelativeAssetPaths()` | `<base href>` đặt sai chỗ trong HTML khiến trình duyệt gọi `/p/tracker.js` (404) ⇒ mất toàn bộ tracking |
+
+`InjectDynamicScriptsWithBase(rawHTML, p, basePath)` nhận `basePath` = prefix của URL
+đang phục vụ (`/p/<page_id>`, `/landing`, `/`) để sinh đúng đường dẫn tuyệt đối:
+
+| Kiểu phục vụ | `basePath` | `tracker.js` |
+|---|---|---|
+| Multi-landing public | `/p/<page_id>` | `/p/<page_id>/tracker.js` |
+| Domain route có prefix | `/landing` | `/landing/tracker.js` |
+| Domain route gốc | `/` | `/tracker.js` |
+
 ## 4. Tầng Frontend
 
 ### 4.1. CRM Admin (`frontend/admin/`)

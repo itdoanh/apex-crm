@@ -126,6 +126,23 @@ Cả 3 đều gọi `ApexTracker.sendLeadToBackend()` ⇒ **cùng 1 payload** (k
    - Set `window.__REGISTRATION_FORM_HANDLED__ = true` ⇒ interceptor của `tracker.js`
      tự bỏ qua form `registrationForm`.
 
+4. **Server — bảo đảm client thực sự NHẬN được code mới** (fix 2026-11-05):
+
+   3 lớp bảo vệ phía client ở trên chỉ có tác dụng nếu trình duyệt nạp được
+   `tracker.js` **bản mới**. Trên production đã xảy ra 3 sự cố khiến client chạy
+   code cũ hoặc không chạy:
+
+   | # | Sự cố | Hậu quả | Fix |
+   |---|---|---|---|
+   | a | `GetLandingFile()` không `ORDER BY` | Serve bản `domain=''` cũ (thiếu `LEAD_DEDUP_WINDOW_MS`) | `backend/db/landings.go` — ưu tiên domain khớp chính xác, mới nhất |
+   | b | `SyncSharedStaticFilesToDB()` bỏ sót cặp `(domain, page_id)` | Một số landing giữ `tracker.js` cũ | `backend/db/landings.go` — `UNION` `landing_pages` + `landing_files` |
+   | c | `<base href>` đặt sau `<script src="tracker.js">` | Trình duyệt gọi `/p/tracker.js` ⇒ **404** ⇒ `window.ApexTracker` không tồn tại ⇒ lớp bảo vệ #2, #3 vô hiệu | `backend/handlers/landing_handler.go` — `rewriteRelativeAssetPaths()` ghi đè đường dẫn tài nguyên thành **tuyệt đối** |
+
+   > ⚠️ Lớp bảo vệ #1 (fingerprint server) là lớp **duy nhất không phụ thuộc client**
+   > ⇒ vẫn giữ được tín hiệu "gửi trùng do client" và không ghi lead thật vào cách ly.
+   > Nhưng nếu `tracker.js` không nạp được ⇒ landing tự gửi lead cũng không chạy ⇒
+   > **lead thật không tới server** ⇒ phải sửa cả 3 nguyên nhân a, b, c.
+
 > ⚠️ **Không được phá autofill-safe** khi sửa `tracker.js` (xem mục 4).
 
 ### Cấu hình

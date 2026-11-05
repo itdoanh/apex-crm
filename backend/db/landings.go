@@ -535,7 +535,23 @@ func (s *Store) ListLandingFiles(domain string, pageID string) ([]models.Landing
 	return list, nil
 }
 
-// GetLandingFile lấy nội dung 1 tệp tin
+// GetLandingFile lấy nội dung 1 tệp tin.
+//
+// ⚠️ THỨ TỰ ƯU TIÊN (bắt buộc — bug 2026-11-05):
+// Query cũ dùng `WHERE (domain = $1 OR domain = '') ... LIMIT 1` KHÔNG có ORDER BY
+// ⇒ PostgreSQL trả về bản ghi TÙY Ý (thực tế là bản có id nhỏ nhất ⇒ bản CŨ nhất
+// trong cùng nhóm). Hậu quả trên production:
+//
+//	domain=ads.giaodichhanghoatuonglai.com, page_id=landing_cu, file_path=tracker.js
+//	  id=48  (domain CHÍNH XÁC, len=60022, mới, có LEAD_DEDUP_WINDOW_MS)
+//	  id=399 (domain=''      , len=57349, CŨ, KHÔNG có LEAD_DEDUP_WINDOW_MS)
+//	⇒ Edge Router phục vụ id=399 ⇒ landing chạy tracker.js CŨ ⇒ mất cơ chế
+//	  khóa chống gửi trùng ở client ⇒ 1 lần bấm sinh 3 POST /api/leads ⇒
+//	  lead THẬT bị ghi vào spam_quarantine với lý do "Lỗi Proof-of-Work".
+//
+// ⇒ BẮT BUỘC ưu tiên bản có `domain` KHỚP CHÍNH XÁC, sau đó mới tới bản
+// `domain = ''` (bản dùng chung), và trong cùng nhóm thì lấy bản CẬP NHẬT
+// GẦN NHẤT. Cùng thứ tự này đã được dùng ở `GetLandingPage` — giữ nhất quán.
 func (s *Store) GetLandingFile(domain string, pageID string, filePath string) (*models.LandingFile, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -545,6 +561,7 @@ func (s *Store) GetLandingFile(domain string, pageID string, filePath string) (*
 		       TO_CHAR(updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM landing_files
 		WHERE (domain = $1 OR domain = '') AND page_id = $2 AND file_path = $3
+		ORDER BY (CASE WHEN domain = $1 AND $1 <> '' THEN 0 ELSE 1 END) ASC, updated_at DESC
 		LIMIT 1
 	`
 	row := s.pool.QueryRow(ctx, query, domain, pageID, filePath)
@@ -657,8 +674,27 @@ func (s *Store) SyncSharedStaticFilesToDB(ctx context.Context, diskRoot string) 
 		filepath.Join(diskRoot, ".."),
 	}
 
-	// Lấy danh sách landing hiện có (domain, page_id)
-	rows, err := s.pool.Query(ctx, "SELECT DISTINCT domain, page_id FROM landing_pages")
+	// Lấy danh sách landing cần đồng bộ.
+	//
+	// ⚠️ PHẢI lấy HỢP của `landing_pages` VÀ `landing_files` (bug 2026-11-05).
+	//
+	// Query cũ chỉ đọc `landing_pages`. Nhưng `landing_files` chứa nhiều cặp
+	// (domain, page_id) KHÔNG tồn tại trong `landing_pages` — ví dụ production:
+	//
+	//	landing_pages : ('','mxv_080_online'), ('ads...','landing_cu'), ('ads...','landing_lznoew')
+	//	landing_files  : ('','landing_cu')                              ← THIẾU trong landing_pages
+	//	                 ('hanghoaphaisinh.net','mxv_080_online')     ← THIẾU trong landing_pages
+	//
+	// ⇒ 2 bản `tracker.js` đó giữ nguyên bản CŨ ⇒ landing chạy code cũ ⇒
+	//   mất cơ chế khóa chống gửi trùng ở client ⇒ 1 lần bấm sinh 3 POST
+	//   /api/leads ⇒ lead THẬT bị ghi vào spam_quarantine ("Lỗi Proof-of-Work").
+	//
+	// ⇒ Lấy UNION của cả hai nguồn để KHÔNG bản ghi nào bị bỏ sót.
+	rows, err := s.pool.Query(ctx, `
+		SELECT domain, page_id FROM landing_pages
+		UNION
+		SELECT domain, page_id FROM landing_files
+	`)
 	if err != nil {
 		return err
 	}
