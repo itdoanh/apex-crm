@@ -44,7 +44,7 @@
             resizeStartX = e.clientX;
             resizeStartY = e.clientY;
 
-            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+            const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
 
             resizeStartRect = {
                 left: parseFloat(gizmoBox.style.left) || 0,
@@ -194,7 +194,7 @@
             const iframe = document.getElementById('csPreviewIframe');
             if (!gizmoBox || !iframe || !iframe.contentWindow) return;
 
-            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+            const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
 
             // TRƯỜNG HỢP 1: KÉO CO GIÃN KÍCH THƯỚC (RESIZE)
             if (isDraggingGizmo && resizeStartRect) {
@@ -212,7 +212,8 @@
                 let newScreenL = startScreenL;
                 let newScreenT = startScreenT;
 
-                const minW = Math.max(10, 20 * zoom);
+                // minW/minH tính theo không gian MÀN HÌNH (đã scale) ⇒ tương ứng 10px nội bộ
+                const minW = Math.max(10, 10 * zoom);
                 const minH = Math.max(10, 10 * zoom);
 
                 if (dir.includes('e')) {
@@ -392,7 +393,7 @@
             // 4. Lưu thay đổi chính thức vào AST Source Mapper
             if (selectedAstNodeId) {
                 if (wasResizing) {
-                    const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+                    const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
                     const finalW = resizeCurrentContentW || Math.round((parseFloat(document.getElementById('csGizmoBox').style.width) || 0) / zoom);
                     const finalH = resizeCurrentContentH || Math.round((parseFloat(document.getElementById('csGizmoBox').style.height) || 0) / zoom);
                     const styleToSave = {
@@ -480,7 +481,6 @@
            Boundary Clamped Panning, Space Grab/Grabbing Hand, 60fps Transforms
            ============================================================== */
 
-        let canvasZoom = 1.0;
         let canvasPanX = 0;
         let canvasPanY = 0;
         var isCanvasPanning = false;
@@ -536,20 +536,28 @@
             updateStudioCanvasWidthReadout();
         }
 
-        // Hiển thị chiều rộng thực tế của khung preview (PC fluid / Mobile cố định)
-        // Dùng clientWidth (không tính border) ⇒ đúng bằng viewport width của iframe
-        // ⇒ khớp với điều kiện media query đang áp dụng cho landing.
+        // Hiển thị chiều rộng THỰC TẾ của viewport nội bộ iframe (nơi media query áp dụng)
+        // - PC: viewport = max(wrapperWidth / zoom, 780px)  (mô phỏng zoom thật của trình duyệt)
+        // - Mobile: viewport cố định 390px (đúng thiết bị)
         function updateStudioCanvasWidthReadout() {
             const wrapper = document.getElementById('csIframeWrapper');
             if (!wrapper) return;
-            const w = Math.round(wrapper.clientWidth);
-            if (!w) return;
+            const boxW = wrapper.clientWidth;
+            if (!boxW) return;
+
+            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+            let viewportW;
+            if (studioDeviceMode === 'mobile') {
+                viewportW = 390;
+            } else {
+                viewportW = Math.max(Math.round(boxW / zoom), STUDIO_PC_MIN_WIDTH);
+            }
 
             const live = document.getElementById('csCanvasWidthLive');
-            if (live) live.innerText = w + 'px';
+            if (live) live.innerText = viewportW + 'px';
 
             const badge = document.getElementById('csCanvasWidthBadge');
-            if (badge) badge.innerText = w + 'px';
+            if (badge) badge.innerText = viewportW + 'px';
 
             const resetBtn = document.getElementById('btnCanvasAutoWidth');
             if (resetBtn) {
@@ -613,6 +621,27 @@
             return { x: clampedX, y: clampedY };
         }
 
+        // ==============================================================
+        // CANVAS ZOOM — MÔ PHỎNG ZOOM THẬT CỦA TRÌNH DUYỆT
+        // ==============================================================
+        // VẤN ĐỀ (đã sửa 2026-11-05):
+        //   Zoom cũ dùng `document.body.style.zoom` BÊN TRONG iframe.
+        //   ⇒ Viewport nội bộ của iframe KHÔNG đổi ⇒ media query không đổi
+        //     ⇒ layout PC vẫn cứng ở width cũ, chỉ chữ/toán hình bị thu nhỏ.
+        //     ⇒ "Zoom nhỏ ra" nhưng khung hình web KHÔNG rộng ra (giống web PC thật).
+        //
+        // CÁCH SỬA (giống zoom thật của trình duyệt):
+        //   Rộng viewport nội bộ iframe ra (width = wrapperWidth / zoom) rồi
+        //   scale nội dung về khung hiển thị (transform: scale(zoom)).
+        //   ⇒ Zoom nhỏ (zoom < 1) ⇒ viewport nội bộ RỘNG RA ⇒ media query co giãn
+        //     ⇒ bố cục web thật sự thay đổi theo bề rộng, y hệt trình duyệt.
+        let canvasZoom = 1.0;
+        // Tỉ lệ scale THỰC TẾ đang áp dụng cho iframe (dùng để quy đổi tọa độ gizmo/hover).
+        // - PC: scale = boxW / viewportW (có thể khác canvasZoom khi bị chặn bởi min-width 780px)
+        // - Mobile: scale = canvasZoom
+        let canvasRenderScale = 1.0;
+        window.canvasRenderScale = 1.0;
+
         function applyCanvasTransform() {
             const wrapper = document.getElementById('csIframeWrapper');
             const lbl = document.getElementById('lblZoomLevel');
@@ -622,14 +651,50 @@
             // Khung ngoài luôn giữ nguyên vị trí cố định, tuyệt đối không di chuyển hay làm méo khung
             wrapper.style.transform = 'none';
 
-            // Phóng to / nhỏ nội dung TRONG khung preview (Inner Content Zoom inside Iframe)
+            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
+            const boxW = wrapper.clientWidth;
+            const boxH = wrapper.clientHeight;
+            const isMobile = (studioDeviceMode === 'mobile');
+
+            // 1) Tính VIEWPORT NỘI BỘ của iframe (nơi media query thực sự áp dụng)
+            //    - PC: viewport = boxW / zoom (mô phỏng zoom trình duyệt)
+            //      nhưng LUÔN ≥ 780px để PC styles (@media min-width:769px) không bị tắt.
+            //    - Mobile: viewport cố định 390px (đúng thiết bị) ⇒ zoom chỉ là thu phóng hình ảnh.
+            let viewportW;
+            let scale;
+            if (isMobile) {
+                viewportW = 390;
+                scale = zoom;
+            } else {
+                viewportW = Math.max(Math.round(boxW / zoom), STUDIO_PC_MIN_WIDTH);
+                scale = boxW / viewportW;
+            }
+            if (!isFinite(scale) || scale <= 0) scale = 1;
+            canvasRenderScale = scale;
+            window.canvasRenderScale = scale;
+
+            if (iframe) {
+                // 2) Iframe rộng đúng bằng viewport nội bộ, cao đủ để lấp khung sau khi scale
+                iframe.style.position = 'absolute';
+                iframe.style.left = '0px';
+                iframe.style.top = '0px';
+                iframe.style.width = viewportW + 'px';
+                iframe.style.height = Math.round(boxH / scale) + 'px';
+                iframe.style.transformOrigin = 'top left';
+                iframe.style.transform = (scale === 1) ? 'none' : ('scale(' + scale + ')');
+            }
+
+            // Bảo đảm bên trong iframe KHÔNG còn zoom cũ (body.zoom) gây nhân đôi tỉ lệ
             if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({ type: 'APEX_CMD_SET_CONTENT_ZOOM', zoom: canvasZoom }, '*');
+                iframe.contentWindow.postMessage({ type: 'APEX_CMD_RESET_CONTENT_ZOOM' }, '*');
             }
 
             if (lbl) {
                 lbl.innerText = `${Math.round(canvasZoom * 100)}%`;
             }
+
+            // Readout phải phản ánh viewport NỘI BỘ của iframe (nơi media query áp dụng)
+            updateStudioCanvasWidthReadout();
 
             // Cập nhật lại vị trí gizmo nếu đang có node được chọn
             if (selectedAstNodeId) {
@@ -830,8 +895,10 @@
             if (isResizingCanvasWidth || isDraggingGizmo || isMovingGizmo) return;
             const iframe = document.getElementById('csPreviewIframe');
             const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
-            const clientX = (data && data.clientX !== undefined) ? (data.clientX + iframeRect.left) : (data ? (data.screenX || 0) : 0);
-            const clientY = (data && data.clientY !== undefined) ? (data.clientY + iframeRect.top) : (data ? (data.screenY || 0) : 0);
+            // clientX/clientY từ trong iframe là CSS px nội bộ ⇒ nhân zoom cho khớp
+            const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
+            const clientX = (data && data.clientX !== undefined) ? (data.clientX * zoom + iframeRect.left) : (data ? (data.screenX || 0) : 0);
+            const clientY = (data && data.clientY !== undefined) ? (data.clientY * zoom + iframeRect.top) : (data ? (data.screenY || 0) : 0);
 
             startCanvasPan({
                 clientX: clientX,
@@ -1103,6 +1170,9 @@
             // Khi người dùng co / giãn cửa sổ trình duyệt hoặc kéo thanh split,
             // khung preview PC phải co lại / nở ra theo — readout + gizmo cũng phải cập nhật.
             const scheduleReadout = () => {
+                // Re-apply transform để iframe đổi kích thước nội bộ theo wrapper mới
+                // (khi có zoom: viewport nội bộ = wrapperWidth / zoom)
+                if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
                 updateStudioCanvasWidthReadout();
                 if (selectedAstNodeId && !window.isCanvasPanning && !window.isSpaceKeyPressed) {
                     requestNodeRect(selectedAstNodeId);
@@ -1116,14 +1186,21 @@
                     rafId = requestAnimationFrame(scheduleReadout);
                 });
                 ro.observe(viewport);
+                // Theo dõi trực tiếp wrapper: bắt được cả trường hợp width do JS đổi
+                const wrapperEl = document.getElementById('csIframeWrapper');
+                if (wrapperEl) ro.observe(wrapperEl);
             }
 
             window.addEventListener('resize', () => {
+                if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
                 updateStudioCanvasWidthReadout();
             });
 
             // Áp dụng chiều rộng ban đầu theo device mode hiện tại
             applyStudioCanvasWidth();
+
+            // Áp dụng transform/zoom ban đầu (iframe lấp đúng viewport nội bộ)
+            applyCanvasTransform();
         }
 
         // Khởi chạy khi DOM đã sẵn sàng

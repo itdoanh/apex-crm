@@ -151,10 +151,57 @@ Hàm quản lý (trong `js/studio/gizmo.js`):
 | `updateStudioCanvasWidthReadout()` | Cập nhật readout + hiện/ẩn nút "Tự động" |
 | `resetStudioCanvasAutoWidth()` | Bỏ ghim width → PC mode trở lại fluid |
 
-`ResizeObserver` trên `#csCanvasViewport` cập nhật readout + gizmo khi người dùng
-co / giãn cửa sổ hoặc kéo thanh split.
+`ResizeObserver` trên `#csCanvasViewport` + `#csIframeWrapper` cập nhật readout + gizmo khi
+người dùng co / giãn cửa sổ hoặc kéo thanh split.
 
 > ⚠️ **Lưu ý khi sửa `studio.html`**: nút PC hiện ghi "PC (Tự động)" (không còn "PC (1440px)").
+
+### 🔍 Zoom preview — MÔ PHỎNG ZOOM THẬT CỦA TRÌNH DUYỆT (sửa 2026-11-05)
+
+**Vấn đề đã gặp**: zoom của Studio dùng `document.body.style.zoom` **bên trong** iframe.
+Hệ quả:
+
+- Viewport **nội bộ** của iframe **không đổi** ⇒ **media query không đổi** ⇒ layout PC
+  vẫn cứng ở bề rộng cũ.
+- Chỉ chữ / toán hình bị thu nhỏ ⇒ *"zoom nhỏ ra nhưng khung hình web không rộng ra"*,
+  khác hẳn web PC thật (web thật zoom nhỏ ⇒ bề rộng viewport tăng ⇒ layout co giãn).
+
+**Cách sửa** — mô phỏng đúng cơ chế zoom của trình duyệt:
+
+```
+iframe.style.width  = viewportW   (viewport NỘI BỘ, nơi media query áp dụng)
+iframe.style.height = boxH / scale
+iframe.style.transform = scale(scale)   (transform-origin: top left)
+```
+
+| Device mode | `viewportW` (nội bộ) | `scale` | Ý nghĩa |
+|---|---|---|---|
+| PC | `max(boxW / zoom, 780)` | `boxW / viewportW` | Zoom nhỏ ⇒ viewport nội bộ **RỘNG RA** ⇒ layout co giãn thật |
+| Mobile | `390` (cố định) | `zoom` | Giữ đúng viewport thiết bị; zoom chỉ thu phóng hình ảnh |
+
+- `min-width 780px` giữ cho PC ⇒ media query `@media (min-width: 769px)` không bao giờ bị tắt.
+- Lệnh mới `APEX_CMD_RESET_CONTENT_ZOOM` (trong `js/studio/ast-mapper.js`) xoá
+  `body.zoom` cũ để không nhân đôi tỉ lệ.
+
+**Quy đổi tọa độ** (vì iframe nay bị `transform: scale()` ⇒ tọa độ trong iframe là CSS px
+**nội bộ**, chưa scale):
+
+| Nơi | Cách quy đổi |
+|---|---|
+| `repositionGizmoBox()` (`inspector.js`) | `rect.* × window.canvasRenderScale` |
+| Hover box (`inspector.js`) | `msg.rect.* × window.canvasRenderScale` |
+| Context menu (`inspector.js`) | `msg.clientX/Y × window.canvasRenderScale` |
+| Pan từ trong iframe (`gizmo.js`) | `data.clientX/Y × window.canvasRenderScale` |
+| Gizmo drag / resize (`gizmo.js`) | `screenDx / scale` ⇒ CSS px nội bộ |
+
+Biến `window.canvasRenderScale` được export từ `gizmo.js` (tỉ lệ scale **thực tế**,
+khác `canvasZoom` khi bị chặn bởi `min-width 780px`).
+
+Readout `#csCanvasWidthLive` hiển thị **viewport nội bộ** (nơi media query áp dụng),
+nên khi zoom 50% sẽ hiện `1556px` — khớp chính xác bề rộng mà landing thật sự nhận.
+
+> 📌 **Cache tĩnh**: `main.go` đã set `Cache-Control` cho file tĩnh (`setStaticCacheHeaders`).
+> Nếu thấy UI cũ sau khi deploy → hard reload (`Ctrl+Shift+R`) hoặc kiểm tra lại header.
 
 ### 📁 File Manager — lưu & deploy TOÀN BỘ file (từ 2026-11-04)
 

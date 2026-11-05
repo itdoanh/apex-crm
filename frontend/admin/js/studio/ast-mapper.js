@@ -597,6 +597,10 @@
                     `            document.body.style.zoom = z;\n` +
                     `            window.__APEX_CONTENT_ZOOM__ = z;\n` +
                     `        }\n` +
+                    `        if (m.type === 'APEX_CMD_RESET_CONTENT_ZOOM') {\n` +
+                    `            document.body.style.zoom = '';\n` +
+                    `            window.__APEX_CONTENT_ZOOM__ = 1.0;\n` +
+                    `        }\n` +
                     `        if (m.type === 'APEX_CMD_SCROLL_PAN') {\n` +
                     `            try { window.scrollBy({ left: m.dx, top: m.dy, behavior: 'instant' }); } catch(e) {}\n` +
                     `        }\n` +

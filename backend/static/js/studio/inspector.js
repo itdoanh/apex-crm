@@ -53,8 +53,10 @@
                 const iframe = document.getElementById('csPreviewIframe');
                 if (iframe) {
                     const rect = iframe.getBoundingClientRect();
-                    const absX = rect.left + msg.clientX;
-                    const absY = rect.top + msg.clientY;
+                    // clientX/clientY gửi từ trong iframe là CSS px nội bộ ⇒ nhân tỉ lệ scale
+                    const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
+                    const absX = rect.left + (msg.clientX * zoom);
+                    const absY = rect.top + (msg.clientY * zoom);
                     if (msg.nodeId) {
                         selectAstNode(msg.nodeId);
                         openContextMenu(absX, absY, msg.nodeId);
@@ -79,10 +81,12 @@
                 const hoverBox = document.getElementById('csHoverBox');
                 const hoverTag = document.getElementById('csHoverTag');
                 if (hoverBox && hoverTag && msg.rect) {
-                    hoverBox.style.top = msg.rect.top + 'px';
-                    hoverBox.style.left = msg.rect.left + 'px';
-                    hoverBox.style.width = msg.rect.width + 'px';
-                    hoverBox.style.height = msg.rect.height + 'px';
+                    // Tọa độ trong iframe là CSS px nội bộ ⇒ nhân tỉ lệ scale cho khớp khung hiển thị
+                    const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
+                    hoverBox.style.top = Math.round(msg.rect.top * zoom) + 'px';
+                    hoverBox.style.left = Math.round(msg.rect.left * zoom) + 'px';
+                    hoverBox.style.width = Math.round(msg.rect.width * zoom) + 'px';
+                    hoverBox.style.height = Math.round(msg.rect.height * zoom) + 'px';
                     const classSummary = msg.className ? '.' + msg.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
                     hoverTag.innerText = `<${msg.tagName}${classSummary}>`;
                     hoverBox.classList.remove('hidden');
@@ -265,10 +269,15 @@
 
             if (!gizmoBox || !rect || isDraggingGizmo || isMovingGizmo) return;
 
-            gizmoBox.style.top = Math.round(rect.top) + 'px';
-            gizmoBox.style.left = Math.round(rect.left) + 'px';
-            gizmoBox.style.width = Math.max(10, Math.round(rect.width)) + 'px';
-            gizmoBox.style.height = Math.max(10, Math.round(rect.height)) + 'px';
+            // ⭐ Zoom thật (2026-11-05): iframe được `transform: scale(...)`,
+            // nên tọa độ lấy từ trong iframe là CSS px NỘI BỘ (chưa scale).
+            // ⇒ Phải nhân với tỉ lệ scale thực tế mới khớp với khung hiển thị bên ngoài.
+            const zoom = (typeof window.canvasRenderScale === 'number' && window.canvasRenderScale > 0) ? window.canvasRenderScale : 1.0;
+
+            gizmoBox.style.top = Math.round(rect.top * zoom) + 'px';
+            gizmoBox.style.left = Math.round(rect.left * zoom) + 'px';
+            gizmoBox.style.width = Math.max(10, Math.round(rect.width * zoom)) + 'px';
+            gizmoBox.style.height = Math.max(10, Math.round(rect.height * zoom)) + 'px';
 
             const tag = selectedNodeMeta ? selectedNodeMeta.tagName : 'div';
             const classSummary = selectedNodeMeta && selectedNodeMeta.className ? '.' + selectedNodeMeta.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
@@ -276,8 +285,8 @@
             if (gizmoTag) {
                 gizmoTag.innerHTML = `${isLocked ? '<i class="fa-solid fa-lock text-yellow-400 mr-1"></i>' : ''}${tag.toUpperCase()} ${classSummary}`;
             }
-            const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
-            if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width / zoom)} × ${Math.round(rect.height / zoom)}px`;
+            // rect đã là CSS px thật của landing ⇒ hiển thị thẳng, không chia zoom
+            if (gizmoSize) gizmoSize.innerText = `${Math.round(rect.width)} × ${Math.round(rect.height)}px`;
 
             const handles = gizmoBox.querySelectorAll('.cs-gizmo-handle');
             handles.forEach(h => h.style.display = isLocked ? 'none' : '');

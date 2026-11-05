@@ -1138,6 +1138,8 @@
                     canvasPanX = 0;
                     canvasPanY = 0;
                     if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
+                } else if (typeof applyCanvasTransform === 'function') {
+                    applyCanvasTransform();
                 }
             }
 
