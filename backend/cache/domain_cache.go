@@ -158,3 +158,42 @@ func (c *DomainCache) ResolveRoute(host, reqPath string) (landingID, pathPrefix,
 
 	return "", "", "", "", false
 }
+
+// ResolveChucMungRoute tìm landing phục vụ trang chúc mừng (`/chucmung.html`)
+// cho một host.
+//
+// BỐI CẢNH (bug chồng chéo landing — 2026-11-05):
+// Route gốc `/` của một domain có thể trỏ tới landing KHÔNG tồn tại (dangling route).
+// Khi đó `/chucmung.html` ở root sẽ không có landing context ⇒ tracker.js rơi về
+// fallback `mxv_080_online` ⇒ analytics bị ghi nhận nhầm landing.
+//
+// Hàm này tìm route có path_prefix chứa "chucmung" của host (vd: `/chucmung` →
+// `landing_lznoew`) để làm fallback chính xác.
+func (c *DomainCache) ResolveChucMungRoute(host string) (landingID string, found bool) {
+	normHost := NormalizeHost(host)
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	routes, exists := c.routes[normHost]
+	if !exists {
+		parts := strings.Split(normHost, ".")
+		if len(parts) > 2 {
+			parentDomain := strings.Join(parts[len(parts)-2:], ".")
+			routes, exists = c.routes[parentDomain]
+		}
+	}
+	if !exists {
+		return "", false
+	}
+
+	for _, r := range routes {
+		if !r.IsActive {
+			continue
+		}
+		if strings.Contains(strings.ToLower(r.PathPrefix), "chucmung") && r.LandingID != "" {
+			return r.LandingID, true
+		}
+	}
+	return "", false
+}

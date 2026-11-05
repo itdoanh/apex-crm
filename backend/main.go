@@ -476,13 +476,29 @@ func main() {
 					// Nếu serve thẳng (từ DB hay đĩa) mà không inject, tracker.js sẽ rơi
 					// về fallback `mxv_080_online` ⇒ analytics/lead của trang chúc mừng
 					// bị ghi nhận nhầm sang landing khác. (bug chồng chéo landing 2026-11-05)
-					serveChucMung := func(content string) {
-						lp := landingCache.Get(r.Host, landingID)
-						if lp == nil {
-							lp = landingCache.GetByPageID(landingID)
+
+					// Xác định landing context cho trang chúc mừng.
+					// Fallback: route gốc `/` có thể trỏ tới landing không tồn tại
+					// (dangling route). Khi đó dùng route `/chucmung` của host làm
+					// landing context để tracker.js không rơi về fallback chung.
+					cmLandingID := landingID
+					cmLanding := landingCache.Get(r.Host, cmLandingID)
+					if cmLanding == nil {
+						cmLanding = landingCache.GetByPageID(cmLandingID)
+					}
+					if cmLanding == nil {
+						if fallbackID, ok := domainCache.ResolveChucMungRoute(r.Host); ok {
+							cmLandingID = fallbackID
+							cmLanding = landingCache.Get(r.Host, cmLandingID)
+							if cmLanding == nil {
+								cmLanding = landingCache.GetByPageID(cmLandingID)
+							}
 						}
-						if lp != nil {
-							rendered := landingHandler.InjectDynamicScripts(content, lp)
+					}
+
+					serveChucMung := func(content string) {
+						if cmLanding != nil {
+							rendered := landingHandler.InjectDynamicScripts(content, cmLanding)
 							w.Header().Set("Content-Type", "text/html; charset=utf-8")
 							_, _ = w.Write([]byte(rendered))
 							return
@@ -493,7 +509,7 @@ func main() {
 
 					// Ưu tiên bản trong DB (landing_files) — đây là bản người dùng sửa
 					// trong Code Studio, KHÔNG phải bản mẫu trên đĩa.
-					if f, err := store.GetLandingFile(r.Host, landingID, "chucmung.html"); err == nil && f != nil && strings.TrimSpace(f.Content) != "" {
+					if f, err := store.GetLandingFile(r.Host, cmLandingID, "chucmung.html"); err == nil && f != nil && strings.TrimSpace(f.Content) != "" {
 						serveChucMung(f.Content)
 						return
 					}
