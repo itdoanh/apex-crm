@@ -866,8 +866,51 @@
     });
 
     // ============================================================
-    // 7. GỬI LEAD ĐĂNG KÝ VỀ BACKEND & LIÊN KẾT SESSION (STITCHING)
+    // 6. GỬI LEAD ĐĂNG KÝ VỀ BACKEND & LIÊN KẾT SESSION (STITCHING)
     // ============================================================
+
+    // CHỐNG GỬI TRÙNG PAYLOAD (sửa bug 2026-11-05)
+    //
+    // BỐI CẢNH: landing có NHIỀU handler submit cùng chạy cho 1 lần bấm:
+    //   1) capture listener trong index.html (`document.addEventListener('submit')`)
+    //   2) inline `onsubmit="handleFormSubmit(event)"` trong index.html
+    //   3) interceptor của tracker.js (`initAutoFormInterceptor`)
+    // Cả 3 đều gọi `sendLeadToBackend` ⇒ cùng 1 payload (kể cả cùng
+    // challenge_id + challenge_solution) được POST lên /api/leads 3 lần.
+    //
+    // HẬU QUẢ: request #1 tạo lead (về CRM + Google Sheets — đúng), nhưng
+    // request #2, #3 dùng lại nonce PoW đã tiêu thụ ⇒ server ghi vào
+    // spam_quarantine với lý do "Replay attack detected" ⇒ LEAD THẬT bị
+    // hiển thị sai là "Lỗi Proof-of-Work" trong tab Bảo mật & Bot.
+    //
+    // CÁCH SỬA: khóa gửi theo SĐT trong cửa sổ ngắn (30s). Chỉ request đầu
+    // tiên được gửi; các lần sau bị bỏ qua (idempotent).
+    //
+    // Lưu ý: KHÔNG dùng cờ `data-apex-submitting` vì cờ đó chỉ được tracker's
+    // interceptor set — 2 handler còn lại không hề biết ⇒ vẫn gửi trùng.
+    const LEAD_DEDUP_WINDOW_MS = 30000;
+    let leadDedupLock = { phone: '', at: 0 };
+
+    function isDuplicateLeadSubmit(phone) {
+        const key = String(phone || '').replace(/[^\d+]/g, '');
+        if (!key) return false;
+        const now = Date.now();
+        return leadDedupLock.phone === key && (now - leadDedupLock.at) < LEAD_DEDUP_WINDOW_MS;
+    }
+
+    function lockLeadSubmit(phone) {
+        leadDedupLock = {
+            phone: String(phone || '').replace(/[^\d+]/g, ''),
+            at: Date.now()
+        };
+    }
+
+    // Mở lại khoá khi request thất bại (mạng lỗi / server lỗi) để khách có thể
+    // bấm lại nút đăng ký. Chỉ mở khoá khi chắc chắn server CHƯA nhận lead.
+    function unlockLeadSubmit() {
+        leadDedupLock = { phone: '', at: 0 };
+    }
+
     function getBackendEndpoint() {
         const globalConfig = window.APEX_LANDING_CONFIG || {};
         if (globalConfig.backend_url) return globalConfig.backend_url;
@@ -881,6 +924,15 @@
         const landingId = formData.landing_id || formData.landingId || landingCfg.landing_id;
         const nguon = formData.nguon || formData.source || landingCfg.nguon;
         const phone = formData.phoneNumber || formData.phone || formData.so_dien_thoai || currentPhone;
+
+        // ⚠️ CHỐNG GỬI TRÙNG: nhiều handler submit có thể gọi hàm này cho cùng
+        // 1 lần bấm của khách (xem giải thích ở LEAD_DEDUP_WINDOW_MS).
+        // Gửi trùng làm request sau bị server ghi vào spam_quarantine ⇒ lead thật
+        // bị gắn nhần nhãn "Lỗi Proof-of-Work".
+        if (isDuplicateLeadSubmit(phone)) {
+            return { success: true, message: 'Dữ liệu lead đã được ghi nhận thành công', duplicate: true };
+        }
+        lockLeadSubmit(phone);
 
         if (phone) {
             currentPhone = String(phone).trim();
@@ -983,7 +1035,12 @@
             if (response.ok) {
                 return await response.json();
             }
+            // Server trả lỗi (4xx/5xx) ⇒ lead chưa chắc đã được tạo ⇒ mở khoá
+            // để khách bấm lại được.
+            unlockLeadSubmit();
         } catch (err) {
+            // Lỗi mạng ⇒ có thể request chưa tới server ⇒ mở khoá cho lần thử lại.
+            unlockLeadSubmit();
             try {
                 if (navigator.sendBeacon) {
                     const blob = new Blob([jsonBody], { type: 'application/json' });

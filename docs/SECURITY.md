@@ -15,7 +15,8 @@ Hệ thống xử lý traffic quảng cáo tài chính có **CPA cao** → mỗi
                               │
         ┌─────────────────────▼─────────────────────┐
         │ 2. Proof-of-Work (SHA-256 challenge)      │──► 403 → spam_quarantine
-        │    + HMAC signature + replay protection    │
+        │    + HMAC signature + replay protection    │    (trừ duplicate_submit →
+        │                                            │     idempotent 200 OK)
         └─────────────────────┬─────────────────────┘
                               │
         ┌─────────────────────▼─────────────────────┐
@@ -68,8 +69,64 @@ Server trả về `{ challenge_id, salt, difficulty, expires_at, signature }`.
 **Server verify** (`VerifyChallenge`) — 4 bước:
 1. **Hết hạn?** `now > expiresAt` → fail.
 2. **Chữ ký HMAC hợp lệ?** So sánh bằng `hmac.Equal` (constant-time) → fail nếu client sửa difficulty/expiresAt.
-3. **Replay?** Key = `challenge_id:solution` lưu trong `sync.Map`, TTL 10 phút → đã dùng thì fail.
-4. **Đúng bài toán?** `SHA256(challenge_id + ":" + salt + ":" + solution)` phải bắt đầu bằng `difficulty` chữ `"0"`.
+3. **Đúng bài toán?** `SHA256(challenge_id + ":" + salt + ":" + solution)` phải bắt đầu bằng `difficulty` chữ `"0"`.
+4. **Replay?** Key = `challenge_id:solution` lưu trong `sync.Map` (`usedNonces`), TTL 10 phút → đã dùng thì fail.
+
+> ⚠️ **Thứ tự cố ý: kiểm tra hash TRƯỚC khi đánh dấu nonce đã dùng.**
+> Nhờ vậy lời giải sai không bao giờ ghi vào `usedNonces` ⇒ lần gửi hợp lệ sau đó
+> vẫn dùng được nonce cũ, không cần xoá thủ công (tránh race với request song song).
+
+### Mã lý do (PowCode) và phân loại "gửi trùng do client"
+
+`VerifyChallenge` trả về `PowResult{OK, Code, Reason}` với các mã:
+
+| Mã | Ý nghĩa | Handler xử lý |
+|---|---|---|
+| `ok` | PoW hợp lệ | Tạo lead + đẩy Google Sheets |
+| `missing_params` | Thiếu tham số challenge | → `spam_quarantine` (shadow ban) |
+| `expired` | Challenge hết hạn | → `spam_quarantine` |
+| `bad_signature` | HMAC sai (client sửa tham số) | → `spam_quarantine` |
+| `invalid_solution` | Hash không thỏa điều kiện | → `spam_quarantine` |
+| `replay` | Nonce đã dùng, **fingerprint KHÁC** ⇒ bot chơi lại payload | → `spam_quarantine` |
+| `duplicate_submit` | Nonce đã dùng, **fingerprint GIỐNG** ⇒ client gửi trùng | **KHÔNG ghi cách ly**, trả 200 OK idempotent |
+
+### Fingerprint phiên đăng ký — chống gắn nhầm lead thật là spam
+
+**BỐI CẢNH (bug 2026-11-05):** lead thật #32 (`Maivanrot` / `0345833454`) về CRM + Google Sheets
+đúng, nhưng đồng thời bị ghi vào `spam_quarantine` 2 lần với lý do **"Lỗi Proof-of-Work"**
+(`pow_invalid: Thử thách này đã được sử dụng (Replay attack detected)`).
+
+**Nguyên nhân:** landing có **3 handler submit chạy song song cho 1 lần bấm**:
+
+1. capture listener trong HTML (`document.addEventListener('submit', ..., true)`)
+2. inline `onsubmit="handleFormSubmit(event)"` trong HTML
+3. interceptor của `tracker.js` (`initAutoFormInterceptor`)
+
+Cả 3 đều gọi `ApexTracker.sendLeadToBackend()` ⇒ **cùng 1 payload** (kể cả cùng
+`challenge_id` + `challenge_solution`) được POST lên `/api/leads` 3 lần. Request #1 tạo lead
+đúng; request #2, #3 dùng lại nonce PoW đã tiêu thụ ⇒ bị coi là replay ⇒ ghi vào vùng cách ly
+⇒ **lead thật bị hiển thị sai là "Lỗi Proof-of-Work"** trong tab Bảo mật & Bot.
+
+**Cách sửa (3 lớp):**
+
+1. **Server — fingerprint** (`backend/handlers/lead_handler.go` → `buildChallengeFingerprint`):
+   server tính fingerprint = `session_id | visitor_id | SĐT đã chuẩn hóa | IP`.
+   Nonce được lưu kèm fingerprint (nguyên tử qua `sync.Map.LoadOrStore`).
+   - Nonce đã dùng + **fingerprint giống** → `duplicate_submit` ⇒ **bỏ qua, KHÔNG ghi cách ly**,
+     trả `200 OK` idempotent (lead đã được tạo bởi request gốc).
+   - Nonce đã dùng + **fingerprint khác** → `replay` ⇒ ghi vào vùng cách ly (chống bot còn nguyên hiệu lực).
+   - Cửa sổ `duplicateSubmitWindow` = **60 giây** (`security/challenge.go`).
+
+2. **Client — khoá gửi theo SĐT** (`frontend/landing/tracker.js` → `LEAD_DEDUP_WINDOW_MS = 30000`):
+   `sendLeadToBackend()` bỏ qua lời gọi thứ 2 trở đi với cùng SĐT trong 30 giây.
+   Khoá được **mở lại** nếu request lỗi mạng / server trả lỗi để khách bấm lại được.
+
+3. **Client — bỏ handler trùng** (`frontend/landing/index.html`, `frontend/landing/ladi.html`):
+   - `handleFormSubmit()` **không** gọi `sendLeadToBackend()` nữa (capture listener đã gửi).
+   - Set `window.__REGISTRATION_FORM_HANDLED__ = true` ⇒ interceptor của `tracker.js`
+     tự bỏ qua form `registrationForm`.
+
+> ⚠️ **Không được phá autofill-safe** khi sửa `tracker.js` (xem mục 4).
 
 ### Cấu hình
 
@@ -79,11 +136,23 @@ Server trả về `{ challenge_id, salt, difficulty, expires_at, signature }`.
 | Difficulty tối đa | `6` | `ParseDifficulty` |
 | TTL challenge | 5 phút | `GenerateChallenge` |
 | TTL nonce cache | 10 phút, dọn mỗi 5 phút | `usedNonces` |
+| Cửa sổ "gửi trùng do client" | 60 giây | `duplicateSubmitWindow` |
+| Khoá gửi trùng phía client | 30 giây | `tracker.js` → `LEAD_DEDUP_WINDOW_MS` |
 | Secret HMAC | biến môi trường `CHALLENGE_SECRET`, fallback `defaultChallengeSecretKey` | `challenge.go` |
 
 > ✅ **Secret đã hỗ trợ biến môi trường.** Đặt `CHALLENGE_SECRET` trong `.env` (production: `C:\apex\.env`) để rotate secret mà không cần sửa code. Nếu để trống → dùng giá trị mặc định trong `backend/security/challenge.go` (`defaultChallengeSecretKey`).
 >
 > ⚠️ **Lưu ý:** secret mặc định vẫn nằm trong source code → ai đọc repo cũng thấy. Nên đặt `CHALLENGE_SECRET` ở mọi môi trường thật.
+
+### Kiểm thử
+
+```bash
+# Unit test PoW (10 ca: happy path, duplicate, replay, song song, invalid, expired...)
+cd backend && go test ./security/ -run "TestVerifyChallenge" -v
+
+# E2E (cần backend chạy local + DB local)
+node backend/tests/e2e_pow_duplicate_submit_test.js
+```
 
 
 ### Hiệu quả

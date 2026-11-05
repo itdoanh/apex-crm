@@ -133,6 +133,29 @@ func normalizePhone(raw string) string {
 	return cleaned
 }
 
+// buildChallengeFingerprint tạo định danh phiên đăng ký từ payload + SĐT + IP.
+//
+// Mục đích: server phân biệt được 2 tình huống khi nonce PoW đã dùng:
+//   - CÙNG fingerprint ⇒ client gửi trùng payload (nhiều handler submit chạy
+//     song song / retry mạng) ⇒ bỏ qua, KHÔNG ghi vào vùng cách ly.
+//   - KHÁC fingerprint ⇒ bot chơi lại payload ⇒ ghi vào vùng cách ly.
+//
+// Ràng buộc: KHÔNG dùng thông tin nhạy cảm thô (tên, email). Chỉ dùng
+// session_id + visitor_id + SĐT đã chuẩn hóa + IP.
+func buildChallengeFingerprint(rawData map[string]interface{}, phoneRaw, clientIP string) string {
+	sessionID := extractFirstString(rawData, "session_id", "sessionId", "apex_session_id")
+	visitorID := extractFirstString(rawData, "visitor_id", "visitorId")
+	phoneDigits := normalizePhone(phoneRaw)
+
+	parts := []string{
+		strings.TrimSpace(sessionID),
+		strings.TrimSpace(visitorID),
+		strings.TrimSpace(phoneDigits),
+		strings.TrimSpace(clientIP),
+	}
+	return strings.Join(parts, "|")
+}
+
 // extractFirstString tìm giá trị chuỗi đầu tiên từ danh sách keys trong map
 func extractFirstString(data map[string]interface{}, keys ...string) string {
 	for _, k := range keys {
@@ -287,9 +310,32 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 
 	// Nếu client gửi kèm thông số challenge thì xác thực nghiêm ngặt
 	if chID != "" || chSig != "" || chSol != "" {
-		validPoW, powReason := security.VerifyChallenge(chID, chSalt, chDiff, chExpires, chSig, chSol)
-		if !validPoW {
-			_ = h.store.SaveSpamQuarantine(clientIP, r.UserAgent(), landingID, nguon, phoneRaw, "pow_invalid: "+powReason, bodyBytes)
+		powRes := security.VerifyChallenge(chID, chSalt, chDiff, chExpires, chSig, chSol,
+			buildChallengeFingerprint(rawData, phoneRaw, clientIP))
+
+		// ⚠️ TRƯỜNG HỢP GỬI TRÙNG DO CLIENT (sửa bug 2026-11-05):
+		// Khách thật bấm "Đăng ký" 1 lần nhưng client có thể gửi CÙNG payload
+		// nhiều lần trong vài trăm ms (nhiều handler submit chạy song song,
+		// retry mạng, keepalive + sendBeacon). Request thứ 2+ dùng lại nonce đã
+		// tiêu thụ → bị coi là replay → ghi vào spam_quarantine → LEAD THẬT bị
+		// hiện sai là "Lỗi Proof-of-Work" trong tab Bảo mật & Bot.
+		//
+		// Cách xử lý đúng: request trùng lặp trong cùng phiên đăng ký ⇒ coi như
+		// idempotent, trả về 200 OK (giống hệt response thành công) và KHÔNG ghi
+		// vào vùng cách ly. Lead đã được lưu bởi request gốc.
+		if !powRes.OK && powRes.Code == security.PowCodeDuplicateSubmit {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"message": "Dữ liệu lead đã được ghi nhận thành công",
+				"id":      999999,
+			})
+			return
+		}
+
+		if !powRes.OK {
+			_ = h.store.SaveSpamQuarantine(clientIP, r.UserAgent(), landingID, nguon, phoneRaw, "pow_invalid: "+powRes.Reason, bodyBytes)
 			security.TarpitSleep(1500, 2500)
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
@@ -300,6 +346,11 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+
+		// Đánh dấu challenge đang xử lý để các request trùng lặp song song
+		// từ cùng phiên đăng ký được nhận diện là duplicate (không phải spam).
+		security.MarkChallengeActive(chID)
+		defer security.ReleaseChallengeActive(chID)
 	}
 
 	// 6. LỚP BẢO VỆ 6: Carrier Whitelist & Phone Sanitization (Kiểm định đầu số viễn thông VN)
@@ -926,4 +977,3 @@ func (h *LeadHandler) syncLeadToGoogleSheets(lead *models.Lead, rawData map[stri
 		}(cfg)
 	}
 }
-

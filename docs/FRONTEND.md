@@ -322,6 +322,11 @@ Hàm helper quan trọng trong `js/studio/file-manager.js`:
   HTML viết tay trong Code Studio là **nguồn sự thật duy nhất**. Xem `docs/LANDING.md` mục 5.
 - **Mọi** module mới có side-effect lên DOM phải guard bằng `if (isAnyPreview()) return;`
   để Code Studio preview không bị nhiễu.
+- **MỘT lần bấm = MỘT `POST /api/leads`.** `sendLeadToBackend()` có khoá chống gửi trùng
+  theo SĐT (`LEAD_DEDUP_WINDOW_MS = 30000`). Không được gọi `sendLeadToBackend()` từ
+  nhiều handler submit cùng lúc — nếu không, request thứ 2+ dùng lại nonce PoW đã tiêu thụ
+  ⇒ server ghi vào `spam_quarantine` ⇒ **lead thật bị gắn nhầm nhãn "Lỗi Proof-of-Work"**.
+  Chi tiết: `docs/LANDING.md` mục 3 & `docs/SECURITY.md` mục 2.
 
 ### Code Studio preview — cách ly
 

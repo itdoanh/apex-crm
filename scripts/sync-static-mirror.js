@@ -32,7 +32,6 @@ const MAP = [
   ['js/security.js', 'js/security.js'],
   ['js/sheets.js', 'js/sheets.js'],
   ['js/tracker.js', 'js/tracker.js'],
-  ['tracker.js', 'tracker.js'],
   ['js/studio/ast-mapper.js', 'js/studio/ast-mapper.js'],
   ['js/studio/context-menu.js', 'js/studio/context-menu.js'],
   ['js/studio/file-manager.js', 'js/studio/file-manager.js'],
@@ -68,6 +67,7 @@ const TRACKER_COPIES = [
   path.join(SRC, 'tracker.js'),
   path.join('frontend', 'landing', 'tracker.js'),
   'tracker.js',
+  path.join(DST, 'tracker.js'),
 ];
 
 if (fs.existsSync(TRACKER_SRC)) {

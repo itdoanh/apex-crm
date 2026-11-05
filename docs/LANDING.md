@@ -115,6 +115,32 @@ FROM domain_routes r JOIN domains d ON d.id = r.domain_id;
 | Đặt `autocomplete="off"` trên field chính | Chặn autofill → giảm CR |
 | Dùng `<input type="number">` cho SĐT | Mất số 0 đầu, không match validator |
 | Nhúng form trong iframe cross-origin | Không đọc được DOM để scan |
+| **Gọi `ApexTracker.sendLeadToBackend()` từ NHIỀU handler submit** | Gửi trùng payload → request sau bị ghi vào `spam_quarantine` với lý do "Lỗi Proof-of-Work" ⇒ **lead thật bị gắn nhầm nhãn spam** |
+
+### ⚠️ Quy tắc: MỘT lần bấm = MỘT request `/api/leads`
+
+Landing có **3 nơi** có thể gọi `ApexTracker.sendLeadToBackend()` khi khách bấm nút:
+
+1. capture listener `document.addEventListener('submit', ..., true)` trong HTML
+2. inline `onsubmit="handleFormSubmit(event)"` trong HTML
+3. interceptor `initAutoFormInterceptor()` của `tracker.js`
+
+Nếu cả 3 cùng chạy ⇒ **cùng 1 payload** (kể cả cùng `challenge_id` + `challenge_solution`)
+được POST lên `/api/leads` 3 lần. Request #1 tạo lead (đúng), request #2, #3 dùng lại nonce PoW
+đã tiêu thụ ⇒ server ghi vào vùng cách ly ⇒ lead thật hiển thị sai là "Lỗi Proof-of-Work"
+trong tab **Bảo mật & Bot** (dù lead vẫn về CRM + Google Sheets).
+
+**Cách làm đúng (đã áp dụng 2026-11-05):**
+
+| Nơi | Trách nhiệm |
+|---|---|
+| Capture listener trong HTML | **Gửi lead** (nơi duy nhất) + validate + chặn redirect |
+| `handleFormSubmit()` trong HTML | Chỉ lo UI (điền modal) + chặn redirect LadiPage — **KHÔNG** gọi `sendLeadToBackend` |
+| HTML | Set `window.__REGISTRATION_FORM_HANDLED__ = true` ⇒ interceptor của `tracker.js` tự bỏ qua form `registrationForm` |
+| `tracker.js` | Khoá gửi theo SĐT 30 giây (`LEAD_DEDUP_WINDOW_MS`) — lớp bảo vệ thứ hai, tự mở khoá nếu request lỗi mạng |
+
+> 📌 Chi tiết cơ chế fingerprint phía server (phân biệt "gửi trùng do client" với
+> "bot replay payload") xem `docs/SECURITY.md` mục 2.
 
 ---
 

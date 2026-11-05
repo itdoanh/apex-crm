@@ -8326,6 +8326,25 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
             }, true);
 
             // ============================================================
+            // ĐÁNH DẤU FORM ĐÃ ĐƯỢC XỬ LÝ Ở ĐÂY
+            //
+            // tracker.js có sẵn một "form interceptor" (initAutoFormInterceptor)
+            // gắn listener submit riêng cho mọi form. Nếu không báo cho tracker.js
+            // biết form này đã có handler riêng, tracker.js sẽ GỬI LEAD TRÙNG:
+            //   1) capture listener ở đây  → POST /api/leads
+            //   2) onsubmit="handleFormSubmit"  → POST /api/leads
+            //   3) interceptor của tracker.js   → POST /api/leads
+            //
+            // Hậu quả (bug 2026-11-05): request #2, #3 dùng lại nonce PoW đã
+            // tiêu thụ ⇒ server ghi vào spam_quarantine với lý do "Replay attack
+            // detected" ⇒ LEAD THẬT bị hiển thị sai là "Lỗi Proof-of-Work" trong
+            // tab Bảo mật & Bot (dù lead vẫn về CRM + Google Sheets).
+            //
+            // ⇒ Cờ này bảo tracker.js BỎ QUA form registrationForm.
+            // ============================================================
+            window.__REGISTRATION_FORM_HANDLED__ = true;
+
+            // ============================================================
             // CHUYỂN HƯỚNG TỚI chucmung.html & CHẶN REDIRECT LẠ CỦA LADIPAGE
             // Sau khi gửi form thành công:
             //   1. Lưu cookie 180 ngày cho khách hàng (đã xử lý trong ApexTracker).
@@ -8408,13 +8427,17 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
             document.getElementById('modalUserName').innerText = nameInput.value.trim();
             document.getElementById('modalUserPhone').innerText = normalizePhoneVN(phoneInput.value);
 
-            // Truyền dữ liệu + toàn bộ thông tin trình duyệt về Go Backend
-            if (window.ApexTracker && typeof window.ApexTracker.sendLeadToBackend === 'function') {
-                window.ApexTracker.sendLeadToBackend({
-                    fullName: nameInput ? nameInput.value.trim() : '',
-                    phoneNumber: phoneInput ? phoneInput.value.trim() : ''
-                });
-            }
+            // ⚠️ KHÔNG gọi `sendLeadToBackend` ở đây (sửa bug 2026-11-05).
+            //
+            // Capture listener `document.addEventListener('submit', ..., true)` phía
+            // trên ĐÃ gửi lead về Go Backend. Nếu gửi lần 2 ở đây, client sẽ POST
+            // CÙNG payload (cùng challenge_id + challenge_solution) 2 lần ⇒ request
+            // thứ 2 bị server ghi vào spam_quarantine ("Replay attack detected") ⇒
+            // lead thật bị hiển thị sai là "Lỗi Proof-of-Work" trong tab Bảo mật & Bot.
+            //
+            // ⇒ Hàm này chỉ lo phần UI (điền modal) + chặn redirect LadiPage.
+            // Tracker.js cũng có sẵn cơ chế khóa chống gửi trùng (LEAD_DEDUP_WINDOW_MS)
+            // như một lớp bảo vệ thứ hai.
 
             /*
             const modal = document.getElementById('successModal');
