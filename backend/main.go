@@ -438,6 +438,19 @@ func main() {
 	landingEdgeRouter = func(w http.ResponseWriter, r *http.Request) {
 		reqPath := r.URL.Path
 
+		// 0. HTML landing KHÔNG được cache lại bởi trình duyệt.
+		//
+		// LÝ DO (bug chồng chéo landing — 2026-11-05): HTML landing chứa
+		// `data-landing-id` + `window.APEX_LANDING_CONFIG` quyết định analytics
+		// ghi về landing nào. Nếu trình duyệt cache HTML cũ (heuristic dựa trên
+		// `Last-Modified` vì thiếu `Cache-Control`), khách vẫn chạy HTML cũ ⇒
+		// tracker.js gửi analytics/lead về nhầm landing.
+		if strings.HasSuffix(strings.ToLower(reqPath), ".html") || strings.ToLower(reqPath) == "/" {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+
 		// 1. Chống Path Traversal (tuyệt đối không cho phép .. hoặc ký tự nguy hiểm)
 		if strings.Contains(reqPath, "..") || strings.Contains(reqPath, "//") {
 			http.Error(w, "Forbidden", http.StatusForbidden)

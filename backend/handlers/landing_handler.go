@@ -1709,6 +1709,12 @@ func (h *LandingHandler) ServePublicLanding(w http.ResponseWriter, r *http.Reque
 	// Trang hoạt động bình thường -> Render mã HTML kèm Auto-Injection
 	renderedHTML := h.InjectDynamicScripts(p.CodeHTML, p)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// HTML landing chứa `data-landing-id` + `window.APEX_LANDING_CONFIG` quyết định
+	// analytics ghi về landing nào ⇒ KHÔNG được trình duyệt cache lại.
+	// (bug chồng chéo landing — 2026-11-05)
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	_, _ = w.Write([]byte(renderedHTML))
 }
 
