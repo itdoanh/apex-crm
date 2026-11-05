@@ -254,10 +254,20 @@ khác số liệu view/lead. Để điều này đúng, 4 điểm sau phải đ�
 | 2 | `window.APEX_LANDING_CONFIG` được set **trước** `tracker.js` | `InjectDynamicScripts()` cài property trap ở **đầu** `<head>` |
 | 3 | `tracker.js` biết chắc landing nào đang phục vụ | Thẻ `<script src="tracker.js" data-landing-id="<page_id>">` — backend luôn gắn |
 | 4 | `chucmung.html` cũng có ngữ cảnh landing | Serve qua `InjectDynamicScripts()` (không serve thẳng từ đĩa) |
+| 5 | Trình duyệt không cache HTML cũ | Mọi response HTML landing có `Cache-Control: no-cache, no-store, must-revalidate` |
 
 > ⚠️ **Đừng bao giờ** để `window.APEX_LANDING_CONFIG` của template ghi đè giá trị
 > backend inject. Luôn dùng property trap (`Object.defineProperty` + setter merge).
 > Xem `docs/FRONTEND.md` mục "Code Studio preview — cách ly".
+
+> 🚨 **Vì sao #5 quan trọng:** HTML landing chứa `data-landing-id` quyết định analytics
+> ghi về landing nào. Backend trước đây **không** set `Cache-Control` cho HTML ⇒ trình
+> duyệt cache theo heuristic `Last-Modified` ⇒ khách vẫn chạy HTML cũ ⇒ tracker gửi
+> analytics về nhầm landing **dù code đã sửa đúng**. Đã xử lý 2026-11-05.
+
+> ⚠️ **Route dangling**: nếu route gốc `/` của domain trỏ tới landing không tồn tại
+> (vd: `landing2`), `/chucmung.html` sẽ không có landing context. `DomainCache.ResolveChucMungRoute()`
+> fallback sang route có `path_prefix` chứa `chucmung` (vd: `/chucmung` → `landing_lznoew`).
 
 **Thứ tự ưu tiên `landing_id` trong `tracker.js`:**
 
