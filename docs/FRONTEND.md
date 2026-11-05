@@ -126,6 +126,36 @@ studio.html
 | File Manager | Cây thư mục + tạo/đổi tên/xoá file & thư mục |
 | Upload từ máy | Nút "Tải lên" trong File Explorer → `POST /api/landings/files/upload` |
 
+### 🖥️ Viewport PC — FLUID (sửa 2026-11-05)
+
+**Vấn đề đã gặp**: chế độ PC của Code Studio hardcode `width: 1440px` cho khung preview
+⇒ co cửa sổ trình duyệt thì preview **vẫn cứng ở 1440px**, phải cuộn ngang, và
+**không khớp với web PC thật** (web thật co giãn theo viewport).
+
+**Cách sửa** — PC mode dùng chiều rộng **fluid** (`width: 100%`):
+
+| Thành phần | Hành vi mới |
+|---|---|
+| `csIframeWrapper` (PC) | `width: 100%` + `min-width: 780px` ⇒ co/nở theo khung nhìn |
+| `min-width: 780px` | Đảm bảo iframe viewport ≥ 769px ⇒ media query `@media (min-width: 769px)` (PC styles) luôn bật |
+| Mobile mode | Giữ nguyên khung cố định `390 × 844` (iPhone 14/15/16 Pro) |
+| Readout toolbar | `#csCanvasWidthLive` hiển thị chiều rộng thực tế của khung preview |
+| Nút "Tự động" | `#btnCanvasAutoWidth` — chỉ hiện khi đã ghim width thủ công; bấm để trở về fluid |
+| Kéo 2 chốt mép | Vẫn dùng được → **ghim** width cố định (`studioCanvasManualWidth`), PC mode ngừng fluid |
+
+Hàm quản lý (trong `js/studio/gizmo.js`):
+
+| Hàm | Vai trò |
+|---|---|
+| `applyStudioCanvasWidth()` | Áp dụng width theo device mode (PC fluid / Mobile cố định) |
+| `updateStudioCanvasWidthReadout()` | Cập nhật readout + hiện/ẩn nút "Tự động" |
+| `resetStudioCanvasAutoWidth()` | Bỏ ghim width → PC mode trở lại fluid |
+
+`ResizeObserver` trên `#csCanvasViewport` cập nhật readout + gizmo khi người dùng
+co / giãn cửa sổ hoặc kéo thanh split.
+
+> ⚠️ **Lưu ý khi sửa `studio.html`**: nút PC hiện ghi "PC (Tự động)" (không còn "PC (1440px)").
+
 ### 📁 File Manager — lưu & deploy TOÀN BỘ file (từ 2026-11-04)
 
 **Vấn đề đã gặp**: trước đây `saveStudioCode()` chỉ POST **1 file đang mở** và

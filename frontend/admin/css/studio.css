@@ -106,6 +106,12 @@
 }
 
 /* Canvas Preview Wrapper: Chống Flexbox co ép khung ngoài, cho phép kéo co dãn tự do */
+/*
+ * Chế độ PC dùng chiều rộng FLUID (width: 100% + min-width 780px) để khung preview
+ * co giãn theo cửa sổ trình duyệt — giống web PC thật.
+ * `min-width: 780px` đảm bảo iframe viewport luôn ≥ 769px ⇒ media query
+ * `@media (min-width: 769px)` (PC styles của Studio) không bao giờ bị tắt.
+ */
 #csIframeWrapper {
     flex-shrink: 0 !important;
     box-sizing: border-box;

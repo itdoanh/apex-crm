@@ -279,9 +279,9 @@
                     <!-- Viewport Switcher: Chỉ PC và Mobile (Độc Lập Phong Cách Giao Diện) -->
                     <div class="flex items-center space-x-2">
                         <div class="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 space-x-1 text-xs">
-                            <button id="btnDevicePC" onclick="setStudioDevice('pc')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 bg-cyan-600 text-white shadow-sm" title="Chế độ xem PC / Desktop (Chỉnh sửa riêng PC)">
+                            <button id="btnDevicePC" onclick="setStudioDevice('pc')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 bg-cyan-600 text-white shadow-sm" title="Chế độ xem PC / Desktop — chiều rộng TỰ ĐỘNG bám theo khung nhìn, co giãn theo cửa sổ trình duyệt (giống web PC thật)">
                                 <i class="fa-solid fa-desktop text-xs"></i>
-                                <span>PC (1440px)</span>
+                                <span>PC (Tự động)</span>
                             </button>
                             <button id="btnDeviceMobile" onclick="setStudioDevice('mobile')" class="px-2.5 py-1 rounded font-bold transition text-xs flex items-center gap-1.5 text-slate-300 hover:text-white" title="Chế độ xem Mobile (Chỉnh sửa riêng Mobile, không ảnh hưởng PC)">
                                 <i class="fa-solid fa-mobile-screen text-xs"></i>
@@ -311,6 +311,16 @@
                         <span id="csFreezeStatusBadge" class="bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md hidden lg:inline">
                             🧊 Freeze Active
                         </span>
+                        <!-- Live Width Readout: chiều rộng THỰC TẾ của khung preview PC -->
+                        <span class="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-800 rounded-md px-2 py-1" title="Chiều rộng thực tế của khung xem trước (PC mode co giãn theo cửa sổ)">
+                            <i class="fa-solid fa-arrows-left-right text-[9px]"></i>
+                            <span id="csCanvasWidthLive">—</span>
+                        </span>
+                        <!-- Nút quay lại chế độ PC tự động (bỏ ghim width thủ công) -->
+                        <button type="button" id="btnCanvasAutoWidth" onclick="resetStudioCanvasAutoWidth()" class="hidden bg-amber-950 hover:bg-amber-900 text-amber-300 text-[10px] px-2 py-1 rounded-lg border border-amber-800 transition" title="Bỏ ghim chiều rộng thủ công, cho khung preview PC co giãn tự động theo cửa sổ">
+                            <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                            <span class="hidden sm:inline">Tự động</span>
+                        </button>
                         <button onclick="refreshStudioPreview()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded-lg border border-slate-700 transition" title="Tải lại xem trước">
                             <i class="fa-solid fa-arrows-rotate"></i>
                         </button>
@@ -326,7 +336,7 @@
                     <!-- Pan Mode Shield (Active when Spacebar / Middle-click is pressed to enable smooth drag without iframe swallowing events) -->
                     <div id="csCanvasPanShield" class="absolute inset-0 z-40 hidden pointer-events-none bg-transparent select-none"></div>
 
-                    <div id="csIframeWrapper" style="width: 1440px; height: 100%; flex-shrink: 0; margin: auto;" class="flex-shrink-0 w-[1440px] h-full bg-white rounded-xl shadow-2xl border border-slate-800 relative select-none m-auto">
+                    <div id="csIframeWrapper" style="width: 100%; min-width: 780px; height: 100%; flex-shrink: 0; margin: auto;" class="flex-shrink-0 h-full bg-white rounded-xl shadow-2xl border border-slate-800 relative select-none m-auto">
                         <!-- 2 Resizable Side Handles: Kéo 2 bên điều chỉnh kích thước trực quan -->
                         <div id="csCanvasResizeHandleLeft" class="cs-canvas-side-handle cs-canvas-handle-left" title="Kéo để điều chỉnh chiều rộng bên trái">
                             <i class="fa-solid fa-grip-lines-vertical text-[10px] text-slate-400"></i>
@@ -337,7 +347,7 @@
 
                         <!-- Floating Canvas Width Indicator Badge -->
                         <div id="csCanvasWidthBadge" class="hidden absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900/95 text-cyan-300 border border-slate-700 text-[10px] font-mono px-2 py-0.5 rounded-md shadow-lg pointer-events-none z-50 whitespace-nowrap">
-                            1440px
+                            —
                         </div>
 
                         <!-- Lớp Dưới: Sandboxed Iframe (Chạy toàn bộ CSS, Tailwind JIT CDN, Font, scripts thực tế) -->

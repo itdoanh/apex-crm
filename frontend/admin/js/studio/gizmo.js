@@ -496,6 +496,79 @@
         let canvasResizeStartX = 0;
         let canvasResizeStartWidth = 0;
 
+        // ==============================================================
+        // CHIỀU RỘNG CANVAS — PC MODE FLUID (Bám theo khung nhìn)
+        // ==============================================================
+        // Nguyên tắc: chế độ PC phải co giãn theo kích thước cửa sổ trình
+        // duyệt (giống web PC thật) thay vì cứng 1 kích thước 1440px.
+        // `studioCanvasManualWidth = null`  → fluid (width: 100%)
+        // `studioCanvasManualWidth = <px>` → người dùng tự kéo 2 chốt bên để ghim width
+        var studioCanvasManualWidth = null;
+
+        // Ngưỡng tối thiểu của PC mode: giữ > 768px để media query
+        // `@media (min-width: 769px)` (PC styles của Studio) luôn kích hoạt.
+        // 780px = 778px content width (trừ 2px border) ⇒ iframe viewport ≥ 769px.
+        var STUDIO_PC_MIN_WIDTH = 780;
+
+        function applyStudioCanvasWidth() {
+            const wrapper = document.getElementById('csIframeWrapper');
+            if (!wrapper) return;
+
+            if (studioDeviceMode === 'mobile') {
+                // Mobile: giữ nguyên khung thiết bị cố định (iPhone 14/15/16 Pro)
+                wrapper.style.width = '390px';
+                wrapper.style.minWidth = '0px';
+                wrapper.style.maxWidth = 'none';
+                wrapper.style.flexShrink = '0';
+            } else {
+                // PC: fluid theo khung nhìn, trừ khi người dùng đã ghim width thủ công
+                if (studioCanvasManualWidth) {
+                    wrapper.style.width = studioCanvasManualWidth + 'px';
+                    wrapper.style.minWidth = '0px';
+                } else {
+                    wrapper.style.width = '100%';
+                    wrapper.style.minWidth = STUDIO_PC_MIN_WIDTH + 'px';
+                }
+                wrapper.style.maxWidth = 'none';
+                wrapper.style.flexShrink = '0';
+            }
+
+            updateStudioCanvasWidthReadout();
+        }
+
+        // Hiển thị chiều rộng thực tế của khung preview (PC fluid / Mobile cố định)
+        // Dùng clientWidth (không tính border) ⇒ đúng bằng viewport width của iframe
+        // ⇒ khớp với điều kiện media query đang áp dụng cho landing.
+        function updateStudioCanvasWidthReadout() {
+            const wrapper = document.getElementById('csIframeWrapper');
+            if (!wrapper) return;
+            const w = Math.round(wrapper.clientWidth);
+            if (!w) return;
+
+            const live = document.getElementById('csCanvasWidthLive');
+            if (live) live.innerText = w + 'px';
+
+            const badge = document.getElementById('csCanvasWidthBadge');
+            if (badge) badge.innerText = w + 'px';
+
+            const resetBtn = document.getElementById('btnCanvasAutoWidth');
+            if (resetBtn) {
+                const isManual = (studioDeviceMode === 'pc' && !!studioCanvasManualWidth);
+                resetBtn.classList.toggle('hidden', !isManual);
+            }
+        }
+
+        // Quay về chế độ PC fluid (bỏ ghim width thủ công)
+        function resetStudioCanvasAutoWidth() {
+            studioCanvasManualWidth = null;
+            applyStudioCanvasWidth();
+            if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
+            if (selectedAstNodeId) {
+                setTimeout(() => requestNodeRect(selectedAstNodeId), 120);
+            }
+            showToastNotification('Đã đưa khung preview PC về chế độ tự động (co giãn theo cửa sổ)');
+        }
+
         // Tính toán giới hạn kéo (Boundary Clamping)
         function getCanvasPanLimits() {
             const viewport = document.getElementById('csCanvasViewport');
@@ -884,7 +957,12 @@
 
             // Giới hạn trong khoảng 320px đến 3840px (Màn hình 4K siêu rộng, tự do co dãn)
             newWidth = Math.max(320, Math.min(3840, Math.round(newWidth)));
+            // Ghim chiều rộng thủ công → PC mode không còn fluid cho tới khi bấm "Tự động"
+            if (studioDeviceMode === 'pc') {
+                studioCanvasManualWidth = newWidth;
+            }
             wrapper.style.width = newWidth + 'px';
+            wrapper.style.minWidth = '0px';
             wrapper.style.maxWidth = 'none';
             wrapper.style.flexShrink = '0';
 
@@ -892,6 +970,9 @@
                 badge.innerText = `${newWidth}px`;
                 badge.classList.remove('hidden');
             }
+
+            // Đồng bộ readout toolbar + hiện nút "Tự động" (đã ghim width thủ công)
+            updateStudioCanvasWidthReadout();
 
             applyCanvasTransform();
         }
@@ -1017,6 +1098,32 @@
                 endCanvasWidthResize();
                 endCanvasPan();
             });
+
+            // 5. Theo dõi thay đổi kích thước khung nhìn (PC mode fluid)
+            // Khi người dùng co / giãn cửa sổ trình duyệt hoặc kéo thanh split,
+            // khung preview PC phải co lại / nở ra theo — readout + gizmo cũng phải cập nhật.
+            const scheduleReadout = () => {
+                updateStudioCanvasWidthReadout();
+                if (selectedAstNodeId && !window.isCanvasPanning && !window.isSpaceKeyPressed) {
+                    requestNodeRect(selectedAstNodeId);
+                }
+            };
+
+            if (viewport && typeof ResizeObserver !== 'undefined') {
+                let rafId = 0;
+                const ro = new ResizeObserver(() => {
+                    if (rafId) cancelAnimationFrame(rafId);
+                    rafId = requestAnimationFrame(scheduleReadout);
+                });
+                ro.observe(viewport);
+            }
+
+            window.addEventListener('resize', () => {
+                updateStudioCanvasWidthReadout();
+            });
+
+            // Áp dụng chiều rộng ban đầu theo device mode hiện tại
+            applyStudioCanvasWidth();
         }
 
         // Khởi chạy khi DOM đã sẵn sàng

@@ -869,19 +869,23 @@
 
             if (mode === 'pc') {
                 btnPC.className = 'px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-cyan-600 text-white';
+                // PC: chiều rộng fluid — bám theo khung modal, co giãn theo cửa sổ
                 wrapper.style.width = '100%';
+                wrapper.style.minWidth = '0px';
                 wrapper.style.height = '100%';
                 wrapper.style.maxWidth = 'none';
                 wrapper.style.borderRadius = '16px';
             } else if (mode === 'laptop') {
                 btnLaptop.className = 'px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-cyan-600 text-white';
                 wrapper.style.width = '1024px';
+                wrapper.style.minWidth = '0px';
                 wrapper.style.height = '100%';
                 wrapper.style.maxWidth = '100%';
                 wrapper.style.borderRadius = '20px';
             } else if (mode === 'mobile') {
                 btnMobile.className = 'px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-cyan-600 text-white';
                 wrapper.style.width = '390px';
+                wrapper.style.minWidth = '0px';
                 wrapper.style.height = '844px';
                 wrapper.style.maxWidth = '100%';
                 wrapper.style.borderRadius = '36px';
