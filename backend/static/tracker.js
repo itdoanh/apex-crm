@@ -634,6 +634,17 @@
                 currentLandingId = pathParts[pIdx + 1];
             }
         }
+        // Ưu tiên `data-landing-id` trên thẻ <script src="tracker.js"> — backend luôn
+        // gắn đúng page_id của landing đang phục vụ (bug chồng chéo landing 2026-11-05).
+        if (!currentLandingId) {
+            try {
+                const s = document.currentScript || document.querySelector('script[src*="tracker.js"]');
+                if (s) {
+                    const attr = s.getAttribute('data-landing-id') || '';
+                    if (attr) currentLandingId = attr;
+                }
+            } catch (_) {}
+        }
         if (!currentLandingId && window.APEX_LANDING_CONFIG && window.APEX_LANDING_CONFIG.landing_id) {
             currentLandingId = window.APEX_LANDING_CONFIG.landing_id;
         }
@@ -712,11 +723,32 @@
         } catch (_) {}
 
         const globalConfig = window.APEX_LANDING_CONFIG || {};
-        const landingId = globalConfig.landing_id || globalConfig.landingId || window.APEX_LANDING_ID || scriptLandingId ||
+
+        // Thứ tự ưu tiên landing_id (quan trọng — bug chồng chéo landing 2026-11-05):
+        // 1. `data-landing-id` trên thẻ <script src="tracker.js"> — backend luôn gắn
+        //    đúng page_id của landing đang phục vụ ⇒ CHẮC CHẮN ĐÚNG.
+        // 2. `window.APEX_LANDING_CONFIG.landing_id` — backend inject trước tracker.
+        // 3. `window.APEX_LANDING_ID` — biến JS do landing tự khai báo.
+        // 4. URL `/p/<page_id>` — chỉ dùng cho landing phục vụ qua đường dẫn /p/.
+        //
+       // BUG CŨ: đưa `globalConfig.landing_id` lên đầu làm landing dùng chung template
+        // (vd: `mxv_080_online`) ghi đè ⇒ analytics/lead về nhầm landing.
+        const urlParams = getUrlParams();
+        let urlLandingId = urlParams.landing_id || urlParams.page_id || '';
+        if (!urlLandingId) {
+            const pathParts = (window.location.pathname || '').split('/');
+            const pIdx = pathParts.indexOf('p');
+            if (pIdx !== -1 && pathParts[pIdx + 1]) {
+                urlLandingId = pathParts[pIdx + 1];
+            }
+        }
+
+        const landingId = scriptLandingId ||
+            globalConfig.landing_id || globalConfig.landingId || window.APEX_LANDING_ID ||
+            urlLandingId ||
             (window.LadiPageScript && window.LadiPageScript.runtime && window.LadiPageScript.runtime.ladipage_id) ||
             'default_landing';
 
-        const urlParams = getUrlParams();
         const nguon = globalConfig.nguon || globalConfig.source || window.APEX_NGUON || scriptNguon ||
             urlParams.utm_source || urlParams.source || urlParams.nguon || 'direct';
 

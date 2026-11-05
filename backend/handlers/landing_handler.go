@@ -1514,6 +1514,50 @@ gtag('config', '%s');
 		result = headInjection.String() + result
 	}
 
+	// ⚠️ SCRIPT CONFIG PHẢI CHẠY TRƯỚC `tracker.js` (bug chồng chéo landing — 2026-11-05)
+	//
+	// LÝ DO: tracker.js gọi `loadConfigFile()` ngay khi được parse. Nếu script config
+	// của backend nằm SAU tracker.js trong HTML, tracker đọc
+	// `window.APEX_LANDING_CONFIG` fallback của template (vd: `mxv_080_online`) ⇒
+	// analytics/lead gửi về nhầm landing.
+	//
+	// CÁCH SỬA: cài "bẫy ghi đè" (property trap) ở ĐẦU <head> — trước mọi script
+	// khác. Mỗi lần HTML (template hoặc backend) gán lại `window.APEX_LANDING_CONFIG`,
+	// trap MERGE lại các key mới và ép `landing_id` / `domain` / `name` về đúng landing
+	// đang phục vụ. Nhờ vậy các key riêng của template (`thoi_gian_chia_se`,
+	// `khoa_hoc`, `backend_url`...) vẫn còn nguyên.
+	configTrapScript := fmt.Sprintf(`<script>
+(function(){
+  var __apexCfg = window.APEX_LANDING_CONFIG || {};
+  var __apexForce = %s;
+  function __apexMerge(v){
+    if (v && typeof v === 'object'){
+      for (var k in v){ if (Object.prototype.hasOwnProperty.call(v,k)) __apexCfg[k] = v[k]; }
+    }
+    __apexCfg.landing_id = __apexForce.landing_id;
+    __apexCfg.domain = __apexForce.domain;
+    __apexCfg.name = __apexForce.name;
+    return __apexCfg;
+  }
+  __apexMerge(window.APEX_LANDING_CONFIG);
+  try {
+    Object.defineProperty(window, 'APEX_LANDING_CONFIG', {
+      configurable: true,
+      enumerable: true,
+      get: function(){ return __apexCfg; },
+      set: function(v){ __apexMerge(v); }
+    });
+  } catch(e) {
+    window.APEX_LANDING_CONFIG = __apexCfg;
+  }
+})();
+</script>`, string(configJSON))
+
+	if idx := strings.Index(strings.ToLower(result), "<head>"); idx != -1 {
+		insertAt := idx + len("<head>")
+		result = result[:insertAt] + "\n" + configTrapScript + result[insertAt:]
+	}
+
 	// Custom Body Scripts inject vào trước </body>
 	if bodyScripts != "" {
 		var bodyInjection strings.Builder
@@ -1527,6 +1571,28 @@ gtag('config', '%s');
 		} else {
 			result = result + bodyInjection.String()
 		}
+	}
+
+	// Gắn `data-landing-id` vào thẻ <script src="tracker.js"> đã có sẵn trong HTML.
+	//
+	// LÝ DO (bug chồng chéo landing — 2026-11-05): tracker.js đọc landing_id từ
+	// `window.APEX_LANDING_CONFIG` TRƯỚC khi config được nạp. Nếu HTML template có
+	// sẵn `<script src="tracker.js">` mà không có `data-landing-id`, tracker rơi về
+	// fallback của template (`mxv_080_online`).
+	// `data-landing-id` là nguồn định danh chắc chắn nhất — luôn đúng landing đang
+	// phục vụ, không phụ thuộc thứ tự script hay config.
+	if strings.Contains(result, "tracker.js") {
+		// <script src="tracker.js"> (chưa có data-landing-id) → thêm attribute
+		result = strings.ReplaceAll(result,
+			`<script src="tracker.js">`,
+			fmt.Sprintf(`<script src="tracker.js" data-landing-id="%s">`, p.PageID))
+		result = strings.ReplaceAll(result,
+			`<script src="/tracker.js">`,
+			fmt.Sprintf(`<script src="/tracker.js" data-landing-id="%s">`, p.PageID))
+		// <script src="tracker.js" ...> đã có attribute khác → chèn data-landing-id vào
+		result = strings.ReplaceAll(result,
+			`<script src="tracker.js" data-nguon=`,
+			fmt.Sprintf(`<script src="tracker.js" data-landing-id="%s" data-nguon=`, p.PageID))
 	}
 
 	// Tự động kiểm tra và chèn tracker.js kèm form interceptor nếu trang chưa có

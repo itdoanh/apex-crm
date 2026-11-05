@@ -83,6 +83,12 @@ func main() {
 		log.Printf("[WARN] Không thể đồng bộ file tĩnh dùng chung vào landing_files: %v", err)
 	}
 
+	// Đảm bảo mỗi landing có `config.json` RIÊNG với `landing_id` đúng của nó.
+	// Nếu không, tracker.js sẽ gửi analytics/lead về nhầm landing (bug chồng chéo).
+	if err := store.EnsureLandingConfigFile(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể chuẩn hoá landing_id trong config.json: %v", err)
+	}
+
 	// Tự động seed tên miền mặc định (hanghoaphaisinh.net, dautuhanghoa.vn)
 	if err := store.SeedDefaultDomains(context.Background()); err != nil {
 		log.Printf("[WARN] Không thể seed tên miền mặc định: %v", err)
@@ -465,6 +471,13 @@ func main() {
 
 				// Phục vụ trực tiếp trang chucmung.html, tuyệt đối không redirect vòng lặp vô tận
 				if subPath == "chucmung.html" || cleanSub == "chucmung.html" {
+					// Ưu tiên bản trong DB (landing_files) — đây là bản người dùng sửa
+					// trong Code Studio, KHÔNG phải bản mẫu trên đĩa.
+					if f, err := store.GetLandingFile(r.Host, landingID, "chucmung.html"); err == nil && f != nil && strings.TrimSpace(f.Content) != "" {
+						handlers.ServeBinaryFile(w, r, f.FilePath, f.FileType, f.Content)
+						return
+					}
+
 					cmCandidates := []string{
 						filepath.Join("..", "frontend", "landing", "chucmung.html"),
 						filepath.Join("frontend", "landing", "chucmung.html"),
@@ -473,6 +486,24 @@ func main() {
 					}
 					for _, cp := range cmCandidates {
 						if fi, err := os.Stat(cp); err == nil && !fi.IsDir() {
+							// ⚠️ BẮT BUỘC: phải đi qua InjectDynamicScripts để gắn
+							// `window.APEX_LANDING_CONFIG` + `data-landing-id` cho
+							// tracker.js. Nếu serve thẳng từ đĩa, tracker.js sẽ rơi
+							// về fallback `mxv_080_online` ⇒ analytics/lead của trang
+							// chúc mừng bị ghi nhận nhầm sang landing khác.
+							// (bug chồng chéo landing — 2026-11-05)
+							if data, readErr := os.ReadFile(cp); readErr == nil && len(data) > 0 {
+								lp := landingCache.Get(r.Host, landingID)
+								if lp == nil {
+									lp = landingCache.GetByPageID(landingID)
+								}
+								if lp != nil {
+									rendered := landingHandler.InjectDynamicScripts(string(data), lp)
+									w.Header().Set("Content-Type", "text/html; charset=utf-8")
+									_, _ = w.Write([]byte(rendered))
+									return
+								}
+							}
 							w.Header().Set("Content-Type", "text/html; charset=utf-8")
 							http.ServeFile(w, r, cp)
 							return

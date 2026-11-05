@@ -37,4 +37,28 @@ for (const [from, to] of MAP) {
   fs.writeFileSync(dst, content);
   console.log(`${src} -> ${dst}`);
 }
+
+// tracker.js là file ĐƯỢC SERVE cho landing page (Edge Router + /p/:page_id).
+// Nguồn chuẩn duy nhất: frontend/admin/js/tracker.js.
+// Phải đồng bộ sang TẤT CẢ các bản còn lại, nếu không landing sẽ chạy code cũ
+// và fix landing_id sẽ "không có tác dụng" trên production.
+//
+// LƯU Ý: file `frontend/landing/tracker.js` và `tracker.js` ở thư mục gốc cũng
+// được `SyncSharedStaticFilesToDB()` nạp vào DB lúc backend khởi động.
+const TRACKER_SRC = path.join(SRC, 'js', 'tracker.js');
+const TRACKER_COPIES = [
+  path.join(SRC, 'tracker.js'),
+  path.join('frontend', 'landing', 'tracker.js'),
+  'tracker.js',
+];
+
+if (fs.existsSync(TRACKER_SRC)) {
+  const trackerContent = fs.readFileSync(TRACKER_SRC);
+  for (const dst of TRACKER_COPIES) {
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, trackerContent);
+    console.log(`${TRACKER_SRC} -> ${dst}`);
+  }
+}
+
 console.log('done');

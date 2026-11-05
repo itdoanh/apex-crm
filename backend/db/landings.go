@@ -630,12 +630,23 @@ func (s *Store) SyncLandingFilesToDomain(sourceDomain, targetDomain, pageID stri
 // cho tất cả landing, đảm bảo code trong git là nguồn sự thật duy nhất.
 func (s *Store) SyncSharedStaticFilesToDB(ctx context.Context, diskRoot string) error {
 	// Danh sách file tĩnh dùng chung cần đồng bộ từ đĩa → DB
+	//
+	// ⚠️ CHỈ đồng bộ `tracker.js`. KHÔNG đồng bộ `config.json`!
+	//
+	// LÝ DO (bug chồng chéo landing — 2026-11-05):
+	// `config.json` chứa `landing_id` của landing mẫu (`mxv_080_online`). Nếu copy
+	// file này cho MỌI landing thì `landing_cu` cũng nhận `landing_id: mxv_080_online`
+	// ⇒ tracker.js gửi analytics/lead về nhầm landing ⇒ số liệu view/lead của các
+	// landing bị trộn lẫn (landing_cu ghi nhận view của mxv_080_online và ngược lại).
+	//
+	// `config.json` là file RIÊNG của từng landing (nằm trong cây File Manager),
+	// được quản lý qua CRM → Code Studio. Backend sẽ tự sinh `config.json` đúng
+	// `landing_id` khi landing chưa có file này (xem `EnsureLandingConfigFile`).
 	sharedFiles := []struct {
 		relPath  string
 		fileType string
 	}{
 		{"tracker.js", "js"},
-		{"config.json", "json"},
 	}
 
 	// Thư mục chứa file tĩnh dùng chung (ưu tiên frontend/landing)
@@ -690,7 +701,68 @@ func (s *Store) SyncSharedStaticFilesToDB(ctx context.Context, diskRoot string) 
 	}
 
 	if updated > 0 {
-		log.Printf("[INFO] SyncStatic: đã đồng bộ %d bản ghi landing_files từ đĩa (tracker.js, config.json)", updated)
+		log.Printf("[INFO] SyncStatic: đã đồng bộ %d bản ghi landing_files từ đĩa (tracker.js)", updated)
+	}
+	return nil
+}
+
+// EnsureLandingConfigFile đảm bảo mỗi landing có file `config.json` RIÊNG với
+// `landing_id` đúng của nó.
+//
+// BỐI CẢNH (bug chồng chéo landing — 2026-11-05):
+// `config.json` từng được copy chung cho mọi landing ⇒ mọi landing đều có
+// `landing_id: "mxv_080_online"` ⇒ tracker.js gửi analytics/lead về nhầm landing.
+//
+// Hàm này chạy sau khi backend khởi động: với mỗi landing, nếu `config.json`
+// đang tồn tại mà `landing_id` trong đó KHÁC với `page_id` của landing ⇒ tự
+// động sửa lại `landing_id` cho đúng (giữ nguyên các key khác như `nguon`,
+// `thoi_gian_chia_se`, `khoa_hoc`, `backend_url` do người dùng cấu hình).
+func (s *Store) EnsureLandingConfigFile(ctx context.Context) error {
+	rows, err := s.pool.Query(ctx, "SELECT DISTINCT domain, page_id FROM landing_pages")
+	if err != nil {
+		return err
+	}
+	type landingKey struct{ domain, pageID string }
+	var landings []landingKey
+	for rows.Next() {
+		var k landingKey
+		if err := rows.Scan(&k.domain, &k.pageID); err == nil {
+			landings = append(landings, k)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	fixed := 0
+	for _, lk := range landings {
+		f, err := s.GetLandingFile(lk.domain, lk.pageID, "config.json")
+		if err != nil || f == nil || strings.TrimSpace(f.Content) == "" {
+			continue
+		}
+		var cfg map[string]interface{}
+		if err := json.Unmarshal([]byte(f.Content), &cfg); err != nil {
+			continue
+		}
+		current, _ := cfg["landing_id"].(string)
+		if current == lk.pageID {
+			continue
+		}
+		cfg["landing_id"] = lk.pageID
+		newContent, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			continue
+		}
+		if err := s.SaveLandingFile(lk.domain, lk.pageID, "config.json", "json", string(newContent)); err == nil {
+			fixed++
+			log.Printf("[INFO] EnsureLandingConfigFile: đã sửa landing_id của config.json '%s' (domain='%s'): '%s' -> '%s'",
+				lk.pageID, lk.domain, current, lk.pageID)
+		}
+	}
+
+	if fixed > 0 {
+		log.Printf("[INFO] EnsureLandingConfigFile: đã sửa %d config.json có landing_id sai", fixed)
 	}
 	return nil
 }

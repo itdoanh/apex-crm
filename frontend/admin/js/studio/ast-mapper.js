@@ -288,29 +288,25 @@
                     // Studio mỗi khi HTML gán lại config.
                     `    (function(){\n` +
                     `        var __apexStudioCfg = window.APEX_LANDING_CONFIG || {};\n` +
-                    `        __apexStudioCfg.landing_id = window.__APEX_STUDIO_LANDING_ID__;\n` +
-                    `        __apexStudioCfg.domain = window.__APEX_STUDIO_DOMAIN__;\n` +
-                    `        __apexStudioCfg.name = window.__APEX_STUDIO_LANDING_NAME__;\n` +
+                    `        function __apexStudioMerge(v){\n` +
+                    `            if (v && typeof v === 'object') {\n` +
+                    `                for (var k in v) { if (Object.prototype.hasOwnProperty.call(v, k)) __apexStudioCfg[k] = v[k]; }\n` +
+                    `            }\n` +
+                    `            __apexStudioCfg.landing_id = window.__APEX_STUDIO_LANDING_ID__;\n` +
+                    `            __apexStudioCfg.domain = window.__APEX_STUDIO_DOMAIN__;\n` +
+                    `            __apexStudioCfg.name = window.__APEX_STUDIO_LANDING_NAME__;\n` +
+                    `            return __apexStudioCfg;\n` +
+                    `        }\n` +
+                    `        __apexStudioMerge(window.APEX_LANDING_CONFIG);\n` +
                     `        try {\n` +
                     `            Object.defineProperty(window, 'APEX_LANDING_CONFIG', {\n` +
                     `                configurable: true,\n` +
                     `                enumerable: true,\n` +
                     `                get: function() { return __apexStudioCfg; },\n` +
-                    `                set: function(v) {\n` +
-                    `                    if (v && typeof v === 'object') {\n` +
-                    `                        v.landing_id = window.__APEX_STUDIO_LANDING_ID__;\n` +
-                    `                        v.domain = window.__APEX_STUDIO_DOMAIN__;\n` +
-                    `                        v.name = window.__APEX_STUDIO_LANDING_NAME__;\n` +
-                    `                    }\n` +
-                    `                    __apexStudioCfg = v || __apexStudioCfg;\n` +
-                    `                }\n` +
+                    `                set: function(v) { __apexStudioCfg = __apexStudioMerge(v); }\n` +
                     `            });\n` +
                     `        } catch(e) {\n` +
-                    `            window.APEX_LANDING_CONFIG = Object.assign({}, window.APEX_LANDING_CONFIG || {}, {\n` +
-                    `                landing_id: window.__APEX_STUDIO_LANDING_ID__,\n` +
-                    `                domain: window.__APEX_STUDIO_DOMAIN__,\n` +
-                    `                name: window.__APEX_STUDIO_LANDING_NAME__\n` +
-                    `            });\n` +
+                    `            window.APEX_LANDING_CONFIG = __apexStudioMerge(window.APEX_LANDING_CONFIG || {});\n` +
                     `        }\n` +
                     `    })();\n` +
                     `    window.redirectToChucMung = function() { console.log('[Studio] Blocked redirectToChucMung call'); };\n` +

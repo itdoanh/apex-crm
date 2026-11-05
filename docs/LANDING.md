@@ -222,9 +222,16 @@ bảng `landing_files`**. Vì vậy sửa `tracker.js` trong git rồi `git pull
 **chưa đủ** — bản trong DB vẫn cũ và tiếp tục được serve.
 
 > ⚠️ **Đã xử lý (2026-11-04)**: `SyncSharedStaticFilesToDB()` trong
-> `backend/db/landings.go` chạy mỗi lần backend khởi động, đọc `tracker.js` và
-> `config.json` từ đĩa rồi ghi đè vào `landing_files` cho **mọi landing**. Nhờ vậy code
-> trong git là nguồn sự thật duy nhất, không còn tình trạng "sửa code mà không có tác dụng".
+> `backend/db/landings.go` chạy mỗi lần backend khởi động, đọc `tracker.js` từ đĩa
+> rồi ghi đè vào `landing_files` cho **mọi landing**. Nhờ vậy code trong git là
+> nguồn sự thật duy nhất, không còn tình trạng "sửa code mà không có tác dụng".
+>
+> 🚨 **`config.json` KHÔNG được đồng bộ chung** (fix 2026-11-05): `config.json` chứa
+> `landing_id` của landing mẫu. Copy nó cho mọi landing sẽ làm mọi landing đều có
+> `landing_id: "mxv_080_online"` ⇒ **analytics/lead gửi về nhầm landing**.
+> `config.json` là file RIÊNG của từng landing, do người dùng quản lý trong
+> Code Studio. Hàm `EnsureLandingConfigFile()` chạy lúc backend khởi động sẽ tự
+> sửa `landing_id` trong `config.json` cho đúng `page_id` của landing đó.
 >
 > **Vẫn cần làm khi sửa file khác** (vd: `assets/css/style.css`, `chucmung.html`):
 > dùng CRM → File Manager để sửa (ghi thẳng vào `landing_files`), **hoặc** chạy lệnh
@@ -235,6 +242,37 @@ bảng `landing_files`**. Vì vậy sửa `tracker.js` trong git rồi `git pull
 > SET content = pg_read_file('C:/apex/frontend/landing/<file>', true), updated_at = NOW()
 > WHERE file_path = '<file>';
 > ```
+
+### 🧩 Cách ly giữa các landing (fix 2026-11-05)
+
+Mỗi landing là **một đơn vị độc lập**: khác `page_id`, khác `domain`, khác cây file,
+khác số liệu view/lead. Để điều này đúng, 4 điểm sau phải được giữ:
+
+| # | Điểm | Cách đảm bảo |
+|---|---|---|
+| 1 | `config.json` của mỗi landing có `landing_id` đúng | `EnsureLandingConfigFile()` sửa lúc khởi động backend; **không** copy chung từ đĩa |
+| 2 | `window.APEX_LANDING_CONFIG` được set **trước** `tracker.js` | `InjectDynamicScripts()` cài property trap ở **đầu** `<head>` |
+| 3 | `tracker.js` biết chắc landing nào đang phục vụ | Thẻ `<script src="tracker.js" data-landing-id="<page_id>">` — backend luôn gắn |
+| 4 | `chucmung.html` cũng có ngữ cảnh landing | Serve qua `InjectDynamicScripts()` (không serve thẳng từ đĩa) |
+
+> ⚠️ **Đừng bao giờ** để `window.APEX_LANDING_CONFIG` của template ghi đè giá trị
+> backend inject. Luôn dùng property trap (`Object.defineProperty` + setter merge).
+> Xem `docs/FRONTEND.md` mục "Code Studio preview — cách ly".
+
+**Thứ tự ưu tiên `landing_id` trong `tracker.js`:**
+
+```
+1. data-landing-id trên thẻ <script src="tracker.js">   ← chắc chắn đúng
+2. window.APEX_LANDING_CONFIG.landing_id                ← backend inject trước tracker
+3. window.APEX_LANDING_ID                               ← biến JS do landing khai báo
+4. URL /p/<page_id>                                     ← chỉ dùng cho route /p/
+5. default_landing
+```
+
+> ⚠️ `tracker.js` có **nhiều bản** trong repo: `frontend/admin/js/tracker.js` (nguồn
+> chuẩn), `frontend/admin/tracker.js`, `frontend/landing/tracker.js`, `tracker.js` (gốc),
+> `backend/static/tracker.js`, `backend/static/js/tracker.js`. Chạy
+> `node scripts/sync-static-mirror.js` sau khi sửa — script đã tự đồng bộ TẤT CẢ.
 
 ### 📁 Cây file & Upload từ máy (từ 2026-11-04)
 
