@@ -194,7 +194,8 @@ Người dùng điền form
                   ├→ Phone normalize + carrier detect (Viettel/Vinaphone/...)
                   ├→ GeoIP resolve (city/region/isp)
                   ├→ Trích xuất `url` (fallback: Referer → Origin → Host)
-                  ├→ db.SaveLead()  (dedupe 24h: cùng SĐT → merge tracking)
+                  ├→ db.SaveLead()  (dedupe 24h + advisory lock: cùng SĐT → merge tracking,
+                  │                 trả về isNew để chỉ đồng bộ Sheet 1 lần)
                   ├→ analytics_sessions upsert + converted_lead = TRUE
                   └→ Google Sheets append (async, không chặn response)
 ```

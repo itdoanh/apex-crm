@@ -238,6 +238,79 @@ mới bắt được lỗi phân giải `<base>`.
 
 Backend tự inject vào HTML khi render (`InjectDynamicScripts`).
 
+#### ⚠️ Meta Pixel KHÔNG được chèn trùng (fix 2026-11-06)
+
+Nhiều landing (đặc biệt là landing export từ **LadiPage**) đã có **sẵn** block
+Meta Pixel hardcode trong HTML:
+
+```html
+<script>...fbevents.js...; fbq('init', '1558828029597854'); fbq('track', 'PageView');</script>
+```
+
+Nếu backend **vẫn inject thêm** 1 block nữa (từ `settings.facebook_pixel_id`) thì:
+
+- `fbq('init')` chạy 2 lần ⇒ reset pixel ID, mất cơ chế event dedup của Meta
+- `fbq('track', 'PageView')` chạy 2 lần ⇒ **PageView nhân đôi** ⇒ Meta Ads Manager
+  đếm sai lượt hiển thị, quy ngữ quy đổi (nhận diện sai)
+
+⇒ Backend đã chuyển sang cơ chế **kiểm tra trước khi inject**
+(`htmlHasMetaPixel()` trong `backend/handlers/landing_handler.go`):
+
+| HTML thô chứa | Backend có inject thêm? |
+|---|---|
+| `fbevents.js` | ❌ Không |
+| `fbq('init', '<đúng pixel id>')` | ❌ Không |
+| `fbq('init', '<pixel id khác>')` | ❌ Không (tránh 2 pixel cùng chạy) |
+| `fbq('init', ID)` với ID là biến | ❌ Không |
+| Không có gì | ✅ Có (hành vi cũ) |
+
+`tracker.js` cũng có lớp chặn thứ hai phía client (`htmlHasMetaPixel()` trong
+`frontend/landing/tracker.js`): chỉ inject khi `window.fbq` chưa tồn tại **và**
+DOM không còn script chứa `fbevents.js` / `fbq('init'…)` ⇒ không bao giờ có
+3 nguồn pixel chạy cùng lúc.
+
+> 📌 Nguồn chân lý (sự thật) của pixel là **HTML viết tay trong Code Studio**.
+> Nếu HTML đã có pixel ⇒ backend + tracker đều tự động bỏ qua.
+> Nếu muốn landing **không** chạy Meta Pixel: để trống `settings.facebook_pixel_id`
+> **và** xoá block pixel hardcode trong HTML (Code Studio).
+
+### ⚠️ `success_redirect` không được chứa domain (fix 2026-11-06)
+
+`form_config.success_redirect` trong CSDL của `landing_cu` từng được cấu hình là:
+
+```
+ads.giaodichhanghoatuonglai.com/chucmung      ← SAI
+```
+
+Khi `tracker.js` gán giá trị này vào `window.location.href`, trình duyệt phân giải
+**tương đối** theo `<base href="/landing/">` ⇒ URL thành:
+
+```
+/landing/ads.giaodichhanghoatuonglai.com/chucmung
+```
+
+Đường dẫn này **vẫn nằm trong prefix của landing** ⇒ edge router phục vụ **lại trang có
+form đăng ký** ⇒ khách bị quay lại form, bấm "Đăng ký" lần nữa ⇒ **sinh thêm lead trùng
+SĐT cùng thời gian** (hiện tượng "bấm đăng ký bị lặp mấy cái lead giống nhau").
+
+**Cách làm đúng:**
+
+| Nên dùng | Sai |
+|---|---|
+| `chucmung.html` | `ads.giaodichhanghoatuonglai.com/chucmung` |
+| `chucmung.html` | `/landing/ads.giaodichhanghoatuonglai.com/chucmung` |
+
+`normalizeSuccessRedirect()` (client) + `normalizeSuccessRedirectValue()` (server) đã tự
+chuẩn hoá (bỏ domain, thêm `.html`, tránh trỏ về chính trang đang xem) ở cả 3 nơi:
+
+| Nơi | Hàm |
+|---|---|
+| `GET /api/landing/config` | `normalizeSuccessRedirectValue()` (server) |
+| Render HTML landing | `normalizeSuccessRedirectValue()` (server) |
+| `tracker.js` | `normalizeSuccessRedirect()` (client) |
+
+Nhưng **vẫn nên sửa cấu hình trong CRM** để dữ liệu đúng ngay từ đầu.
+
 ### ❌ Hotline & Zalo link — KHÔNG còn ép ghi đè (từ 2026-11-04)
 
 > **Thay đổi kiến trúc**: HTML viết tay trong **Code Studio là nguồn sự thật duy nhất**.

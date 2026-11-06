@@ -9,6 +9,7 @@ import (
 
 	"apex-backend/models"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -353,9 +354,25 @@ func (s *Store) Close() error {
 }
 
 // SaveLead lưu 1 lead mới vào PostgreSQL kèm thông tin landing_id, nguồn, URL trang gửi form và tracking JSONB.
-// Hỗ trợ kiểm tra trùng lặp 24h: Nếu cùng SĐT đăng ký lại trong vòng 24h, cập nhật tracking và trả về lead hiện có.
-func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL string, trackingJSON []byte, city, region, country, isp, adPlatform, adPlacement string) (*models.Lead, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//
+// Trả về (lead, isNew, error):
+//   - isNew = true  ⇒ đây là lead MỚI được tạo trong lần gọi này.
+//   - isNew = false ⇒ lead đã tồn tại (trùng lặp), đã được HỢP NHẤT tracking và trả về bản ghi cũ.
+//
+// DEDUPLICATION (chống lead trùng):
+//  1. TOÀN BỘ thao tác "kiểm tra trùng" + "insert" nằm trong MỘT transaction kèm
+//     `pg_advisory_xact_lock(hashtextextended(phone))` ⇒ các request song song cùng
+//     1 SĐT bị serialize lại, không thể cùng lúc "thấy chưa có" rồi cùng INSERT
+//     (race condition TOCTOU) — đây là nguyên nhân sinh ra nhiều lead trùng nhau
+//     cùng thời gian.
+//  2. Ba tiêu chí coi là trùng (trong 24h):
+//     - cùng SĐT + cùng landing_id  (quy tắc cũ, giữ nguyên)
+//     - cùng SĐT trong 10 phút gần nhất bất kể landing (bắt trường hợp gửi 2 landing)
+//     - cùng SĐT + cùng session_id (bắt trường hợp double-click / 2 tab cùng phiên)
+//  3. Khi là lead trùng, KHÔNG tạo dòng mới ⇒ tầng handler chỉ đồng bộ Google Sheets
+//     khi isNew = true, tránh đẩy nhiều dòng giống nhau xuống Sheet.
+func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL string, trackingJSON []byte, city, region, country, isp, adPlatform, adPlacement string) (*models.Lead, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if len(trackingJSON) == 0 {
@@ -364,6 +381,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 
 	// Trích xuất từ trackingJSON nếu truyền vào rỗng
 	var trackMap map[string]interface{}
+	sessionID := ""
 	if err := json.Unmarshal(trackingJSON, &trackMap); err == nil {
 		if city == "" {
 			if v, ok := trackMap["city"].(string); ok {
@@ -403,9 +421,29 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 				}
 			}
 		}
+		for _, k := range []string{"session_id", "sessionId", "apex_session_id"} {
+			if v, ok := trackMap[k].(string); ok && strings.TrimSpace(v) != "" {
+				sessionID = strings.TrimSpace(v)
+				break
+			}
+		}
 	}
 	if country == "" {
 		country = "Việt Nam"
+	}
+
+	// === BẮT ĐẦU TRANSACTION ===
+	// Serialize theo SĐT: mọi request cùng 1 SĐT phải xếp hàng, tránh race
+	// "cả hai cùng thấy chưa có lead ⇒ cùng INSERT" sinh lead trùng cùng thời gian.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("lỗi bắt đầu transaction lưu lead: %w", err)
+	}
+	// Rollback là no-op nếu transaction đã Commit thành công.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", "apex_lead:"+phone); err != nil {
+		return nil, false, fmt.Errorf("lỗi khoá advisory theo SĐT: %w", err)
 	}
 
 	// 1. Kiểm tra chống trùng lặp lead (Deduplication) trong vòng 24 giờ
@@ -417,12 +455,18 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       tracking::text
 		FROM leads
-		WHERE so_dien_thoai = $1 AND (landing_id = $2 OR $2 = '') AND thoi_gian >= NOW() - INTERVAL '24 hours'
+		WHERE so_dien_thoai = $1
+		  AND thoi_gian >= NOW() - INTERVAL '24 hours'
+		  AND (
+		        ($2 <> '' AND landing_id = $2)
+		     OR thoi_gian >= NOW() - INTERVAL '10 minutes'
+		     OR ($3 <> '' AND tracking->>'session_id' = $3)
+		      )
 		ORDER BY thoi_gian DESC LIMIT 1;
 	`
 	var existing models.Lead
 	var existingTrackingStr string
-	err := s.pool.QueryRow(ctx, checkQuery, phone, landingID).Scan(
+	err = tx.QueryRow(ctx, checkQuery, phone, landingID, sessionID).Scan(
 		&existing.ID,
 		&existing.CreatedAt,
 		&existing.LandingID,
@@ -456,7 +500,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 			    cap_nhat_luc = NOW()
 			WHERE id = $9;
 		`
-		_, _ = s.pool.Exec(ctx, updateQuery, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement, pageURL, existing.ID)
+		_, _ = tx.Exec(ctx, updateQuery, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement, pageURL, existing.ID)
 		existing.Tracking = json.RawMessage(existingTrackingStr)
 		if city != "" {
 			existing.City = city
@@ -476,7 +520,13 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		if pageURL != "" {
 			existing.URL = pageURL
 		}
-		return &existing, nil
+		if err := tx.Commit(ctx); err != nil {
+			return nil, false, fmt.Errorf("lỗi commit khi hợp nhất lead trùng lặp: %w", err)
+		}
+		return &existing, false, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, false, fmt.Errorf("lỗi kiểm tra lead trùng lặp: %w", err)
 	}
 
 	// 2. Lead mới hoàn toàn
@@ -494,7 +544,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 	var lead models.Lead
 	var trackingStr string
 
-	err = s.pool.QueryRow(ctx, query, landingID, nguon, phone, pageURL, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement).Scan(
+	err = tx.QueryRow(ctx, query, landingID, nguon, phone, pageURL, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement).Scan(
 		&lead.ID,
 		&lead.CreatedAt,
 		&lead.LandingID,
@@ -514,11 +564,15 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		&trackingStr,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("lỗi ghi lead vào PostgreSQL: %w", err)
+		return nil, false, fmt.Errorf("lỗi ghi lead vào PostgreSQL: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, fmt.Errorf("lỗi commit lưu lead: %w", err)
 	}
 
 	lead.Tracking = json.RawMessage(trackingStr)
-	return &lead, nil
+	return &lead, true, nil
 }
 
 // buildWhereClause xây dựng câu lệnh WHERE động theo đa chiều các bộ lọc: tìm kiếm, landing, nguồn, trạng thái, ngày, giờ

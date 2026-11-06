@@ -125,6 +125,37 @@ Cột riêng cho phép đồng bộ sang Google Sheets bằng **field mapping `u
 
 > `tracker.js` đã gửi kèm `url: window.location.href` — landing page không cần thay đổi gì.
 
+#### Deduplication & đồng bộ Google Sheets (sửa 2026-11-06)
+
+Backend tự khử trùng ở tầng PostgreSQL (`db.SaveLead` → trả về `isNew`):
+
+| Trường hợp | Kết quả |
+|---|---|
+| Cùng SĐT + cùng landing, trong 24h | Merge tracking vào lead cũ, **không** tạo dòng mới, **không** đẩy thêm dòng xuống Google Sheets |
+| Cùng SĐT, trong 10 phút (bất kể landing) | Như trên |
+| Cùng SĐT + cùng `session_id` | Như trên |
+| Request song song cùng SĐT | Serialize bằng `pg_advisory_xact_lock` ⇒ chỉ 1 lead được tạo |
+
+⇒ Mỗi lead chỉ tạo **1 dòng** trong Google Sheets. Trước đây mỗi request gửi trùng đều
+ghi 1 dòng Sheet ⇒ Sheet hiện nhiều dòng giống nhau cùng thời gian.
+
+Lưu ý vận hành: nếu cấu hình `form_config.success_redirect` chứa **domain** (VD
+`ads.giaodichhanghoatuonglai.com/chucmung`), `<base href="/landing/">` sẽ phân giải thành
+`/landing/ads.giaodichhanghoatuonglai.com/chucmung` — vẫn là **trang có form** ⇒ khách bị
+quay lại form và bấm đăng ký lần nữa ⇒ lead trùng.
+
+⇒ Cả 3 nơi đều đã tự chuẩn hoá URL này (`normalizeSuccessRedirectValue` /
+`normalizeSuccessRedirect`):
+
+| Nơi | Hành vi |
+|---|---|
+| `GET /api/landing/config` | `redirect_url` + `settings.form_config.success_redirect` đã chuẩn hoá |
+| Render HTML landing (`InjectDynamicScriptsWithBase`) | Config inject xuống client đã chuẩn hoá |
+| `tracker.js` (client) | Chuẩn hoá lần nữa + chống trỏ về chính trang đang xem |
+
+Nhưng **vẫn nên cấu hình `success_redirect = "chucmung.html"`** trong CRM để dữ liệu
+đúng ngay từ đầu.
+
 **Mã lỗi:**
 
 | Code | Lý do |

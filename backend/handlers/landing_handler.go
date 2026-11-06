@@ -101,6 +101,35 @@ func (h *LandingHandler) HandleGetPublicConfig(w http.ResponseWriter, r *http.Re
 		khoaHoc = kh
 	}
 
+	// Chuẩn hoá URL chuyển hướng sau đăng ký (fix 2026-11-06).
+	//
+	// `form_config.success_redirect` / `redirect_url` có thể bị cấu hình sai thành
+	// "domain.com/chucmung" (có domain nhúng). Trình duyệt phân giải tương đối theo
+	// `<base href="/landing/">` ⇒ quay lại trang CÓ FORM ⇒ khách bấm "Đăng ký" lần
+	// nữa ⇒ sinh lead trùng SĐT cùng thời gian.
+	//
+	// Chuẩn hoá tại server để mọi client (kể cả tracker.js cũ chưa cập nhật) đều
+	// nhận đúng đường dẫn tới trang cảm ơn.
+	settingsOut := settings
+	if fc, ok := settings["form_config"].(map[string]interface{}); ok {
+		fcCopy := make(map[string]interface{}, len(fc))
+		for k, val := range fc {
+			fcCopy[k] = val
+		}
+		if sr, ok := fcCopy["success_redirect"].(string); ok {
+			if norm := normalizeSuccessRedirectValue(sr); norm != "" {
+				fcCopy["success_redirect"] = norm
+			}
+		}
+		settingsCopy := make(map[string]interface{}, len(settings))
+		for k, val := range settings {
+			settingsCopy[k] = val
+		}
+		settingsCopy["form_config"] = fcCopy
+		settingsOut = settingsCopy
+	}
+	redirectURL := normalizeSuccessRedirectValue(p.RedirectURL)
+
 	pubConfig := models.LandingPublicConfig{
 		LandingID:         p.PageID,
 		Name:              p.Name,
@@ -108,8 +137,8 @@ func (h *LandingHandler) HandleGetPublicConfig(w http.ResponseWriter, r *http.Re
 		Nguon:             p.NguonDefault,
 		IsActive:          p.IsActive,
 		Status:            p.Status,
-		RedirectURL:       p.RedirectURL,
-		Settings:          settings,
+		RedirectURL:       redirectURL,
+		Settings:          settingsOut,
 		Title:             title,
 		Hotline:           hotline,
 		ZaloLink:          zaloLink,
@@ -1390,6 +1419,103 @@ window.redirectToChucMung = function() { console.log('Bypass redirectToChucMung 
 	_, _ = w.Write([]byte(renderedHTML))
 }
 
+// htmlHasMetaPixel kiểm tra HTML thô đã chứa Meta Pixel (Facebook Pixel) hay chưa.
+//
+// Dùng để backend KHÔNG inject thêm block Meta Pixel khi landing đã hardcode sẵn
+// (thường do export từ LadiPage) — tránh `fbq('init')` + `fbq('track','PageView')`
+// chạy 2 lần ⇒ PageView nhân đôi ⇒ Meta Ads Manager nhận diện sai.
+//
+// Quy tắc:
+//   - Có `fbq('init', '<pixelID>')` (đúng ID đang cấu hình) ⇒ true (đã có pixel).
+//   - Có `fbq('init'` với ID khác ⇒ true (HTML đã tự quản lý pixel).
+//   - Có `fbevents.js` ⇒ true (đã nạp thư viện Meta Pixel).
+func htmlHasMetaPixel(rawHTML string, pixelID string) bool {
+	if rawHTML == "" {
+		return false
+	}
+	lower := strings.ToLower(rawHTML)
+
+	// Đã nạp thư viện Meta Pixel ⇒ coi như đã có pixel (tránh chèn 2 lần).
+	if strings.Contains(lower, "fbevents.js") {
+		return true
+	}
+
+	// Đã có lệnh init pixel (bất kể ID nào) ⇒ không chèn thêm.
+	if strings.Contains(lower, "fbq('init'") || strings.Contains(lower, "fbq(\"init\"") ||
+		strings.Contains(lower, "fbq('init\"") || strings.Contains(lower, "fbq(\"init'") {
+		return true
+	}
+
+	// Bắt biến thể gọi init không dùng chuỗi literal (vd: fbq("init", PIXEL_ID)).
+	if idx := strings.Index(lower, "fbq("); idx != -1 {
+		rest := lower[idx:]
+		if end := strings.Index(rest, ");"); end != -1 && end < 200 {
+			call := rest[:end]
+			if strings.Contains(call, "'init'") || strings.Contains(call, "\"init\"") {
+				return true
+			}
+			// fbq("init", ID) — ID có thể là biến; kiểm tra chuỗi pixel ID đã cấu hình.
+			if pixelID != "" && strings.Contains(call, strings.ToLower(pixelID)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// normalizeSuccessRedirectValue chuẩn hoá URL chuyển hướng sau khi đăng ký
+// để tránh vòng lặp "quay lại trang có form" ⇒ khách bấm đăng ký lại ⇒ lead trùng.
+//
+// BỐI CẢNH (bug 2026-11-06 — landing_cu sinh lead trùng SĐT cùng thời gian):
+//
+//	`landing_pages.redirect_url` / `settings.form_config.success_redirect` được
+//	cấu hình là "ads.giaodichhanghoatuonglai.com/chucmung" (có domain nhúng).
+//	Trình duyệt phân giải URL tương đối theo `<base href="/landing/">` ⇒ thành
+//	`/landing/ads.giaodichhanghoatuonglai.com/chucmung` — VẪN là trang CÓ FORM
+//	⇒ khách bị quay lại form, bấm "Đăng ký" lần nữa ⇒ sinh lead trùng.
+//
+// QUY TẮC:
+//   - URL tuyệt đối (http/https)          → giữ nguyên (chủ ý sang domain khác).
+//   - "domain.com/path" (domain nhúng)    → bỏ domain, giữ "path"; nếu path không
+//     có đuôi file thì thêm ".html" để KHÔNG rơi về index của landing.
+//   - Đường dẫn tương đối bình thường      → giữ nguyên.
+func normalizeSuccessRedirectValue(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+
+	// URL tuyệt đối → giữ nguyên.
+	if strings.HasPrefix(strings.ToLower(v), "http://") || strings.HasPrefix(strings.ToLower(v), "https://") {
+		return v
+	}
+
+	// Bỏ query/hash.
+	if idx := strings.IndexAny(v, "?#"); idx != -1 {
+		v = v[:idx]
+	}
+
+	// "domain.com/path" (domain nhúng, KHÔNG có scheme) → chỉ giữ phần path.
+	strippedDomain := false
+	if slash := strings.Index(v, "/"); slash > 0 && strings.Contains(v[:slash], ".") {
+		v = strings.TrimLeft(v[slash+1:], "/")
+		strippedDomain = true
+	}
+
+	v = strings.TrimLeft(v, "/")
+	if v == "" {
+		return ""
+	}
+
+	// Trang nội bộ không có đuôi file → thêm ".html" (vd "chucmung" → "chucmung.html").
+	if !strings.Contains(v, ".") && (strippedDomain || strings.EqualFold(v, "chucmung")) {
+		v += ".html"
+	}
+
+	return v
+}
+
 // InjectDynamicScripts tự động chèn SEO meta, Facebook Pixel, TikTok Pixel, Google Analytics, và custom scripts
 //
 // `basePath` là prefix của URL đang phục vụ landing (vd: `/p/landing_cu`, `/landing`).
@@ -1421,24 +1547,57 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	headScripts, _ := settings["custom_head_scripts"].(string)
 	bodyScripts, _ := settings["custom_body_scripts"].(string)
 
+	// Chuẩn hoá các URL chuyển hướng trước khi gửi xuống client.
+	//
+	// Nếu giữ nguyên giá trị có domain nhúng (VD "ads.giaodichhanghoatuonglai.com/chucmung")
+	// thì trình duyệt phân giải theo `<base href="/landing/">` ⇒ quay lại trang CÓ FORM
+	// ⇒ khách bấm "Đăng ký" lần nữa ⇒ sinh lead trùng SĐT cùng thời gian.
+	redirectURL := normalizeSuccessRedirectValue(p.RedirectURL)
+
+	// `form_config` là map lồng trong `settings` (JSONB) — copy ra bản riêng để
+	// chuẩn hoá `success_redirect` mà không sửa `settings` gốc.
+	formConfigOut := settings["form_config"]
+	settingsOut := settings
+	if fc, ok := settings["form_config"].(map[string]interface{}); ok {
+		fcCopy := make(map[string]interface{}, len(fc))
+		for k, val := range fc {
+			fcCopy[k] = val
+		}
+		if sr, ok := fcCopy["success_redirect"].(string); ok {
+			if norm := normalizeSuccessRedirectValue(sr); norm != "" {
+				fcCopy["success_redirect"] = norm
+			}
+		}
+		formConfigOut = fcCopy
+
+		// `settings` cũng được inject xuống client — cần bản copy đã chuẩn hoá
+		// để không rò lại URL chứa domain (client đọc `settings.form_config`).
+		settingsCopy := make(map[string]interface{}, len(settings))
+		for k, val := range settings {
+			settingsCopy[k] = val
+		}
+		settingsCopy["form_config"] = fcCopy
+		settingsOut = settingsCopy
+	}
+
 	// Tạo snippet config tự động gắn vào window.APEX_LANDING_CONFIG
 	configJSON, _ := json.Marshal(map[string]interface{}{
-		"landing_id":        p.PageID,
-		"name":              p.Name,
-		"domain":            p.Domain,
-		"nguon":             p.NguonDefault,
-		"is_active":         p.IsActive,
-		"title":             title,
+		"landing_id": p.PageID,
+		"name":       p.Name,
+		"domain":     p.Domain,
+		"nguon":      p.NguonDefault,
+		"is_active":  p.IsActive,
+		"title":      title,
 		// Lưu ý: các key "ép ghi đè" (hotline, zalo_link, brand_header, tieu_de,
 		// metric_boxes) KHÔNG được inject xuống client nữa — HTML viết tay trong
 		// Code Studio là nguồn sự thật duy nhất.
 		// Giữ lại form_mapping (ánh xạ input → trường lead, không sửa nội dung)
 		// và khoa_hoc (điền vào trường "package" của lead, không sửa DOM).
-		"khoa_hoc":          settings["khoa_hoc"],
-		"form_config":       settings["form_config"],
-		"form_mapping":      settings["form_mapping"],
-		"redirect_url":      p.RedirectURL,
-		"settings":          settings,
+		"khoa_hoc":     settings["khoa_hoc"],
+		"form_config":  formConfigOut,
+		"form_mapping": settings["form_mapping"],
+		"redirect_url": redirectURL,
+		"settings":     settingsOut,
 	})
 
 	var headInjection strings.Builder
@@ -1466,7 +1625,23 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	}
 
 	// Facebook Pixel Auto-Injection
-	if fbPixel != "" {
+	//
+	// ⚠️ CHỐNG CHÈN TRÙNG PIXEL (sửa bug 2026-11-06):
+	// Nhiều landing (vd: `landing_cu`) đã có SẴN block Meta Pixel hardcode trong
+	// `code_html` (xuất bản từ LadiPage) — gọi `fbq('init', '<id>')` +
+	// `fbq('track', 'PageView')`.
+	//
+	// Hệ quả khi backend vẫn inject thêm 1 block nữa:
+	//   - `fbq('init')` bị gọi 2 lần ⇒ reset pixel ID, mất cơ chế event dedup
+	//   - `fbq('track', 'PageView')` bị gọi 2 lần ⇒ PageView nhân đôi ⇒ Meta Ads
+	//     Manager đếm sai lượt hiển thị, quy ngữ quy đổi (nhận diện sai).
+	//
+	// CÁCH SỬA: chỉ inject khi HTML thực sự CHƯA có Meta Pixel cho đúng pixel ID.
+	// - `fbq('init', '<id>')` với đúng ID đã cấu hình ⇒ KHÔNG inject (đã có sẵn).
+	// - Có `fbq('init')` với ID KHÁC ⇒ KHÔNG inject ID của ta (tránh 2 pixel
+	//   cùng chạy, gây nhân đôi PageView).
+	// - Có `fbevents.js` nhưng chưa `init` ⇒ vẫn KHÔNG inject (HTML chủ động).
+	if fbPixel != "" && !htmlHasMetaPixel(rawHTML, fbPixel) {
 		headInjection.WriteString(fmt.Sprintf(`
 <!-- Facebook Pixel Code -->
 <script>

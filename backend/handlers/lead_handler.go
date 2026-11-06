@@ -442,7 +442,7 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Lưu vào CSDL PostgreSQL với kiểm tra deduplication 24h tự động
-	lead, err := h.store.SaveLead(landingID, nguon, phone, pageURL, trackingBytes, city, region, country, isp, adInfo.Platform, adInfo.Placement)
+	lead, isNew, err := h.store.SaveLead(landingID, nguon, phone, pageURL, trackingBytes, city, region, country, isp, adInfo.Platform, adInfo.Placement)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -461,8 +461,19 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Tự động đồng bộ thời gian thực sang Google Sheets (chạy ngầm trong goroutine để không làm trễ response)
-	go h.syncLeadToGoogleSheets(lead, rawData)
+	// Tự động đồng bộ thời gian thực sang Google Sheets (chạy ngầm trong goroutine để không làm trễ response).
+	//
+	// ⚠️ CHỈ đồng bộ khi lead MỚI (isNew = true):
+	// Khi khách bấm "Đăng ký" 1 lần nhưng client gửi nhiều request (double-click,
+	// nhiều handler submit chạy song song, retry mạng), các request sau bị
+	// dedup trong PostgreSQL và trả về lại lead cũ (isNew = false).
+	// Nếu đồng bộ mọi lần ⇒ Google Sheets nhận N dòng giống nhau cho 1 lead ⇒
+	// báo cáo bán hàng thấy "mấy cái lead giống nhau cùng thời gian".
+	if isNew {
+		go h.syncLeadToGoogleSheets(lead, rawData)
+	} else {
+		fmt.Printf("[INFO] Lead #%d (SĐT %s) trùng lặp — bỏ qua đồng bộ Google Sheets\n", lead.ID, phone)
+	}
 
 	// Phản hồi thành công
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

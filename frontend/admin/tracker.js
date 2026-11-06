@@ -531,6 +531,62 @@
         } catch (_) {}
     }
 
+    // ============================================================
+    // 4.1 CHUẨN HOÁ URL CHUYỂN HƯỚNG SAU KHI ĐĂNG KÝ
+    // ============================================================
+    //
+    // BỐI CẢNH (bug 2026-11-06 — landing_cu sinh lead TRÙNG SĐT):
+    //   `form_config.success_redirect` trong CSDL được cấu hình là
+    //   "ads.giaodichhanghoatuonglai.com/chucmung" (có domain nhúng).
+    //   Khi gán vào `window.location.href`, trình duyệt phân giải tương đối
+    //   theo `<base href="/landing/">` ⇒ URL thành
+    //   `/landing/ads.giaodichhanghoatuonglai.com/chucmung` — VẪN nằm trong
+    //   prefix của landing ⇒ edge router phục vụ LẠI trang CÓ FORM ĐĂNG KÝ.
+    //   Khách bị quay lại form, bấm "Đăng ký" lần nữa ⇒ sinh thêm lead trùng
+    //   SĐT (cùng thời gian) — hiện tượng "bấm đăng ký bị lặp mấy lead giống nhau".
+    //
+    // CHUẨN HOÁ:
+    //   - URL tuyệt đối (http/https) → giữ nguyên (chủ ý chuyển sang domain khác).
+    //   - "domain.com/path"           → bỏ phần domain, giữ "path" (+ ".html" nếu thiếu).
+    //   - Đường dẫn tương đối / trang nội bộ khác → giữ nguyên.
+    //   - Nếu kết quả trỏ về CHÍNH trang đang xem (có form đăng ký) → dùng
+    //     'chucmung.html' để chắc chắn rời khỏi form.
+    function normalizeSuccessRedirect(raw) {
+        let v = String(raw || '').trim();
+        if (!v) return 'chucmung.html';
+
+        // URL tuyệt đối → giữ nguyên.
+        if (/^https?:\/\//i.test(v)) return v;
+
+        // Bỏ query/hash.
+        v = v.split('#')[0].split('?')[0];
+
+        // "domain.com/path" (domain nhúng, KHÔNG có scheme) → chỉ giữ phần path.
+        let strippedDomain = false;
+        const m = v.match(/^[^/]*\.[^/]*\/(.*)$/);
+        if (m && m[1]) {
+            v = m[1].replace(/^\/+/, '');
+            strippedDomain = true;
+        }
+
+        v = v.replace(/^\/+/, '');
+        if (!v) return 'chucmung.html';
+
+        // Trang nội bộ không có đuôi file → thêm ".html" để KHÔNG bị rơi về index
+        // của landing (index chứa form đăng ký ⇒ khách bấm lại sinh lead trùng).
+        if (v.indexOf('.') === -1 && (strippedDomain || v.toLowerCase() === 'chucmung')) {
+            v += '.html';
+        }
+
+        // Chuyển hướng về chính trang đang xem (có form) → chuyển sang trang cảm ơn.
+        const curFile = (window.location.pathname || '').split('/').pop().toLowerCase();
+        if (curFile && v.toLowerCase() === curFile) {
+            v = 'chucmung.html';
+        }
+
+        return v;
+    }
+
     function redirectToChucMung() {
         if (shouldBypassRedirect()) return;
         const search = window.location.search || '';
@@ -580,6 +636,32 @@
     }
 
     // ============================================================
+    // 3.9 KIỂM TRA HTML ĐÃ CÓ META PIXEL HARDCODE
+    // ============================================================
+    //
+    // Mục đích: landing export từ LadiPage đã có sẵn block Meta
+    // Pixel trong HTML (fbq('init') + fbq('track','PageView')). Nếu JS công
+    // inject thêm → PageView nhân đôi → Meta Ads Manager đếm sai.
+    //
+    // Để phát hiện chỉ quan sát DOM + nội dung script đã nạp.
+    function htmlHasMetaPixel() {
+        try {
+            // 1. Thư viện fbq đã tồn tại → đã init rồi.
+            if (typeof window.fbq === 'function') return true;
+
+            // 2. Quét text trong các thẻ script đã nạp.
+            var scripts = document.querySelectorAll('script');
+            for (var i = 0; i < scripts.length; i++) {
+                var txt = scripts[i].textContent || '';
+                if (!txt) continue;
+                if (txt.indexOf('fbevents.js') !== -1) return true;
+                if (txt.indexOf("fbq('init'") !== -1 || txt.indexOf('fbq("init"') !== -1) return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    // ============================================================
     // APPLY CONFIG TO DOM
     // ------------------------------------------------------------
     // NGUYÊN TẮC: HTML viết tay trong Code Studio là NGUỒN SỰ THẬT DUY NHẤT.
@@ -601,8 +683,18 @@
         }
 
         // 4. Client-side Pixel Auto-Injection nếu backend chưa inject sẵn
+        //
+        // ⚠️ CHỐNG CHÈN TRÜNG PIXEL (fix 2026-11-06):
+        // HTML export từ LadiPage đã có sẵn block Meta Pixel hardcode
+        // (`fbq('init', ...)` + `fbq('track', 'PageView')`). Nếu tracker.js vẫn
+        // inject thêm 1 block nữa → PageView nhân đôi → Meta Ads
+        // Manager đếm sai lượt hiển thị, quy ngữ quy đổi.
+        //
+        // Điều kiện không inject:
+        //   - `window.fbq` đã tồn tại (backend đã inject rồi).
+        //   - HTML đã có `fbq('init', ...)` hoặc nạp `fbevents.js`.
         const fbPixelId = cfg.facebook_pixel_id || (cfg.settings && cfg.settings.facebook_pixel_id);
-        if (fbPixelId && !window.fbq) {
+        if (fbPixelId && !window.fbq && !htmlHasMetaPixel()) {
             try {
                 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
                 n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
@@ -1266,11 +1358,13 @@
                     // Xác định trang chuyển hướng sau khi gửi lead thành công.
                     // Ưu tiên biến khai báo trong chính mã HTML (nguồn sự thật duy nhất),
                     // sau đó mới fallback về cấu hình CSDL cũ (tương thích ngược).
-                    const redirectUrl = window.APEX_SUCCESS_REDIRECT ||
+                    const redirectUrl = normalizeSuccessRedirect(
+                        window.APEX_SUCCESS_REDIRECT ||
                         (formMapping && formMapping.success_redirect) ||
                         (globalConfig.form_config && globalConfig.form_config.success_redirect) ||
                         globalConfig.redirect_url ||
-                        'chucmung.html';
+                        'chucmung.html'
+                    );
 
                     setTimeout(function () {
                         window.location.href = redirectUrl + (window.location.search || '');

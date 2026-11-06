@@ -124,9 +124,30 @@ idx_leads_tracking_gin  ON leads USING gin (tracking)
 
 ### Deduplication 24h
 
-`SaveLead()` kiểm tra: cùng `so_dien_thoai` (+ `landing_id` nếu có) trong 24h → **không insert**, mà `UPDATE` merge tracking mới vào bản ghi cũ và trả về lead cũ.
+`SaveLead()` trả về `(*models.Lead, isNew bool, err error)`:
+
+- `isNew = true`  → lead MỚI được tạo trong lần gọi này.
+- `isNew = false` → lead đã tồn tại, đã được **merge tracking** và trả về bản ghi cũ.
+
+Toàn bộ thao tác "kiểm tra trùng" + "insert" nằm trong **một transaction** kèm
+`SELECT pg_advisory_xact_lock(hashtextextended('apex_lead:'||phone, 0))` ⇒ các request
+song song cùng 1 SĐT bị serialize lại, không thể cùng lúc "thấy chưa có lead" rồi
+cùng `INSERT` (race condition TOCTOU).
+
+Lead được coi là **trùng lặp** (trong 24h) khi thỏa **một** trong 3 tiêu chí:
+
+| # | Tiêu chí | Mục đích |
+|---|----------|---------|
+| 1 | cùng `so_dien_thoai` + cùng `landing_id` | quy tắc cũ (giữ nguyên) |
+| 2 | cùng `so_dien_thoai` trong **10 phút** gần nhất (bất kể landing) | bắt trường hợp gửi 2 landing liên tiếp (VD: `landing_cu` → `mxv_080_online`) |
+| 3 | cùng `so_dien_thoai` + cùng `tracking->>'session_id'` | bắt trường hợp double-click / 2 tab cùng 1 phiên đăng ký |
 
 Khi merge, cột `url` cũng được cập nhật nếu lead mới có URL khác (`url = CASE WHEN $8 != '' THEN $8 ELSE leads.url END`).
+
+> ⚠️ **Chỉ đồng bộ Google Sheets khi `isNew = true`**
+> (`backend/handlers/lead_handler.go` → `HandleSubmitLead`).
+> Nếu đồng bộ mọi lần thì 1 lead bị gửi trùng 2–3 lần sẽ đẩy **2–3 dòng giống
+> nhau** xuống Sheet ⇒ báo cáo bán hàng thấy "mấy cái lead giống nhau cùng thời gian".
 
 ---
 
