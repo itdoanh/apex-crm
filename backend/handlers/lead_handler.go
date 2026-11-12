@@ -169,6 +169,123 @@ func extractFirstString(data map[string]interface{}, keys ...string) string {
 	return ""
 }
 
+// enrichLeadTracking bổ sung thông số Meta Ads, thiết bị & VPN vào tracking JSON
+// của lead — những phần client KHÔNG gửi được hoặc gửi thiếu.
+//
+// BỔ SUNG (2026-11-12):
+//   1. Thiết bị: phân tích User-Agent phía server (fallback khi client không
+//      gửi) — tên thương mại (vd: "Samsung Galaxy A52"), trình duyệt trong app.
+//   2. VPN / Proxy: dựa trên IP + header proxy.
+//   3. Meta CAPI: suy ra `_fbc` từ `fbclid` nếu thiếu (để gửi CAPI khớp
+//      chính xác lượt nhấp), chuẩn hoá `site_source_name` (fb/ig/msg/an).
+//
+// Giá trị client gửi lên LUÔN được ưu tiên (không ghi đè).
+func enrichLeadTracking(rawData map[string]interface{}, r *http.Request, clientIP string, pageURL string) {
+	if rawData == nil {
+		return
+	}
+
+	setIfEmpty := func(key string, value string) {
+		if value == "" {
+			return
+		}
+		if cur, ok := rawData[key]; ok && cur != nil {
+			if s := strings.TrimSpace(fmt.Sprintf("%v", cur)); s != "" {
+				return
+			}
+		}
+		rawData[key] = value
+	}
+
+	// ─── 1. Thiết bị (phân tích từ User-Agent) ───
+	ua := r.UserAgent()
+	if ua != "" {
+		devInfo := security.ParseDeviceInfo(ua)
+		setIfEmpty("device_type", devInfo.DeviceType)
+		setIfEmpty("browser", devInfo.Browser)
+		setIfEmpty("browser_version", devInfo.BrowserVersion)
+		setIfEmpty("browser_engine", devInfo.Engine)
+		setIfEmpty("os", devInfo.OS)
+		setIfEmpty("os_version", devInfo.OSVersion)
+		setIfEmpty("device_brand", devInfo.Brand)
+		setIfEmpty("device_model", devInfo.Model)
+		setIfEmpty("device_model_code", devInfo.ModelCode)
+		setIfEmpty("device_name", devInfo.Model)
+		setIfEmpty("platform_info", devInfo.Platform)
+		if devInfo.IsInAppBrowser {
+			if cur, ok := rawData["is_in_app_browser"]; !ok || cur == nil || fmt.Sprintf("%v", cur) == "false" {
+				rawData["is_in_app_browser"] = true
+			}
+			setIfEmpty("in_app_type", devInfo.InAppType)
+		}
+	}
+
+	// ─── 2. VPN / Proxy ───
+	if _, ok := rawData["is_vpn"]; !ok {
+		headers := map[string]string{}
+		for _, key := range []string{
+			"X-Forwarded-For", "X-Real-IP", "Via", "X-Proxy-Id",
+			"Proxy-Connection", "X-Forwarded-Proto", "CF-Connecting-IP",
+		} {
+			if v := r.Header.Get(key); v != "" {
+				headers[strings.ToLower(key)] = v
+			}
+		}
+		if vpn := security.ResolveVPN(clientIP, headers); vpn != nil {
+			if vpn.IsVPN {
+				rawData["is_vpn"] = true
+			}
+			if vpn.IsProxy {
+				rawData["is_proxy"] = true
+			}
+			if vpn.IsTor {
+				rawData["is_tor"] = true
+			}
+			setIfEmpty("vpn_provider", vpn.Provider)
+			if vpn.ConfidencePct > 0 {
+				rawData["vpn_confidence"] = vpn.ConfidencePct
+			}
+			setIfEmpty("vpn_reason", vpn.Reason)
+		}
+	}
+
+	// ─── 3. Meta CAPI ───
+	entryURL := pageURL
+	if entryURL == "" {
+		entryURL = extractFirstString(rawData, "entry_url")
+	}
+	cookies := map[string]string{}
+	if c, err := r.Cookie("fbc"); err == nil {
+		cookies["_fbc"] = c.Value
+	}
+	if c, err := r.Cookie("fbp"); err == nil {
+		cookies["_fbp"] = c.Value
+	}
+	ids := security.ResolveMetaClickIDs(entryURL, cookies)
+	setIfEmpty("fbclid", ids.Fbclid)
+	setIfEmpty("fbc", ids.Fbc)
+	setIfEmpty("fbp", ids.Fbp)
+	setIfEmpty("igshid", ids.Igshid)
+	if extractFirstString(rawData, "meta_click_id") == "" && ids.Fbclid != "" {
+		rawData["meta_click_id"] = ids.Fbclid
+	}
+
+	// Chuẩn hoá `site_source_name` (chỉ 4 giá trị hợp lệ: fb / ig / msg / an)
+	if extractFirstString(rawData, "site_source_name") == "" {
+		src := strings.ToLower(extractFirstString(rawData, "utm_source"))
+		switch src {
+		case "facebook", "fb":
+			rawData["site_source_name"] = "fb"
+		case "instagram", "ig":
+			rawData["site_source_name"] = "ig"
+		case "messenger", "msg":
+			rawData["site_source_name"] = "msg"
+		case "audience network", "an":
+			rawData["site_source_name"] = "an"
+		}
+	}
+}
+
 // HandleSubmitLead nhận toàn bộ payload từ bất kỳ Landing Page nào với 4 lớp phòng thủ tự động
 func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -435,6 +552,16 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	rawData["ad_placement"] = adInfo.Placement
 	rawData["ad_source_tag"] = adInfo.SourceTag
 	rawData["url"] = pageURL
+
+	// ─── LÀM GIÀU THÔNG SỐ META ADS + THIẾT BỊ (2026-11-12) ───────
+	//
+	// Client (tracker.js / apex-adapter.js) đã gửi đầy đủ macro Meta Ads,
+	// định danh lượt nhấp (fbclid/_fbc/_fbp) và thông tin thiết bị chi tiết.
+	// Phần này bổ sung những gì client KHÔNG gửi được:
+	//   - Phân tích thiết bị từ User-Agent phía server (fallback).
+	//   - Phát hiện VPN / Proxy từ IP + header.
+	//   - Suy ra `_fbc` từ `fbclid` nếu thiếu (để CAPI khớp lượt nhấp).
+	enrichLeadTracking(rawData, r, clientIP, pageURL)
 
 	trackingBytes, err := json.Marshal(rawData)
 	if err != nil {

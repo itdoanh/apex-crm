@@ -38,6 +38,69 @@ type AnalyticsEventPayload struct {
 	Events            []ActionItem    `json:"events"`
 	Actions           []ActionItem    `json:"actions,omitempty"`
 	RawData           json.RawMessage `json:"raw_data,omitempty"`
+
+	// ─── Thiết bị chi tiết (2026-11-12) ───────────────────────────
+	DeviceBrand       string `json:"device_brand,omitempty"`
+	DeviceModel       string `json:"device_model,omitempty"`
+	DeviceModelCode   string `json:"device_model_code,omitempty"`
+	DeviceName        string `json:"device_name,omitempty"`
+	OSVersion         string `json:"os_version,omitempty"`
+	BrowserVersion    string `json:"browser_version,omitempty"`
+	BrowserEngine     string `json:"browser_engine,omitempty"`
+	IsInAppBrowser    bool   `json:"is_in_app_browser,omitempty"`
+	InAppType         string `json:"in_app_type,omitempty"`
+	DeviceMemory      int    `json:"device_memory,omitempty"`
+	DeviceCores       int    `json:"device_cores,omitempty"`
+	DeviceTouchpoints int    `json:"device_touchpoints,omitempty"`
+	ViewportRes       string `json:"viewport_res,omitempty"`
+	ScreenColorDepth  int    `json:"screen_color_depth,omitempty"`
+	PixelRatio        string `json:"pixel_ratio,omitempty"`
+	Timezone          string `json:"timezone,omitempty"`
+	Language          string `json:"language,omitempty"`
+	PlatformInfo      string `json:"platform_info,omitempty"`
+	ConnectionType    string `json:"connection_type,omitempty"`
+	DeviceState       string `json:"device_state,omitempty"`
+
+	// ─── VPN / Proxy ──────────────────────────────────────────────
+	IsVPN         bool   `json:"is_vpn,omitempty"`
+	IsProxy       bool   `json:"is_proxy,omitempty"`
+	IsTor         bool   `json:"is_tor,omitempty"`
+	VPNProvider   string `json:"vpn_provider,omitempty"`
+	VPNConfidence int    `json:"vpn_confidence,omitempty"`
+	VPNReason     string `json:"vpn_reason,omitempty"`
+
+	// ─── Meta Click ID (CAPI) ─────────────────────────────────────
+	Fbclid      string `json:"fbclid,omitempty"`
+	Fbc         string `json:"fbc,omitempty"`
+	Fbp         string `json:"fbp,omitempty"`
+	Igshid      string `json:"igshid,omitempty"`
+	MetaClickID string `json:"meta_click_id,omitempty"`
+
+	// ─── Meta Ads Macros ──────────────────────────────────────────
+	UTMPlacement   string `json:"utm_placement,omitempty"`
+	CampaignName   string `json:"campaign_name,omitempty"`
+	AdsetName      string `json:"adset_name,omitempty"`
+	AdName         string `json:"ad_name,omitempty"`
+	AdAccountID    string `json:"ad_account_id,omitempty"`
+	SiteSourceName string `json:"site_source_name,omitempty"`
+
+	// ─── Hành vi chi tiết ─────────────────────────────────────────
+	VisibleSeconds      int  `json:"visible_seconds,omitempty"`
+	HiddenSeconds       int  `json:"hidden_seconds,omitempty"`
+	SessionCount        int  `json:"session_count,omitempty"`
+	LandingPath         string `json:"landing_path,omitempty"`
+	ReferrerHost        string `json:"referrer_host,omitempty"`
+	IsNewVisitor        bool   `json:"is_new_visitor,omitempty"`
+	HasVideoPlay        bool   `json:"has_video_play,omitempty"`
+	HasZaloClick        bool   `json:"has_zalo_click,omitempty"`
+	HasTelClick         bool   `json:"has_tel_click,omitempty"`
+	FormSubmitAttempts  int    `json:"form_submit_attempts,omitempty"`
+	FormValidationError int    `json:"form_validation_errors,omitempty"`
+	ScrollDepth25       bool   `json:"scroll_depth_25,omitempty"`
+	ScrollDepth50       bool   `json:"scroll_depth_50,omitempty"`
+	ScrollDepth75       bool   `json:"scroll_depth_75,omitempty"`
+	ScrollDepth90       bool   `json:"scroll_depth_90,omitempty"`
+	ScrollDepth100      bool   `json:"scroll_depth_100,omitempty"`
 }
 
 // ActionItem đại diện cho một hành vi của người dùng trong Timeline
@@ -88,6 +151,69 @@ type AnalyticsSession struct {
 	Actions           json.RawMessage `json:"actions"`
 	FirstSeen         string          `json:"first_seen"`
 	LastSeen          string          `json:"last_seen"`
+
+	// ─── Thiết bị chi tiết ────────────────────────────────────────
+	DeviceBrand       string `json:"device_brand"`
+	DeviceModel       string `json:"device_model"`
+	DeviceModelCode   string `json:"device_model_code"`
+	DeviceName        string `json:"device_name"`
+	OSVersion         string `json:"os_version"`
+	BrowserVersion    string `json:"browser_version"`
+	BrowserEngine     string `json:"browser_engine"`
+	IsInAppBrowser    bool   `json:"is_in_app_browser"`
+	InAppType         string `json:"in_app_type"`
+	DeviceMemory      int    `json:"device_memory"`
+	DeviceCores       int    `json:"device_cores"`
+	DeviceTouchpoints int    `json:"device_touchpoints"`
+	ViewportRes       string `json:"viewport_res"`
+	ScreenColorDepth  int    `json:"screen_color_depth"`
+	PixelRatio        string `json:"pixel_ratio"`
+	Timezone          string `json:"timezone"`
+	Language          string `json:"language"`
+	PlatformInfo      string `json:"platform_info"`
+	ConnectionType    string `json:"connection_type"`
+	DeviceState       string `json:"device_state"`
+
+	// ─── VPN / Proxy ──────────────────────────────────────────────
+	IsVPN         bool   `json:"is_vpn"`
+	IsProxy       bool   `json:"is_proxy"`
+	IsTor         bool   `json:"is_tor"`
+	VPNProvider   string `json:"vpn_provider"`
+	VPNConfidence int    `json:"vpn_confidence"`
+	VPNReason     string `json:"vpn_reason"`
+
+	// ─── Meta Click ID ────────────────────────────────────────────
+	Fbclid      string `json:"fbclid"`
+	Fbc         string `json:"fbc"`
+	Fbp         string `json:"fbp"`
+	Igshid      string `json:"igshid"`
+	MetaClickID string `json:"meta_click_id"`
+
+	// ─── Meta Ads Macros ──────────────────────────────────────────
+	UTMPlacement   string `json:"utm_placement"`
+	CampaignName   string `json:"campaign_name"`
+	AdsetName      string `json:"adset_name"`
+	AdName         string `json:"ad_name"`
+	AdAccountID    string `json:"ad_account_id"`
+	SiteSourceName string `json:"site_source_name"`
+
+	// ─── Hành vi chi tiết ─────────────────────────────────────────
+	VisibleSeconds      int    `json:"visible_seconds"`
+	HiddenSeconds       int    `json:"hidden_seconds"`
+	SessionCount        int    `json:"session_count"`
+	LandingPath         string `json:"landing_path"`
+	ReferrerHost        string `json:"referrer_host"`
+	IsNewVisitor        bool   `json:"is_new_visitor"`
+	HasVideoPlay        bool   `json:"has_video_play"`
+	HasZaloClick        bool   `json:"has_zalo_click"`
+	HasTelClick         bool   `json:"has_tel_click"`
+	FormSubmitAttempts  int    `json:"form_submit_attempts"`
+	FormValidationError int    `json:"form_validation_errors"`
+	ScrollDepth25       bool   `json:"scroll_depth_25"`
+	ScrollDepth50       bool   `json:"scroll_depth_50"`
+	ScrollDepth75       bool   `json:"scroll_depth_75"`
+	ScrollDepth90       bool   `json:"scroll_depth_90"`
+	ScrollDepth100      bool   `json:"scroll_depth_100"`
 }
 
 // GeoStatItem thống kê lượt truy cập và lead theo khu vực địa lý
@@ -124,6 +250,41 @@ type AnalyticsOverview struct {
 	MobileViews       int     `json:"mobile_views"`
 	DesktopViews      int     `json:"desktop_views"`
 	TabletViews       int     `json:"tablet_views"`
+
+	// ─── Mở rộng 2026-11-12 ──────────────────────────────────────
+	TotalVisitors       int     `json:"total_visitors"`
+	NewVisitors         int     `json:"new_visitors"`
+	ReturningVisitors   int     `json:"returning_visitors"`
+	FormInteractions     int     `json:"form_interactions"`
+	FormSubmitAttempts   int     `json:"form_submit_attempts"`
+	FormValidationErrors int     `json:"form_validation_errors"`
+	AvgClicksPerSession  float64 `json:"avg_clicks_per_session"`
+	AvgVisibleSeconds    float64 `json:"avg_visible_seconds"`
+	AvgHiddenSeconds     float64 `json:"avg_hidden_seconds"`
+	AvgSessionCount      float64 `json:"avg_session_count"`
+	VPNVisitors          int     `json:"vpn_visitors"`
+	VPNRatePercent       float64 `json:"vpn_rate_percent"`
+	ProxyVisitors        int     `json:"proxy_visitors"`
+	InAppVisitors        int     `json:"in_app_visitors"`
+	VideoViewers         int     `json:"video_viewers"`
+	ZaloClickers         int     `json:"zalo_clickers"`
+	TelClickers          int     `json:"tel_clickers"`
+	Scroll25Count        int     `json:"scroll_25_count"`
+	Scroll50Count        int     `json:"scroll_50_count"`
+	Scroll75Count        int     `json:"scroll_75_count"`
+	Scroll90Count        int     `json:"scroll_90_count"`
+	Scroll100Count       int     `json:"scroll_100_count"`
+	AutofillCount        int     `json:"autofill_count"`
+	MetaClickCount       int     `json:"meta_click_count"`
+	DistinctDevices      int     `json:"distinct_devices"`
+	DistinctDeviceModels int     `json:"distinct_device_models"`
+	TodayViews           int     `json:"today_views"`
+	TodayLeads           int     `json:"today_leads"`
+	YesterdayViews       int     `json:"yesterday_views"`
+	WeekViews            int     `json:"week_views"`
+	MonthViews           int     `json:"month_views"`
+	TotalEvents          int     `json:"total_events"`
+	TotalActions         int     `json:"total_actions"`
 }
 
 // LandingStatItem thống kê hiệu quả của từng Landing Page
@@ -137,6 +298,23 @@ type LandingStatItem struct {
 	ConversionRate   float64 `json:"conversion_rate"`
 	AvgDurationSec   float64 `json:"avg_duration_seconds"`
 	AvgScrollPct     float64 `json:"avg_scroll_percent"`
+
+	// ─── Mở rộng 2026-11-12 ──────────────────────────────────────
+	TotalVisitors   int     `json:"total_visitors"`
+	UniqueVisitors  int     `json:"unique_visitors"`
+	NewVisitors     int     `json:"new_visitors"`
+	VPNVisitors     int     `json:"vpn_visitors"`
+	AvgClicks       float64 `json:"avg_clicks"`
+	AvgVisibleSec   float64 `json:"avg_visible_seconds"`
+	FormAttempts    int     `json:"form_submit_attempts"`
+	AutofillCount   int     `json:"autofill_count"`
+	TopDevice       string  `json:"top_device,omitempty"`
+	TopBrowser      string  `json:"top_browser,omitempty"`
+	TopPlacement    string  `json:"top_placement,omitempty"`
+	TopSource       string  `json:"top_source,omitempty"`
+	MetaClicks      int     `json:"meta_clicks"`
+	TotalEvents     int     `json:"total_events"`
+	AvgSessionCount float64 `json:"avg_session_count"`
 }
 
 // SourceStatItem thống kê hiệu quả của từng Nguồn traffic & Content quảng cáo
@@ -150,4 +328,60 @@ type SourceStatItem struct {
 	Leads          int     `json:"leads"`
 	ConversionRate float64 `json:"conversion_rate"`
 	AvgDurationSec float64 `json:"avg_duration_seconds"`
+
+	// ─── Mở rộng 2026-11-12 ──────────────────────────────────────
+	UTMPlacement   string  `json:"utm_placement,omitempty"`
+	CampaignName   string  `json:"campaign_name,omitempty"`
+	AdsetName      string  `json:"adset_name,omitempty"`
+	AdName         string  `json:"ad_name,omitempty"`
+	SiteSourceName string  `json:"site_source_name,omitempty"`
+	MetaClicks     int     `json:"meta_clicks"`
+	VPNVisitors    int     `json:"vpn_visitors"`
+	AvgClicks      float64 `json:"avg_clicks"`
+	AvgVisibleSec  float64 `json:"avg_visible_seconds"`
+	AutofillCount  int     `json:"autofill_count"`
+}
+
+// TimeSeriesPoint là 1 điểm dữ liệu trên biểu đồ theo thời gian.
+type TimeSeriesPoint struct {
+	Label         string  `json:"label"`
+	Views         int     `json:"views"`
+	HumanVisitors int     `json:"human_visitors"`
+	BotVisitors   int     `json:"bot_visitors"`
+	Leads         int     `json:"leads"`
+	CR            float64 `json:"conversion_rate"`
+	AvgDuration   float64 `json:"avg_duration_seconds"`
+	AvgScroll     float64 `json:"avg_scroll_percent"`
+	UniqueVisitors int    `json:"unique_visitors"`
+}
+
+// DeviceStatItem thống kê theo thiết bị / trình duyệt.
+type DeviceStatItem struct {
+	Name           string  `json:"name"`
+	Brand          string  `json:"brand,omitempty"`
+	Model          string  `json:"model,omitempty"`
+	OS             string  `json:"os,omitempty"`
+	Browser        string  `json:"browser,omitempty"`
+	TotalViews     int     `json:"total_views"`
+	HumanVisitors  int     `json:"human_visitors"`
+	Leads          int     `json:"leads"`
+	ConversionRate float64 `json:"conversion_rate"`
+	AvgDurationSec float64 `json:"avg_duration_seconds"`
+	AvgScrollPct   float64 `json:"avg_scroll_percent"`
+}
+
+// MetaMacroStatItem thống kê theo macro Meta Ads.
+type MetaMacroStatItem struct {
+	CampaignID     string  `json:"campaign_id"`
+	CampaignName   string  `json:"campaign_name,omitempty"`
+	AdsetID        string  `json:"adset_id,omitempty"`
+	AdsetName      string  `json:"adset_name,omitempty"`
+	AdID           string  `json:"ad_id,omitempty"`
+	AdName         string  `json:"ad_name,omitempty"`
+	Placement      string  `json:"placement,omitempty"`
+	TotalViews     int     `json:"total_views"`
+	HumanVisitors  int     `json:"human_visitors"`
+	Leads          int     `json:"leads"`
+	ConversionRate float64 `json:"conversion_rate"`
+	MetaClicks     int     `json:"meta_clicks"`
 }

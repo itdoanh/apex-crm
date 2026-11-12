@@ -65,8 +65,7 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 |---|---|
 | Quản Trị CRM | Bảng dữ liệu + Kanban 7 bước + Customer 360° drawer |
 | Biểu Đồ & Giờ Vàng | Heatmap khung giờ, funnel, geo, ad placement, traffic source |
-| Hiệu Quả Landing | So sánh CR% giữa các landing |
-| Bảo Mật & Bot | Spam quarantine + security stats |
+| Hiệu Quả Landing | So sánh CR% giữa các landing || Bảo Mật & Bot | Spam quarantine + security stats |
 | Đồng Bộ Google Sheets | Config, mapping matrix, sync logs |
 
 > Trong modal "Thêm kết nối Sheet" → phần **3. Kiểm Tra & Gửi Dòng Thử Nghiệm (Test Row)**:
@@ -88,11 +87,53 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 `frontend/admin/config.js`:
 ```javascript
 window.APEX_ADMIN_CONFIG = {
-  API_BASE_URL: '',        // rỗng = same-origin ( qua Caddy )
-  BASE_PATH: '/ads',
-  TARGET_SERVER_IP: '103.124.95.232'
+    API_BASE_URL: '',        // rỗng = same-origin ( qua Caddy )
+    BASE_PATH: '/ads',
+    TARGET_SERVER_IP: '103.124.95.232'
 };
 ```
+
+### 📊 Báo cáo riêng từng Landing Page (thêm 2026-11-12)
+
+Trong tab **Analytics** (`sectionTabAnalytics`) có panel **"BÁO CÁO RIÊNG TỪNG LANDING PAGE"**:
+
+**Điều khiển:**
+| Element | ID | Ghi chú |
+|---|---|---|
+| Dropdown chọn landing | `#reportLandingSelect` | nạp từ danh sách landing qua `populateReportLandingOptions()` |
+| Nút granularity | `.report-granularity-btn` | `hour` / `day` / `week` → `data-granularity` |
+
+**KPI (12 ô):**
+`#lrTotalViews`, `#lrUniqueVisitors`, `#lrHumanVisitors`, `#lrBotVisitors`, `#lrTotalLeads`,
+`#lrConversionRate`, `#lrAvgDuration`, `#lrAvgScroll`, `#lrVpnVisitors`, `#lrVpnRate`,
+`#lrInAppVisitors`, `#lrMetaClicks`
+
+**Biểu đồ (Chart.js):**
+| ID | Nội dung |
+|---|---|
+| `#chartReportTimeseries` | views / human / bot / leads theo bucket |
+| `#chartReportDevices` | top thiết bị (tên thật) |
+| `#chartReportInApp` | in-app browser vs trình duyệt ngoài |
+| `#chartReportBrowser` | trình duyệt + version |
+| `#chartReportBots` | lý do bị flag bot |
+| `#chartReportVPN` | nhà cung cấp VPN/proxy |
+
+**Bảng:**
+| ID | Nội dung |
+|---|---|
+| `#lrMacroTableBody` | Meta macros: campaign / adset / ad / placement + CR% |
+| `#lrDeviceTableBody` | model thật (`Samsung Galaxy A52`), brand, code, views, CR%, duration, scroll |
+
+**JS:** `frontend/admin/js/analytics.js` mục 14 — `onReportLandingChange`, `setReportGranularity`,
+`buildReportParams`, `populateReportLandingOptions`, `loadLandingReport`.
+`frontend/admin/js/app.js` gọi `loadLandingReport(true)` khi vào tab analytics;
+`frontend/admin/js/crm.js` gọi `populateReportLandingOptions(landingIDs)` sau khi nạp danh sách.
+
+> ⚠️ `renderFunnelChart()` nhận thêm tham số `funnel` — số liệu **thật** từ
+> `analytics_sessions` (views / scrolled / interacted / converted), không còn là `totalLeads * 8`.
+
+> ⚠️ Filter "Buổi Đêm" (22h→06h) dùng `from_hour=22&to_hour=6` — backend hỗ trợ
+> **quay vòng qua nửa đêm** (`fromHour > toHour`).
 
 ---
 

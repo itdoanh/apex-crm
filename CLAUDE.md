@@ -30,6 +30,9 @@
 8. `backend/static/` là **mirror** của `frontend/admin/` — sửa ở `frontend/admin/` rồi copy sang
 9. Không phá logic autofill-safe trong `tracker.js`
 10. Không xoá field honeypot khỏi DOM
+11. **Mọi query analytics phải truyền đủ bộ lọc** `landing_id`/`nguon`/`from_date`/`to_date`/`days`/`from_hour`/`to_hour` → `buildAnalyticsWhereClauseFullRange()`. Bộ lọc giờ hỗ trợ **quay vòng qua nửa đêm** (22h→06h).
+12. **Tracking tách theo landing** — `tracker.js` namespace hoá cookie/localStorage theo `landing_id`. Landing mới phải khai báo `data-landing-id` + `data-nguon` trùng `config.json`.
+13. **Proof-of-Work** — TTL 10 phút, dung sai clock skew 60 giây, hash = `SHA256(challenge_id + ":" + salt + ":" + solution)`. Client gọi `ensureChallengeReady()` trước submit + disable nút ngay khi click.
 
 ## Production
 

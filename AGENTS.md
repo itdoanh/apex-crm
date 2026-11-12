@@ -89,6 +89,9 @@ python backend/tests/test_full_suite.py
 5. **Cache phải được `Reload()` sau khi ghi DB** — nếu không, thay đổi không hiện ra.
 6. **Static files phục vụ qua đường dẫn tương đối** `../frontend/landing`, `../frontend/admin` → backend **phải** chạy với working directory là `C:\apex\backend` (giống Task Scheduler đang cấu hình).
 7. **On-Demand TLS** dựa vào `/api/internal/check-domain` trả `200` cho domain đã đăng ký, `403` cho domain lạ. Endpoint này **phải** chạy được khi Caddy hỏi.
+8. **Mọi query analytics phải truyền đủ bộ lọc** `landing_id`, `nguon`, `from_date`, `to_date`, `days`, `from_hour`, `to_hour` → dùng `buildAnalyticsWhereClauseFullRange()` trong `backend/db/db.go`. Bộ lọc giờ hỗ trợ **quay vòng qua nửa đêm** (22h→06h). Không bỏ qua bộ lọc — số liệu sẽ sai.
+9. **Tracking phải tách theo landing**: `tracker.js` namespace hoá cookie/localStorage theo `landing_id` (`apex_vid_<landing>`). Landing mới **phải** khai báo `data-landing-id` + `data-nguon` trùng `landing_id` trong `config.json`.
+10. **Proof-of-Work**: TTL 10 phút, dung sai clock skew 60 giây. Client phải gọi `ensureChallengeReady()` **trước khi submit** và disable nút ngay khi click. Hash format: `SHA256(challenge_id + ":" + salt + ":" + solution)`.
 
 ---
 
@@ -99,6 +102,21 @@ python backend/tests/test_full_suite.py
 - Session token lưu dạng **SHA-256 hash** trong DB, không lưu plaintext.
 - Mọi endpoint admin phải bọc `authHandler.RequireAdminAuth(...)`.
 - Endpoint public duy nhất: `POST /api/leads`, `GET /api/landing/config`, `POST /api/analytics/track`, `GET /api/auth/challenge`, `/api/internal/check-domain`, `/health`.
+
+### 6.1. Endpoint Analytics (admin — `RequireAdminAuth`)
+
+| Endpoint | Mô tả |
+|---|---|
+| `GET /api/analytics/overview` | Tổng quan mở rộng (views, human, bot, leads, CR, VPN, in-app, scroll funnel) |
+| `GET /api/analytics/timeseries` | Chuỗi thời gian giờ/ngày/tuần |
+| `GET /api/analytics/devices` | Thiết bị / trình duyệt / in-app / viewport |
+| `GET /api/analytics/meta-macros` | Meta macros (campaign/adset/ad/placement) + CR% |
+| `GET /api/analytics/bots` | Phân tích bot (lý do, score, tỉ lệ) |
+| `GET /api/analytics/vpn` | VPN / Proxy / Tor (trạng thái, độ tin cậy, nhà cung cấp) |
+| `GET /api/analytics/landing-report` | **Báo cáo riêng từng landing page** (KPI + 6 biểu đồ + 2 bảng) |
+| `GET /api/analytics/landings` · `sources` · `geo` · `ad-placements` · `sessions` · `session/{id}` | Các báo cáo còn lại |
+
+Tất cả đều hỗ trợ `landing_id`, `nguon`, `from_date`, `to_date`, `days`, `from_hour`, `to_hour`.
 
 ---
 

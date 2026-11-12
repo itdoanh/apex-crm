@@ -137,6 +137,10 @@ function formatYMD(d) {
             if (carrier) p.set('carrier', carrier);
             if (search) p.set('search', search);
 
+            // ⚠️ 2026-11-12: from_hour/to_to cũng được áp dụng cho các API
+            // analytics (không chỉ /api/leads). Trước đây bộ lọc khung giờ
+            // bị bỏ qua ở toàn bộ biểu đồ ⇒ số liệu không khớp bảng lead.
+
             if (hourRange === 'golden') {
                 p.set('from_hour', '19');
                 p.set('to_hour', '22');
@@ -147,6 +151,8 @@ function formatYMD(d) {
                 p.set('from_hour', '13');
                 p.set('to_hour', '17');
             } else if (hourRange === 'night') {
+                // Khoảng vòng qua nửa đêm (22h → 06h). Backend đã hỗ trợ
+                // from_hour > to_hour ⇒ dùng đúng khoảng này.
                 p.set('from_hour', '22');
                 p.set('to_hour', '6');
             }
@@ -224,6 +230,7 @@ async function ensureTabModuleLoaded(moduleName) {
                 await ensureTabModuleLoaded('analytics');
                 if (typeof loadGeoAnalyticsCharts === 'function') loadGeoAnalyticsCharts();
                 if (typeof loadAdPlacementAnalyticsCharts === 'function') loadAdPlacementAnalyticsCharts();
+                if (typeof loadLandingReport === 'function') loadLandingReport(true);
             } else if (currentMainTab === 'landing') {
                 await ensureTabModuleLoaded('analytics');
                 if (typeof loadLandingPerformance === 'function') loadLandingPerformance();

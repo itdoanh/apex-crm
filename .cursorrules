@@ -21,6 +21,9 @@
 8. `backend/static/` mirror `frontend/admin/`
 9. Không phá autofill-safe
 10. Không xoá honeypot
+11. Query analytics phải đủ bộ lọc `from_date`/`to_date`/`days`/`from_hour`/`to_hour` (hỗ trợ quay vòng qua nửa đêm 22h→06h)
+12. Tracking tách theo `landing_id` (cookie/localStorage namespace + `data-landing-id`)
+13. PoW: TTL 10′ · clock skew 60s · `SHA256(id:salt:solution)` · client disable nút ngay khi click
 
 ## Production
 

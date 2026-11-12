@@ -198,6 +198,183 @@ func ExtractLeadValue(fieldName string, customText string, lead *models.Lead, tr
 		}
 		return "{}"
 
+	// ─── Macro Meta Ads (2026-11-12) ───────────────────────────────
+	//
+	// Chuỗi UTM khuyến nghị cho Meta Ads Manager:
+	//   utm_medium=paid&utm_source={{site_source_name}}
+	//   &utm_placement={{placement}}&utm_campaign={{campaign.id}}
+	//   &utm_content={{adset.id}}&utm_term={{ad.id}}
+	//   &campaign_name={{campaign.name}}&adset_name={{adset.name}}&ad_name={{ad.name}}
+	case "utm_placement":
+		for _, k := range []string{"utm_placement", "placement"} {
+			if v, ok := trackingData[k]; ok && v != nil && fmt.Sprintf("%v", v) != "" {
+				return fmt.Sprintf("%v", v)
+			}
+		}
+		return ""
+
+	case "campaign_name":
+		if v, ok := trackingData["campaign_name"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "adset_name":
+		if v, ok := trackingData["adset_name"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "ad_name":
+		if v, ok := trackingData["ad_name"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "ad_account_id", "acc_id":
+		for _, k := range []string{"ad_account_id", "acc_id", "ad_account"} {
+			if v, ok := trackingData[k]; ok && v != nil && fmt.Sprintf("%v", v) != "" {
+				return fmt.Sprintf("%v", v)
+			}
+		}
+		return ""
+
+	case "site_source_name":
+		if v, ok := trackingData["site_source_name"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	// ─── Định danh lượt nhấp Meta (CAPI) ───────────────────────────
+	case "fbclid":
+		if v, ok := trackingData["fbclid"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "fbc":
+		if v, ok := trackingData["fbc"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "fbp":
+		if v, ok := trackingData["fbp"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "igshid":
+		if v, ok := trackingData["igshid"]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+
+	case "meta_click_id":
+		for _, k := range []string{"meta_click_id", "fbclid", "igshid"} {
+			if v, ok := trackingData[k]; ok && v != nil && fmt.Sprintf("%v", v) != "" {
+				return fmt.Sprintf("%v", v)
+			}
+		}
+		return ""
+
+	// ─── Thiết bị & trình duyệt chi tiết ──────────────────────────
+	case "device_brand":
+		return trackingString(trackingData, "device_brand")
+
+	case "device_model", "device_name":
+		return trackingString(trackingData, "device_model", "device_name")
+
+	case "device_model_code":
+		return trackingString(trackingData, "device_model_code")
+
+	case "browser":
+		return trackingString(trackingData, "browser")
+
+	case "browser_version":
+		return trackingString(trackingData, "browser_version")
+
+	case "os_version":
+		return trackingString(trackingData, "os_version")
+
+	case "is_in_app_browser":
+		if v, ok := trackingData["is_in_app_browser"]; ok {
+			switch b := v.(type) {
+			case bool:
+				if b {
+					return "Có (In-App)"
+				}
+				return "Không (trình duyệt ngoài)"
+			case string:
+				if strings.ToLower(b) == "true" {
+					return "Có (In-App)"
+				}
+			}
+		}
+		return "Không (trình duyệt ngoài)"
+
+	case "in_app_type":
+		return trackingString(trackingData, "in_app_type")
+
+	case "device_memory":
+		return trackingString(trackingData, "device_memory")
+
+	case "device_cores":
+		return trackingString(trackingData, "device_cores")
+
+	case "timezone":
+		return trackingString(trackingData, "timezone")
+
+	case "connection_type":
+		return trackingString(trackingData, "connection_type")
+
+	case "device_state":
+		return trackingString(trackingData, "device_state")
+
+	case "platform_info":
+		return trackingString(trackingData, "platform_info")
+
+	// ─── VPN / Proxy ───────────────────────────────────────────────
+	case "is_vpn":
+		if v, ok := trackingData["is_vpn"]; ok {
+			switch b := v.(type) {
+			case bool:
+				if b {
+					return "Có"
+				}
+				return "Không"
+			case string:
+				if strings.ToLower(b) == "true" {
+					return "Có"
+				}
+			}
+		}
+		return "Không"
+
+	case "vpn_provider":
+		return trackingString(trackingData, "vpn_provider")
+
+	case "vpn_reason":
+		return trackingString(trackingData, "vpn_reason")
+
+	// ─── Hành vi ───────────────────────────────────────────────────
+	case "visible_seconds":
+		return trackingString(trackingData, "visible_seconds")
+
+	case "hidden_seconds":
+		return trackingString(trackingData, "hidden_seconds")
+
+	case "session_count":
+		return trackingString(trackingData, "session_count")
+
+	case "max_scroll_percent":
+		for _, k := range []string{"max_scroll", "max_scroll_percent"} {
+			if v, ok := trackingData[k]; ok && v != nil {
+				return fmt.Sprintf("%v%%", v)
+			}
+		}
+		return ""
+
 	case "custom_text":
 		return customText
 
@@ -210,6 +387,19 @@ func ExtractLeadValue(fieldName string, customText string, lead *models.Lead, tr
 	}
 }
 
+// trackingString lấy giá trị chuỗi đầu tiên tồn tại trong trackingData.
+func trackingString(trackingData map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := trackingData[k]; ok && v != nil {
+			s := fmt.Sprintf("%v", v)
+			if s != "" && s != "0" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // BuildRowValues tạo mảng giá trị cho các cột theo thứ tự của FieldMappings
 func BuildRowValues(mappings []models.FieldMapping, lead *models.Lead, trackingData map[string]interface{}) []interface{} {
 	row := make([]interface{}, len(mappings))
@@ -220,7 +410,11 @@ func BuildRowValues(mappings []models.FieldMapping, lead *models.Lead, trackingD
 	return row
 }
 
-// GetStandardDefaultMappings trả về cấu hình ánh xạ cột tiêu chuẩn mặc định
+// GetStandardDefaultMappings trả về cấu hình ánh xạ cột tiêu chuẩn mặc định.
+//
+// Bao gồm ĐẦY ĐỦ thông số tracking (2026-11-12): macro Meta Ads, định danh
+// lượt nhấp Meta (CAPI), thông tin thiết bị chi tiết, trạng thái VPN và
+// hành vi người dùng.
 func GetStandardDefaultMappings() []models.FieldMapping {
 	return []models.FieldMapping{
 		{Column: "A", Header: "Thời Gian", Field: "thoi_gian"},
@@ -238,5 +432,39 @@ func GetStandardDefaultMappings() []models.FieldMapping {
 		{Column: "M", Header: "Cuộn Sâu Nhất", Field: "max_scroll"},
 		{Column: "N", Header: "Ghi Chú", Field: "ghi_chu"},
 		{Column: "O", Header: "URL Trang Đăng Ký", Field: "url"},
+		// ─── Meta Ads macros ───
+		{Column: "P", Header: "Meta UTM Source", Field: "utm_source"},
+		{Column: "Q", Header: "Meta Placement", Field: "utm_placement"},
+		{Column: "R", Header: "Meta Adset ID (utm_content)", Field: "utm_content"},
+		{Column: "S", Header: "Meta Ad ID (utm_term)", Field: "utm_term"},
+		{Column: "T", Header: "Meta Campaign Name", Field: "campaign_name"},
+		{Column: "U", Header: "Meta Adset Name", Field: "adset_name"},
+		{Column: "V", Header: "Meta Ad Name", Field: "ad_name"},
+		{Column: "W", Header: "Meta Account ID", Field: "ad_account_id"},
+		{Column: "X", Header: "Meta Site Source", Field: "site_source_name"},
+		// ─── Định danh lượt nhấp Meta (CAPI) ───
+		{Column: "Y", Header: "Meta Click ID (fbclid)", Field: "fbclid"},
+		{Column: "Z", Header: "Meta _fbc", Field: "fbc"},
+		{Column: "AA", Header: "Meta _fbp", Field: "fbp"},
+		{Column: "AB", Header: "Meta Click ID tổng", Field: "meta_click_id"},
+		// ─── Thiết bị & trình duyệt ───
+		{Column: "AC", Header: "Hãng Thiết Bị", Field: "device_brand"},
+		{Column: "AD", Header: "Tên Thiết Bị", Field: "device_name"},
+		{Column: "AE", Header: "Mã Model", Field: "device_model_code"},
+		{Column: "AF", Header: "Trình Duyệt", Field: "browser"},
+		{Column: "AG", Header: "Phiên Bản Trình Duyệt", Field: "browser_version"},
+		{Column: "AH", Header: "Trình Duyệt Trong App", Field: "is_in_app_browser"},
+		{Column: "AI", Header: "Loại App", Field: "in_app_type"},
+		{Column: "AJ", Header: "RAM (GB)", Field: "device_memory"},
+		{Column: "AK", Header: "Số Lõi CPU", Field: "device_cores"},
+		{Column: "AL", Header: "Múi Giờ", Field: "timezone"},
+		{Column: "AM", Header: "Loại Mạng", Field: "connection_type"},
+		{Column: "AN", Header: "Trạng Thái Thiết Bị", Field: "device_state"},
+		// ─── VPN / Hành vi ───
+		{Column: "AO", Header: "Dùng VPN", Field: "is_vpn"},
+		{Column: "AP", Header: "Nhà Cung Cấp VPN", Field: "vpn_provider"},
+		{Column: "AQ", Header: "Thời Gian Hiển Thị", Field: "visible_seconds"},
+		{Column: "AR", Header: "Thời Gian Ẩn", Field: "hidden_seconds"},
+		{Column: "AS", Header: "Số Phiên", Field: "session_count"},
 	}
 }

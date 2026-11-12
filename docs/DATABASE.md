@@ -266,6 +266,67 @@ Lưu toàn bộ hành vi người dùng, dùng cho:
 
 Cột quan trọng: `session_id` (PK), `visitor_id`, `landing_id`, `utm_*`, `ip_address`, `city`/`region`/`isp`, `ad_platform`/`ad_placement`, `duration_seconds`, `max_scroll_percent`, `total_clicks`, `has_interacted_form`, `converted_lead`, `lead_id`, `actions JSONB` (timeline sự kiện).
 
+### 5.1. Cột mở rộng 2026-11-12 (landing `doanh_chung`)
+
+Migration chạy tự động trong `initSchema` (`backend/db/db.go`) — `ADD COLUMN IF NOT EXISTS`, an toàn khi chạy lại nhiều lần.
+
+**Meta Ads Macros (8 biến động Meta cung cấp + account id):**
+| Cột | Nguồn |
+|---|---|
+| `utm_source` | `{{site_source_name}}` — chuẩn hoá `fb`/`ig`/`msg`/`an` |
+| `utm_placement` | `{{placement}}` — `Facebook_Reels`, `Facebook_Stories`, `Audience_Network_Rewarded_Videos`… |
+| `utm_campaign` | `{{campaign.id}}` |
+| `utm_content` | `{{adset.id}}` |
+| `utm_term` | `{{ad.id}}` |
+| `campaign_name` | `{{campaign.name}}` |
+| `adset_name` | `{{adset.name}}` |
+| `ad_name` | `{{ad.name}}` |
+| `acc_id` | gõ cứng trong Meta Ads (không có macro tự động) |
+
+**Meta Click ID (CAPI):** `fbclid`, `fbc`, `fbp`, `igshid`, `meta_click_id`
+
+**Thiết bị chi tiết:** `device_brand`, `device_model`, `device_model_code` (`SM-A525F`), `device_name` (`Samsung Galaxy A52`), `os_version`, `browser_version`, `browser_engine`, `is_in_app_browser`, `in_app_type` (`Facebook In-App`, `Instagram`, `Zalo`, `Cốc Cốc`), `device_memory`, `device_cores`, `device_touchpoints`, `viewport_res`, `screen_color_depth`, `pixel_ratio`, `timezone`, `language`, `platform_info`, `connection_type`, `device_state`
+
+**VPN/Proxy/Tor:** `is_vpn`, `is_proxy`, `is_tor`, `vpn_provider`, `vpn_confidence`, `vpn_reason`
+
+### 5.2. Bộ lọc analytics — BẮT BUỘC dùng đúng
+
+Tất cả query analytics dùng 2 helper trong `backend/db/db.go`:
+
+```go
+buildAnalyticsWhereClauseFull(landingID, nguon, fromDate, toDate string, days int) (string, []interface{})
+buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate string, days, fromHour, toHour int) (string, []interface{})
+```
+
+| Điều kiện | SQL sinh ra |
+|---|---|
+| `landing_id` | `landing_id = $n` |
+| `nguon` | `nguon = $n` |
+| `from_date` | `(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= ($n)::date` |
+| `to_date` | `(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= ($n)::date` |
+| `days` | `...::date >= ((NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ($n::int))` |
+| `from_hour`/`to_hour` | `EXTRACT(HOUR FROM first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::int BETWEEN $n AND $n+1` |
+| **quay vòng qua nửa đêm** (`from_hour > to_hour`, vd 22→06) | `(EXTRACT(HOUR ...) >= $n OR EXTRACT(HOUR ...) <= $n+1)` |
+
+> ⚠️ **Bug đã sửa 2026-11-12**: trước đó các bộ lọc `from_date`/`to_date`/`days` **bị bỏ qua hoàn toàn** và bộ lọc giờ đêm bị bỏ qua vì điều kiện `fromHour <= toHour` ⇒ số liệu thống kê sai. **Mọi handler analytics mới phải truyền đủ 6 tham số.**
+
+> ⚠️ `NOW()` **không** được dùng trực tiếp cho so sánh ngày — luôn bọc `AT TIME ZONE 'Asia/Ho_Chi_Minh'`.
+
+### 5.3. Funnel — số liệu thật
+
+`GetCRMStats()` (`backend/db/db.go`) tính funnel trực tiếp trên `analytics_sessions`:
+
+```sql
+SELECT
+    COUNT(*) FILTER (WHERE NOT is_bot)::int                          AS views,
+    COUNT(*) FILTER (WHERE NOT is_bot AND max_scroll_percent >= 50)::int AS scrolled,
+    COUNT(*) FILTER (WHERE NOT is_bot AND (has_interacted_form OR form_submit_attempts > 0))::int AS interacted,
+    COUNT(*) FILTER (WHERE NOT is_bot AND converted_lead)::int        AS converted
+FROM analytics_sessions <where>;
+```
+
+> ⚠️ **Bug đã sửa 2026-11-12**: trước đó funnel **bịa** số liệu (`views = totalLeads * 8`) ⇒ không khớp với báo cáo riêng landing.
+
 ---
 
 ## 6. `spam_quarantine`

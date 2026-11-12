@@ -367,24 +367,86 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 | `GET /api/analytics/ad-placements` | Chi tiết vị trí quảng cáo |
 | `GET /api/analytics/sessions` | Danh sách phiên truy cập |
 | `GET /api/analytics/session/{id}` | Chi tiết 1 phiên + timeline |
+| `GET /api/analytics/timeseries` | Chuỗi thời gian (giờ/ngày/tuần) — views, human, bot, leads |
+| `GET /api/analytics/devices` | Thiết bị chi tiết: brand, model thật, OS, browser, in-app |
+| `GET /api/analytics/meta-macros` | Meta macros: campaign/adset/ad/placement + CR% |
+| `GET /api/analytics/bots` | Phân tích bot: lý do, score, tỉ lệ |
+| `GET /api/analytics/vpn` | Phân tích VPN/Proxy: trạng thái, độ tin cậy, nhà cung cấp |
+| `GET /api/analytics/landing-report` | **Báo cáo riêng từng landing page** (toàn bộ KPI + biểu đồ) |
+
+> ⚠️ Tất cả endpoint GET analytics (trừ `track`) đều **bắt buộc** hỗ trợ bộ lọc:
+> `landing_id`, `nguon`, `from_date`, `to_date`, `days` (cửa sổ tương đối),
+> `from_hour`, `to_hour` (0–23, hỗ trợ **quay vòng qua nửa đêm** ví dụ 22h→06h).
+> Trước 2026-11-12 các bộ lọc này bị **bỏ qua** trong SQL → số liệu sai. Xem `docs/DATABASE.md` mục "Bộ lọc analytics".
+
+### 6.1. `GET /api/analytics/landing-report` — báo cáo riêng landing
+
+Query: `?landing_id=doanh_chung&granularity=hour|day|week&from_date=&to_date=&days=&from_hour=&to_hour=`
+
+Response (rút gọn):
+```json
+{
+  "landing_id": "doanh_chung",
+  "granularity": "day",
+  "summary": {
+    "total_views": 1520, "unique_visitors": 1310, "human_visitors": 1180,
+    "bot_visitors": 340, "total_leads": 87, "conversion_rate": 5.72,
+    "avg_duration_seconds": 74, "avg_scroll_percent": 63,
+    "vpn_visitors": 92, "vpn_rate": 6.1, "in_app_visitors": 410, "meta_clicks": 505
+  },
+  "timeseries": [ { "bucket": "2026-11-12", "views": 210, "human": 180, "bot": 30, "leads": 12 } ],
+  "devices": [ { "device_name": "Samsung Galaxy A52", "brand": "Samsung", "model_code": "SM-A525F", "views": 220, "leads": 14, "conversion_rate": 6.4, "avg_duration": 81, "avg_scroll": 71 } ],
+  "in_app": [ { "in_app_type": "Facebook In-App", "views": 180, "leads": 9 } ],
+  "browsers": [ { "browser": "Chrome Mobile 131", "views": 700 } ],
+  "bots": [ { "reason": "no_interaction", "count": 180 } ],
+  "vpn": [ { "provider": "Cloudflare WARP", "count": 34 } ],
+  "meta_macros": [ { "campaign_name": "Nam_25-45_HN_HCM_DauTu", "adset_name": "...", "ad_name": "...", "placement": "Facebook_Reels", "views": 120, "leads": 8, "conversion_rate": 6.7 } ]
+}
+```
+
+> `summary` là số liệu **thật** từ `analytics_sessions` (không còn suy ra từ `totalLeads * 8`).
 
 ### `POST /api/analytics/track` — payload
 ```json
 {
   "session_id": "sess_...", "visitor_id": "v_...",
-  "landing_id": "landing_cu", "nguon": "landing_chinh",
-  "utm_source": "", "utm_campaign": "", "utm_content": "",
+  "landing_id": "doanh_chung", "nguon": "doanh_chung",
+  "utm_source": "fb", "utm_medium": "paid",
+  "utm_campaign": "12022...", "utm_content": "12022...", "utm_term": "12022...",
+  "utm_placement": "Facebook_Reels",
+  "campaign_name": "Nam_25-45_HN_HCM_DauTu",
+  "adset_name": "VN_25-45_HN_HCM",
+  "ad_name": "Video_A52",
   "referrer": "", "entry_url": "https://...",
   "city": "Hà Nội", "region": "Miền Bắc", "isp": "Viettel Telecom",
   "ad_platform": "Meta Ads", "ad_placement": "Facebook_Reels",
-  "device_type": "mobile", "browser": "Safari Mobile 18.2", "os": "iOS",
-  "screen_res": "390x844",
+  "device_type": "mobile", "browser": "Chrome Mobile", "browser_version": "131.0.0.0",
+  "browser_engine": "Blink", "os": "Android", "os_version": "13",
+  "device_brand": "Samsung", "device_model": "Galaxy A52",
+  "device_model_code": "SM-A525F", "device_name": "Samsung Galaxy A52",
+  "platform_info": "Linux armv8l",
+  "device_memory": 4096, "device_cores": 8, "device_touchpoints": 5,
+  "screen_res": "390x844", "viewport_res": "390x844", "screen_color_depth": 24,
+  "pixel_ratio": "3", "timezone": "Asia/Ho_Chi_Minh", "language": "vi-VN",
+  "connection_type": "4g", "device_state": "online",
+  "is_in_app_browser": true, "in_app_type": "Facebook In-App",
+  "is_vpn": false, "is_proxy": false, "is_tor": false,
+  "vpn_provider": "", "vpn_confidence": 0, "vpn_reason": "",
+  "fbclid": "IwAR...", "fbc": "fb.1.1794189884.IwAR...", "fbp": "fb.1.1794189884.123456789",
+  "igshid": "", "meta_click_id": "",
   "is_bot": false, "bot_score": 0, "bot_reasons": "",
   "duration_seconds": 66, "max_scroll_percent": 99, "total_clicks": 3,
   "has_interacted_form": true, "converted_lead": false,
   "events": [ { "time": 12, "type": "scroll", "target": "hero", "text": "..." } ]
 }
 ```
+
+> **Meta CAPI stitching**: `_fbc` được dựng tự động từ `fbclid` theo chuẩn Meta
+> (`fb.1.0.<fbclid>`) nếu trình duyệt không gắn sẵn cookie. `utm_source` được chuẩn hoá
+> về `fb` / `ig` / `msg` / `an` theo `{{site_source_name}}`.
+>
+> **Tách landing**: `landing_id` + `nguon` là bắt buộc; `tracker.js` namespace hoá
+> cookie/localStorage theo `landing_id` ⇒ không bao giờ lẫn thông số giữa các landing.
 
 ---
 
@@ -440,6 +502,46 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 `utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
 
 Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/defaults` (`available_fields`).
+
+### 9.0. Bản đồ mặc định mở rộng (2026-11-12) — 45 cột A→AS
+
+`backend/integrations/googlesheets/sync.go` → `defaultColumnMappings()`:
+
+| Cột | Header | Field |
+|---|---|---|
+| A–O | 15 trường chuẩn (xem bảng trên) | `thoi_gian` … `ghi_chu` |
+| P | Meta UTM Source | `utm_source` |
+| Q | Meta Placement | `utm_placement` |
+| R | Meta Adset ID (utm_content) | `utm_content` |
+| S | Meta Ad ID (utm_term) | `utm_term` |
+| T | Meta Campaign Name | `campaign_name` |
+| U | Meta Adset Name | `adset_name` |
+| V | Meta Ad Name | `ad_name` |
+| W | Meta Account ID | `ad_account_id` |
+| X | Meta Site Source | `site_source_name` |
+| Y | Meta Click ID (fbclid) | `fbclid` |
+| Z | Meta _fbc | `fbc` |
+| AA | Meta _fbp | `fbp` |
+| AB | Meta Click ID tổng | `meta_click_id` |
+| AC | Hãng Thiết Bị | `device_brand` |
+| AD | Tên Thiết Bị | `device_name` |
+| AE | Mã Model | `device_model_code` |
+| AF | Trình Duyệt | `browser` |
+| AG | Phiên Bản Trình Duyệt | `browser_version` |
+| AH | Trình Duyệt Trong App | `is_in_app_browser` |
+| AI | Loại App | `in_app_type` |
+| AJ | RAM (GB) | `device_memory` |
+| AK | Số Lõi CPU | `device_cores` |
+| AL | Múi Giờ | `timezone` |
+| AM | Loại Kết Nối | `connection_type` |
+| AN | Trạng Thái Thiết Bị | `device_state` |
+| AO | Dùng VPN | `is_vpn` |
+| AP | Nhà Cung Cấp VPN | `vpn_provider` |
+| AQ | Thời Gian Hiển Thị | `visible_seconds` |
+| AR | Thời Gian Ẩn | `hidden_seconds` |
+| AS | Số Phiên | `session_count` |
+
+> ⚠️ `igshid` chưa có cột riêng — dùng `meta_click_id` (fallback `fbclid` → `igshid`).
 
 ### 9.1. Dòng thử nghiệm (Test Row)
 

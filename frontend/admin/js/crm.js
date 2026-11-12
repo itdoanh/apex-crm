@@ -148,7 +148,7 @@ let currentOpenLead = null;
                     renderSourceChart(d.source_counts || []);
                     renderCarrierChart(d.carrier_counts || {});
                     renderAutofillChart(d.autofill_ratio || {});
-                    renderFunnelChart(s.total || 0, s.high_intent || 0, s.closed || 0);
+                    renderFunnelChart(s.total || 0, s.high_intent || 0, s.closed || 0, d.funnel || null);
                 }
 
                 if (currentMainTab === 'analytics') {
@@ -172,6 +172,11 @@ let currentOpenLead = null;
                     selLanding.appendChild(opt);
                 });
                 selLanding.value = currentL;
+            }
+
+            // Đồng bộ dropdown báo cáo riêng từng landing (2026-11-12)
+            if (typeof populateReportLandingOptions === 'function') {
+                populateReportLandingOptions(landingIDs);
             }
 
             const selNguon = document.getElementById('filterNguon');

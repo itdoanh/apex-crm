@@ -18,16 +18,68 @@
     let hasInteractedWithForm = false;
     let currentPhone = '';
 
+    // ============================================================
+    // 1.0 KHÓA NGĂN CÁCH THEO LANDING (TÁCH BIỆT HOÀN TOÀN)
+    // ------------------------------------------------------------
+    // Mỗi landing page dùng một bộ khóa lưu trữ RIÊNG:
+    //   apex_vid_<landingKey>, apex_lead_registered_<landingKey>, ...
+    //
+    // LÝ DO (yêu cầu 2026-11-12): trước đây localStorage/cookie dùng chung
+    // cho MỌI landing trên cùng domain ⇒ khách đã đăng ký landing A bị coi
+    // như đã đăng ký landing B ⇒ thống kê & dedupe bị lẫn giữa các landing.
+    //
+    // ⇒ Mỗi landing có visitor_id, trạng thái đăng ký và dữ liệu autofill
+    //   hoàn toàn độc lập. Định danh toàn cục vẫn được giữ qua cookie Meta
+    //   `_fbp` / `_fbc` (đã gửi lên server ở trường `fbp`).
+    function resolveLandingKey() {
+        try {
+            // 1. data-landing-id trên thẻ <script src="tracker.js"> — backend luôn gắn
+            const s = document.currentScript || document.querySelector('script[src*="tracker.js"]');
+            if (s) {
+                const attr = (s.getAttribute('data-landing-id') || '').trim();
+                if (attr) return attr;
+            }
+        } catch (_) {}
+        try {
+            const cfg = window.APEX_LANDING_CONFIG || {};
+            if (cfg.landing_id) return String(cfg.landing_id);
+        } catch (_) {}
+        try {
+            const params = getUrlParams();
+            if (params.landing_id) return String(params.landing_id);
+            if (params.page_id) return String(params.page_id);
+        } catch (_) {}
+        try {
+            const pathParts = (window.location.pathname || '').split('/');
+            const pIdx = pathParts.indexOf('p');
+            if (pIdx !== -1 && pathParts[pIdx + 1]) return pathParts[pIdx + 1];
+        } catch (_) {}
+        return 'default_landing';
+    }
+
+    // Chuẩn hoá landing key để dùng làm tên khóa lưu trữ (chỉ ký tự an toàn).
+    const LANDING_KEY = (function () {
+        var raw = resolveLandingKey() || 'default_landing';
+        return String(raw).replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 60) || 'default_landing';
+    })();
+
+    // Hàm bọc storage key theo landing hiện tại.
+    function scopedKey(base) {
+        return base + '_' + LANDING_KEY;
+    }
+
     // Lấy hoặc tạo Visitor ID (lưu bền vững 365 ngày qua Cookie + LocalStorage)
+    // ⚠️ KHÓA ĐÃ TÁCH THEO LANDING (apex_vid_<landingKey>).
     function getOrCreateVisitorId() {
+        const storageKey = scopedKey('apex_vid');
         let vid = '';
         try {
-            const match = document.cookie.match(/(?:^|;\s*)apex_vid=([^;]+)/);
+            const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + storageKey + '=([^;]+)'));
             if (match && match[1]) {
                 vid = decodeURIComponent(match[1]);
             }
             if (!vid && window.localStorage) {
-                vid = localStorage.getItem('apex_vid') || '';
+                vid = localStorage.getItem(storageKey) || '';
             }
         } catch (_) {}
 
@@ -38,9 +90,9 @@
         // Lưu lại cho 365 ngày
         try {
             const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-            document.cookie = 'apex_vid=' + encodeURIComponent(vid) + '; max-age=31536000; expires=' + expires + '; path=/; SameSite=Lax';
+            document.cookie = storageKey + '=' + encodeURIComponent(vid) + '; max-age=31536000; expires=' + expires + '; path=/; SameSite=Lax';
             if (window.localStorage) {
-                localStorage.setItem('apex_vid', vid);
+                localStorage.setItem(storageKey, vid);
             }
         } catch (_) {}
 
@@ -49,12 +101,13 @@
 
     // Lấy hoặc tạo Session ID (lưu trong sessionStorage cho tab hiện tại)
     function getOrCreateSessionId() {
+        const storageKey = scopedKey('apex_session_id');
         let sid = '';
         try {
-            sid = sessionStorage.getItem('apex_session_id');
+            sid = sessionStorage.getItem(storageKey);
             if (!sid) {
                 sid = 'sess_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
-                sessionStorage.setItem('apex_session_id', sid);
+                sessionStorage.setItem(storageKey, sid);
             }
         } catch (_) {
             sid = 'sess_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
@@ -64,6 +117,216 @@
 
     const visitorId = getOrCreateVisitorId();
     const sessionId = getOrCreateSessionId();
+
+    // Đếm số lần phiên của visitor trên landing này (new vs returning).
+    let sessionCount = 1;
+    try {
+        const scKey = scopedKey('apex_session_count');
+        const prev = parseInt(localStorage.getItem(scKey) || '0', 10) || 0;
+        sessionCount = prev + 1;
+        localStorage.setItem(scKey, String(sessionCount));
+    } catch (_) {}
+
+    // ============================================================
+    // 1.1 THU THẬP MACRO META ADS + MÃ ĐỊNH DANH LƯỢT NHẤP (CAPI)
+    // ------------------------------------------------------------
+    // Meta thay thế các macro sau trong URL lúc hiển thị quảng cáo:
+    //   {{site_source_name}} {{placement}} {{campaign.id}} {{adset.id}}
+    //   {{ad.id}} {{campaign.name}} {{adset.name}} {{ad.name}}
+    // Chuỗi UTM khuyến nghị:
+    //   utm_medium=paid&utm_source={{site_source_name}}
+    //   &utm_placement={{placement}}&utm_campaign={{campaign.id}}
+    //   &utm_content={{adset.id}}&utm_term={{ad.id}}
+    //   &campaign_name={{campaign.name}}&adset_name={{adset.name}}&ad_name={{ad.name}}
+    //
+    // Ngoài ra Meta tự gắn `fbclid` vào URL mỗi lượt click, và Meta Pixel
+    // ghi cookie `_fbp` (định danh trình duyệt) + `_fbc` (định danh lượt click).
+    // ⇒ 3 mã này giúp gửi Conversions API khớp chính xác 100% lượt nhấp.
+    function readCookie(name) {
+        try {
+            const parts = (document.cookie || '').split(';');
+            for (let i = 0; i < parts.length; i++) {
+                const kv = parts[i].trim().split('=');
+                if (kv[0] === name) return decodeURIComponent(kv.slice(1).join('=') || '');
+            }
+        } catch (_) {}
+        return '';
+    }
+
+    function collectMetaTracking(urlParams) {
+        const p = urlParams || getUrlParams();
+        const fbclid = (p.fbclid || '').trim();
+        const igshid = (p.igshid || '').trim();
+
+        // Cookie Meta Pixel
+        let fbc = readCookie('_fbc');
+        let fbp = readCookie('_fbp');
+
+        // Dựng lại `_fbc` từ `fbclid` nếu thiếu (định dạng Meta: fb.1.<ts>.<fbclid>)
+        if (!fbc && fbclid) {
+            fbc = (fbclid.indexOf('fb.') === 0 && (fbclid.match(/\./g) || []).length >= 3)
+                ? fbclid
+                : 'fb.1.0.' + fbclid;
+        }
+
+        // `site_source_name` chỉ có 4 giá trị: fb / ig / msg / an
+        let siteSourceName = (p.site_source_name || '').trim();
+        if (!siteSourceName) {
+            const src = (p.utm_source || '').trim().toLowerCase();
+            if (src === 'facebook' || src === 'fb') siteSourceName = 'fb';
+            else if (src === 'instagram' || src === 'ig') siteSourceName = 'ig';
+            else if (src === 'messenger' || src === 'msg') siteSourceName = 'msg';
+            else if (src === 'audience network' || src === 'an') siteSourceName = 'an';
+        }
+
+        return {
+            utm_source: (p.utm_source || '').trim(),
+            utm_medium: (p.utm_medium || '').trim(),
+            utm_campaign: (p.utm_campaign || '').trim(),
+            utm_content: (p.utm_content || '').trim(),
+            utm_term: (p.utm_term || '').trim(),
+            utm_placement: (p.utm_placement || p.placement || '').trim(),
+            campaign_name: (p.campaign_name || '').trim(),
+            adset_name: (p.adset_name || '').trim(),
+            ad_name: (p.ad_name || '').trim(),
+            ad_account_id: (p.ad_account_id || p.acc_id || p.ad_account || '').trim(),
+            site_source_name: siteSourceName,
+            fbclid: fbclid,
+            fbc: fbc,
+            fbp: fbp,
+            igshid: igshid,
+            meta_click_id: fbclid || igshid
+        };
+    }
+
+    // ============================================================
+    // 1.2 NHẬN DIỆN THIẾT BỊ & TRÌNH DUYỆT CHI TIẾT (PHÍA CLIENT)
+    // ------------------------------------------------------------
+    // Bổ sung cho phân tích User-Agent phía server:
+    //   - tên & phiên bản trình duyệt (kể cả trình duyệt trong app FB/IG/Zalo)
+    //   - mã model thiết bị (vd: "SM-A525F") để server map sang tên thương mại
+    //   - trạng thái phần cứng: RAM, số lõi, cảm ứng, viewport, múi giờ, mạng
+    function detectInAppBrowser() {
+        const ua = (navigator.userAgent || '').toLowerCase();
+        // Trình duyệt trong app Facebook: "FBAN" (iOS) / "FBAV" (Android)
+        if (/fbav|fb_iab|fb_iab\/|fbav\/|fb_\/|fb\//.test(ua) || /\bfban\b/.test(ua)) return 'facebook';
+        if (/instagram|ig_|\biga\b/.test(ua)) return 'instagram';
+        if (/messenger|\bmsgr\b/.test(ua)) return 'messenger';
+        if (/zalo|zalosdk/.test(ua)) return 'zalo';
+        if (/tiktok|musical_ly|bytedance/.test(ua)) return 'tiktok';
+        if (/line\//.test(ua)) return 'line';
+        if (/coccoc|coc_coc/.test(ua)) return 'coccoc';
+        return '';
+    }
+
+    function detectBrowserInfo() {
+        const ua = navigator.userAgent || '';
+        const u = ua.toLowerCase();
+        let name = 'Other';
+        let version = '';
+        let engine = 'Other';
+
+        // Ưu tiên trình duyệt trong app
+        const inApp = detectInAppBrowser();
+        if (inApp) {
+            name = inApp === 'zalo' ? 'Zalo In-App'
+                : inApp === 'coccoc' ? 'Cốc Cốc'
+                : inApp.charAt(0).toUpperCase() + inApp.slice(1) + ' In-App';
+            const vm = ua.match(/(?:Version|CriOS|FxiOS|EdgiOS)\/([0-9.]+)/);
+            version = vm ? vm[1] : '';
+            engine = 'Blink';
+            return { name: name, version: version, engine: engine, inApp: inApp };
+        }
+
+        if (/edg\//.test(u)) { name = 'Edge'; const m = ua.match(/Edg(?:e|A|iOS)?\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/opr\/|opera/.test(u)) { name = 'Opera'; const m = ua.match(/OPR\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/samsungbrowser/.test(u)) { name = 'Samsung Internet'; const m = ua.match(/SamsungBrowser\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/ucbrowser/.test(u)) { name = 'UC Browser'; const m = ua.match(/UCBrowser\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/miuibrowser/.test(u)) { name = 'Mi Browser'; const m = ua.match(/MiuiBrowser\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/coc_coc_browser/.test(u)) { name = 'Cốc Cốc'; const m = ua.match(/coc_coc_browser\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/firefox\/|fxios/.test(u)) { name = 'Firefox'; const m = ua.match(/(?:Firefox|FxiOS)\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Gecko'; }
+        else if (/chrome\/|crios/.test(u)) { name = 'Chrome'; const m = ua.match(/(?:Chrome|CriOS)\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'Blink'; }
+        else if (/safari\//.test(u) && !/chrome/.test(u)) { name = 'Safari'; const m = ua.match(/Version\/([0-9.]+)/); version = m ? m[1] : ''; engine = 'WebKit'; }
+        else if (/msie |trident\//.test(u)) { name = 'IE'; engine = 'Trident'; }
+
+        return { name: name, version: version, engine: engine, inApp: '' };
+    }
+
+    function detectDeviceModelCode() {
+        const ua = navigator.userAgent || '';
+        // Android: "Android 13; SM-A525F Build/..."
+        let m = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build\/|[;)])/);
+        if (m && m[1]) {
+            const code = m[1].trim();
+            // Bỏ chuỗi build ngẫu nhiên (vd: "SM-A525F" giữ nguyên, "OPPO CPH2207" giữ nguyên)
+            if (/^[A-Za-z0-9\-_]{3,32}$/.test(code)) return code;
+        }
+        // iOS: "iPhone14,3" → mã model
+        m = ua.match(/\((iPhone|iPad|iPod)[0-9]+,[0-9]+\)/);
+        if (m && m[0]) return m[0].replace(/[()]/g, '');
+        return '';
+    }
+
+    function detectOSInfo() {
+        const ua = navigator.userAgent || '';
+        let os = 'Other';
+        let version = '';
+        let m;
+        if (/windows/i.test(ua)) { os = 'Windows'; m = ua.match(/Windows NT ([0-9.]+)/); version = m ? m[1] : ''; }
+        else if (/android/i.test(ua)) { os = 'Android'; m = ua.match(/Android[\s/]+([0-9.]+)/); version = m ? m[1] : ''; }
+        else if (/iphone|ipad|ipod/i.test(ua)) { os = 'iOS'; m = ua.match(/OS ([0-9_]+)/); version = m ? m[1].replace(/_/g, '.') : ''; }
+        else if (/mac os x/i.test(ua)) { os = 'macOS'; m = ua.match(/Mac OS X ([0-9_.]+)/); version = m ? m[1].replace(/_/g, '.') : ''; }
+        else if (/linux/i.test(ua)) { os = 'Linux'; }
+        else if (/cros/i.test(ua)) { os = 'ChromeOS'; }
+        return { os: os, version: version };
+    }
+
+    function collectDeviceInfo() {
+        const nav = navigator || {};
+        const scr = window.screen || {};
+        const browser = detectBrowserInfo();
+        const osInfo = detectOSInfo();
+        const conn = nav.connection || nav.webkitConnection || null;
+
+        // Trạng thái thiết bị (mô tả ngắn, dùng để phân tích)
+        const deviceStateParts = [];
+        try {
+            deviceStateParts.push('ram=' + (nav.deviceMemory || 'n/a'));
+            deviceStateParts.push('cores=' + (nav.hardwareConcurrency || 'n/a'));
+            deviceStateParts.push('touch=' + (nav.maxTouchPoints || 0));
+            deviceStateParts.push('dpr=' + (window.devicePixelRatio || 1));
+            deviceStateParts.push('orient=' + (screen.orientation && screen.orientation.type ? screen.orientation.type : 'n/a'));
+            deviceStateParts.push('battery=' + (nav.getBattery ? 'api' : 'no'));
+        } catch (_) {}
+
+        return {
+            device_type: (/tablet|ipad/i.test(nav.userAgent) ? 'tablet' : (/mobi|iphone|android/i.test(nav.userAgent) ? 'mobile' : 'desktop')),
+            browser: browser.name,
+            browser_version: browser.version,
+            browser_engine: browser.engine,
+            is_in_app_browser: !!browser.inApp,
+            in_app_type: browser.inApp,
+            os: osInfo.os,
+            os_version: osInfo.version,
+            device_model_code: detectDeviceModelCode(),
+            device_memory: parseInt(nav.deviceMemory || '0', 10) || 0,
+            device_cores: parseInt(nav.hardwareConcurrency || '0', 10) || 0,
+            device_touchpoints: parseInt(nav.maxTouchPoints || '0', 10) || 0,
+            viewport_res: (window.innerWidth || 0) + 'x' + (window.innerHeight || 0),
+            screen_res: (scr.width || 0) + 'x' + (scr.height || 0),
+            screen_color_depth: parseInt(scr.colorDepth || '0', 10) || 0,
+            pixel_ratio: String(window.devicePixelRatio || 1),
+            timezone: (function () {
+                try {
+                    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+                } catch (_) { return ''; }
+            })(),
+            language: (nav.language || (nav.languages && nav.languages[0]) || ''),
+            platform_info: (nav.platform || '') + ' | ' + (nav.vendor || ''),
+            connection_type: conn ? (conn.effectiveType || conn.type || '') : '',
+            device_state: deviceStateParts.join('; ')
+        };
+    }
 
     // ============================================================
     // 2. PHÁT HIỆN BOT / CRAWLER (DEEP CLIENT-SIDE BOT DETECTION)
@@ -131,6 +394,60 @@
     // ============================================================
     const actionTimeline = [];
     const scrollMilestones = { 25: false, 50: false, 75: false, 90: false, 100: false };
+
+    // ─── Bộ đếm hành vi chi tiết (2026-11-12) ─────────────────────
+    // visibleSeconds / hiddenSeconds: thời gian tab thật sự hiển thị (chống
+    // "time on page" bị thổi phồng khi khách để tab ở chạy nền).
+    let visibleSeconds = 0;
+    let hiddenSeconds = 0;
+    let lastVisibilityChange = Date.now();
+    let hasVideoPlayed = false;
+    let hasZaloClicked = false;
+    let hasTelClicked = false;
+    let formSubmitAttempts = 0;
+    let formValidationErrors = 0;
+
+    // Cập nhật thời gian hiển thị/ẩn mỗi khi trạng thái tab đổi.
+    (function trackVisibility() {
+        document.addEventListener('visibilitychange', function () {
+            var now = Date.now();
+            var delta = Math.round((now - lastVisibilityChange) / 1000);
+            if (delta > 0) {
+                if (document.visibilityState === 'hidden') hiddenSeconds += delta;
+                else visibleSeconds += delta;
+            }
+            lastVisibilityChange = now;
+        });
+    })();
+
+    // Phát hiện hành động cụ thể: video, Zalo, gọi điện.
+    (function trackSpecificActions() {
+        try {
+            document.addEventListener('play', function (e) {
+                var t = e.target;
+                if (t && (t.tagName === 'VIDEO' || t.tagName === 'AUDIO')) {
+                    if (!hasVideoPlayed) {
+                        hasVideoPlayed = true;
+                        pushAction('video_play', 'media', 'Phát video: ' + (t.currentSrc || t.src || '').substring(0, 120));
+                    }
+                }
+            }, true);
+
+            document.addEventListener('click', function (e) {
+                var el = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (/^tel:/i.test(href) && !hasTelClicked) {
+                    hasTelClicked = true;
+                    pushAction('tel_click', 'a[href^=tel:]', 'Bấm gọi điện: ' + href);
+                }
+                if (/zalo\.me|chat\.zalo\.ua|zalo\d/i.test(href) && !hasZaloClicked) {
+                    hasZaloClicked = true;
+                    pushAction('zalo_click', 'a[href*=zalo]', 'Bấm mở Zalo: ' + href.substring(0, 120));
+                }
+            }, true);
+        } catch (_) {}
+    })();
 
     function pushAction(type, target, text, detail) {
         const sec = Math.round((Date.now() - pageLoadTimestamp) / 1000);
@@ -256,13 +573,28 @@
         }
     }
 
-    async function ensureChallengeReady() {
-        if (currentChallenge && currentChallenge.expires_at > (Date.now() / 1000 + 30)) {
-            if (!currentChallengeSolution && !isSolvingChallenge) {
-                solveChallengeInBackground();
-            }
+    // ensureChallengeReady đảm bảo có 1 challenge CÒN HIỆU LỰC & ĐÃ GIẢI xong.
+    //
+    // ⚠️ BUG ĐÃ SỬA (2026-11-12): trước đây challenge được lấy lúc tải trang
+    // và TTL chỉ 5 phút. Khách đọc nội dung + điền form > 5 phút (landing bán
+    // chứng khoán có form nhiều trường) ⇒ challenge hết hạn ⇒ server từ chối với
+    // lý do "hết hạn" ⇒ MẤT LEAD THẬT.
+    //
+    // ⇒ Luôn kiểm tra thời hạn thực tế TRƯỚC khi gửi. Nếu sắp hết hạn (< 90s)
+    //   hoặc đã hết hạn ⇒ lấy challenge MỚI và giải PoW ngay tại thời điểm submit.
+    const CHALLENGE_SAFETY_MARGIN = 90; // giây
+
+    async function ensureChallengeReady(forceRefresh) {
+        var nowSec = Date.now() / 1000;
+        var valid = currentChallenge &&
+            currentChallenge.expires_at > (nowSec + CHALLENGE_SAFETY_MARGIN) &&
+            currentChallengeSolution;
+
+        if (valid && !forceRefresh) {
             return currentChallenge;
         }
+
+        // Challenge cũ đã hết hạn hoặc chưa có lời giải ⇒ lấy mới.
         try {
             const res = await fetch(getChallengeEndpoint() + '?difficulty=3', { cache: 'no-store' });
             if (res.ok) {
@@ -270,11 +602,21 @@
                 if (data && data.success && data.data) {
                     currentChallenge = data.data;
                     currentChallengeSolution = null;
-                    solveChallengeInBackground();
+                    // Giải PoW ngay (bất đồng bộ) — thường chỉ 15-30ms.
+                    currentChallengeSolution = await solveProofOfWork(currentChallenge);
                     return currentChallenge;
                 }
             }
         } catch (_) {}
+
+        // Không lấy được challenge mới nhưng challenge cũ vẫn còn hiệu lực
+        // ⇒ dùng lại (server có dung sai clock skew 60s).
+        if (currentChallenge && currentChallenge.expires_at > nowSec) {
+            if (!currentChallengeSolution) {
+                currentChallengeSolution = await solveProofOfWork(currentChallenge);
+            }
+            return currentChallenge;
+        }
         return null;
     }
 
@@ -301,8 +643,10 @@
             source = 'url_params';
         } else {
             try {
-                const savedName = localStorage.getItem('apex_user_name') || localStorage.getItem('apex_lead_name') || '';
-                const savedPhone = localStorage.getItem('apex_user_phone') || localStorage.getItem('apex_lead_phone') || '';
+                // ⚠️ KHÓA ĐÃ TÁCH THEO LANDING (2026-11-12): dữ liệu autofill
+                // của landing A không được tự điền vào form của landing B.
+                const savedName = localStorage.getItem(scopedKey('apex_user_name')) || localStorage.getItem(scopedKey('apex_lead_name')) || '';
+                const savedPhone = localStorage.getItem(scopedKey('apex_user_phone')) || localStorage.getItem(scopedKey('apex_lead_phone')) || '';
                 if (savedName || savedPhone) {
                     preName = preName || savedName;
                     prePhone = prePhone || savedPhone;
@@ -399,7 +743,7 @@
             // Lưu dữ liệu vào LocalStorage theo thời gian thực để tái sử dụng tự động điền
             if (target.id === 'fullName' && target.value.trim().length > 1) {
                 try {
-                    localStorage.setItem('apex_user_name', target.value.trim());
+                    localStorage.setItem(scopedKey('apex_user_name'), target.value.trim());
                 } catch (_) {}
             }
             if (target.id === 'phoneNumber') {
@@ -408,7 +752,7 @@
                 }
                 if (target.value.trim().length > 3) {
                     try {
-                        localStorage.setItem('apex_user_phone', target.value.trim());
+                        localStorage.setItem(scopedKey('apex_user_phone'), target.value.trim());
                     } catch (_) {}
                 }
             }
@@ -435,16 +779,23 @@
         const expires = new Date(Date.now() + COOKIE_DAYS * 24 * 60 * 60 * 1000).toUTCString();
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
 
-        document.cookie = 'apex_lead_registered=1; max-age=' + COOKIE_MAX_AGE + '; expires=' + expires + '; path=/; SameSite=Lax' + secureFlag;
+        // ⚠️ KHÓA ĐÃ TÁCH THEO LANDING (2026-11-12): trước đây dùng key chung
+        // `apex_lead_registered` ⇒ khách đã đăng ký landing A bị coi như đã
+        // đăng ký landing B ⇒ thống kê & dedupe bị lẫn giữa các landing.
+        const regKey = scopedKey('apex_lead_registered');
+        const phoneKey = scopedKey('apex_lead_phone');
+        const regAtKey = scopedKey('apex_registered_at');
+
+        document.cookie = regKey + '=1; max-age=' + COOKIE_MAX_AGE + '; expires=' + expires + '; path=/; SameSite=Lax' + secureFlag;
         if (currentPhone) {
-            document.cookie = 'apex_lead_phone=' + encodeURIComponent(currentPhone) + '; max-age=' + COOKIE_MAX_AGE + '; expires=' + expires + '; path=/; SameSite=Lax' + secureFlag;
+            document.cookie = phoneKey + '=' + encodeURIComponent(currentPhone) + '; max-age=' + COOKIE_MAX_AGE + '; expires=' + expires + '; path=/; SameSite=Lax' + secureFlag;
         }
 
         try {
-            localStorage.setItem('apex_lead_registered', '1');
-            localStorage.setItem('apex_registered_at', Date.now().toString());
+            localStorage.setItem(regKey, '1');
+            localStorage.setItem(regAtKey, Date.now().toString());
             if (currentPhone) {
-                localStorage.setItem('apex_lead_phone', currentPhone);
+                localStorage.setItem(phoneKey, currentPhone);
             }
         } catch (_) {}
     }
@@ -502,16 +853,17 @@
         }
 
         const cookies = document.cookie.split(';');
+        const regKey = scopedKey('apex_lead_registered');
         for (let i = 0; i < cookies.length; i++) {
             const parts = cookies[i].trim().split('=');
-            if (parts[0] === 'apex_lead_registered' && parts[1] === '1') {
+            if (parts[0] === regKey && parts[1] === '1') {
                 return true;
             }
         }
 
         try {
-            if (localStorage.getItem('apex_lead_registered') === '1') {
-                const regTime = parseInt(localStorage.getItem('apex_registered_at') || '0', 10);
+            if (localStorage.getItem(regKey) === '1') {
+                const regTime = parseInt(localStorage.getItem(scopedKey('apex_registered_at')) || '0', 10);
                 if (regTime && (Date.now() - regTime) < COOKIE_DAYS * 24 * 60 * 60 * 1000) {
                     return true;
                 }
@@ -522,12 +874,14 @@
     }
 
     function clearRegistered() {
-        document.cookie = 'apex_lead_registered=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
-        document.cookie = 'apex_lead_phone=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+        const regKey = scopedKey('apex_lead_registered');
+        const phoneKey = scopedKey('apex_lead_phone');
+        document.cookie = regKey + '=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+        document.cookie = phoneKey + '=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
         try {
-            localStorage.removeItem('apex_lead_registered');
-            localStorage.removeItem('apex_registered_at');
-            localStorage.removeItem('apex_lead_phone');
+            localStorage.removeItem(regKey);
+            localStorage.removeItem(scopedKey('apex_registered_at'));
+            localStorage.removeItem(phoneKey);
         } catch (_) {}
     }
 
@@ -863,6 +1217,8 @@
         const urlParams = getUrlParams();
         const botEval = evaluateBotSignals();
         const durationSec = Math.round((Date.now() - pageLoadTimestamp) / 1000);
+        const meta = collectMetaTracking(urlParams);
+        const dev = collectDeviceInfo();
 
         const eventsToSend = (extraEvents || []).concat(actionTimeline.slice(-30));
 
@@ -871,17 +1227,67 @@
             visitor_id: visitorId,
             landing_id: landingCfg.landing_id,
             nguon: landingCfg.nguon,
-            utm_source: urlParams.utm_source || '',
-            utm_medium: urlParams.utm_medium || '',
-            utm_campaign: urlParams.utm_campaign || '',
-            utm_content: urlParams.utm_content || '',
-            utm_term: urlParams.utm_term || '',
+            // ─── Macro Meta Ads đầy đủ ───
+            utm_source: meta.utm_source,
+            utm_medium: meta.utm_medium,
+            utm_campaign: meta.utm_campaign,
+            utm_content: meta.utm_content,
+            utm_term: meta.utm_term,
+            utm_placement: meta.utm_placement,
+            campaign_name: meta.campaign_name,
+            adset_name: meta.adset_name,
+            ad_name: meta.ad_name,
+            ad_account_id: meta.ad_account_id,
+            site_source_name: meta.site_source_name,
+            // ─── Định danh lượt nhấp Meta (CAPI) ───
+            fbclid: meta.fbclid,
+            fbc: meta.fbc,
+            fbp: meta.fbp,
+            igshid: meta.igshid,
+            meta_click_id: meta.meta_click_id,
             referrer: document.referrer || '',
             entry_url: window.location.href,
-            device_type: (/mobile/i.test(navigator.userAgent) ? 'mobile' : (/tablet|ipad/i.test(navigator.userAgent) ? 'tablet' : 'desktop')),
-            browser: '',
-            os: '',
-            screen_res: window.screen.width + 'x' + window.screen.height,
+            device_type: dev.device_type,
+            browser: dev.browser,
+            os: dev.os,
+            screen_res: dev.screen_res,
+            // ─── Thiết bị & trình duyệt chi tiết ───
+            browser_version: dev.browser_version,
+            browser_engine: dev.browser_engine,
+            is_in_app_browser: dev.is_in_app_browser,
+            in_app_type: dev.in_app_type,
+            os_version: dev.os_version,
+            device_model_code: dev.device_model_code,
+            device_memory: dev.device_memory,
+            device_cores: dev.device_cores,
+            device_touchpoints: dev.device_touchpoints,
+            viewport_res: dev.viewport_res,
+            screen_color_depth: dev.screen_color_depth,
+            pixel_ratio: dev.pixel_ratio,
+            timezone: dev.timezone,
+            language: dev.language,
+            platform_info: dev.platform_info,
+            connection_type: dev.connection_type,
+            device_state: dev.device_state,
+            // ─── Hành vi chi tiết ───
+            visible_seconds: visibleSeconds,
+            hidden_seconds: hiddenSeconds,
+            session_count: sessionCount,
+            landing_path: window.location.pathname || '',
+            referrer_host: (function () {
+                try { return document.referrer ? new URL(document.referrer).host : ''; } catch (_) { return ''; }
+            })(),
+            is_new_visitor: sessionCount <= 1,
+            has_video_play: hasVideoPlayed,
+            has_zalo_click: hasZaloClicked,
+            has_tel_click: hasTelClicked,
+            form_submit_attempts: formSubmitAttempts,
+            form_validation_errors: formValidationErrors,
+            scroll_depth_25: !!scrollMilestones[25],
+            scroll_depth_50: !!scrollMilestones[50],
+            scroll_depth_75: !!scrollMilestones[75],
+            scroll_depth_90: !!scrollMilestones[90],
+            scroll_depth_100: !!scrollMilestones[100],
             is_bot: botEval.is_bot,
             bot_score: botEval.bot_score,
             bot_reasons: botEval.bot_reasons,
@@ -961,6 +1367,34 @@
     // 6. GỬI LEAD ĐĂNG KÝ VỀ BACKEND & LIÊN KẾT SESSION (STITCHING)
     // ============================================================
 
+    // disableSubmitButtons khoá tất cả nút submit của form trong lúc đang gửi.
+    //
+    // Bảo vệ chống double-click / Enter nhiều lần ⇒ tránh gửi trùng payload
+    // (server coi request thứ 2 là replay attack → lead thật bị gắn nhãn sai).
+    function disableSubmitButtons(disabled) {
+        try {
+            const btns = document.querySelectorAll('button[type="submit"], input[type="submit"], button[data-action="submit"], .btn-submit, #submitBtn, #btnSubmit');
+            for (let i = 0; i < btns.length; i++) {
+                const b = btns[i];
+                if (disabled) {
+                    if (!b.getAttribute('data-apex-orig-html')) {
+                        b.setAttribute('data-apex-orig-html', b.innerHTML || b.value || '');
+                    }
+                    b.disabled = true;
+                    if (b.tagName === 'INPUT') b.value = 'Đang gửi thông tin...';
+                    else b.innerHTML = '<span class="apex-spin">⏳</span> Đang gửi thông tin...';
+                } else {
+                    const orig = b.getAttribute('data-apex-orig-html');
+                    b.disabled = false;
+                    if (orig) {
+                        if (b.tagName === 'INPUT') b.value = orig;
+                        else b.innerHTML = orig;
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
     // CHỐNG GỬI TRÙNG PAYLOAD (sửa bug 2026-11-05)
     //
     // BỐI CẢNH: landing có NHIỀU handler submit cùng chạy cho 1 lần bấm:
@@ -1026,6 +1460,16 @@
         }
         lockLeadSubmit(phone);
 
+        // ⚠️ KHOÁ NÚT GỬI NGAY LẬP TỨC (2026-11-12)
+        //
+        // Lý do: khách double-click (hoặc dùng Enter 2 lần) ⇒ 2 request gửi
+        // song song với CÙNG payload. Request #1 tạo lead thật, request #2 bị
+        // server ghi vào vùng cách ly với lý do "Replay attack" ⇒ lead thật bị
+        // hiển thị sai là "Lỗi Proof-of-Work".
+        //
+        // ⇒ Disable tất cả nút submit ngay khi bắt đầu gửi (trước cả khi await).
+        disableSubmitButtons(true);
+
         if (phone) {
             currentPhone = String(phone).trim();
             setRegistered(currentPhone);
@@ -1067,13 +1511,20 @@
         } catch (_) {}
 
         // Đảm bảo thử thách Proof-of-Work đã được giải (tính SHA-256 ngầm)
-        if (!currentChallengeSolution && currentChallenge) {
-            try {
-                currentChallengeSolution = await solveProofOfWork(currentChallenge);
-            } catch (_) {}
-        }
+        //
+        // ⚠️ SỬA BUG MẤT LEAD (2026-11-12): trước đây chỉ giải PoW khi
+        // `currentChallengeSolution` rỗng. Nếu challenge đã hết hạn (khách ở
+        // trang > TTL) ⇒ server trả lỗi "hết hạn" ⇒ lead thật bị mất.
+        // ⇒ LUÔN gọi ensureChallengeReady() trước khi gửi để lấy challenge
+        //   còn hiệu lực & giải lại ngay tại thời điểm bấm nút.
+        formSubmitAttempts++;
+        try {
+            await ensureChallengeReady(false);
+        } catch (_) {}
 
         const urlParams = getUrlParams();
+        const meta = collectMetaTracking(urlParams);
+        const dev = collectDeviceInfo();
         const payload = {
             landing_id: landingId,
             nguon: nguon,
@@ -1087,11 +1538,59 @@
             // truy ngược lead về đúng landing page trong CRM & Google Sheets.
             url: window.location.href,
             referrer: document.referrer || '',
-            utm_source: urlParams.utm_source || '',
-            utm_medium: urlParams.utm_medium || '',
-            utm_campaign: urlParams.utm_campaign || '',
-            utm_content: urlParams.utm_content || '',
-            utm_term: urlParams.utm_term || '',
+            // ─── Macro Meta Ads đầy đủ ───
+            utm_source: meta.utm_source,
+            utm_medium: meta.utm_medium,
+            utm_campaign: meta.utm_campaign,
+            utm_content: meta.utm_content,
+            utm_term: meta.utm_term,
+            utm_placement: meta.utm_placement,
+            campaign_name: meta.campaign_name,
+            adset_name: meta.adset_name,
+            ad_name: meta.ad_name,
+            ad_account_id: meta.ad_account_id,
+            site_source_name: meta.site_source_name,
+            // ─── Định danh lượt nhấp Meta (CAPI) ───
+            fbclid: meta.fbclid,
+            fbc: meta.fbc,
+            fbp: meta.fbp,
+            igshid: meta.igshid,
+            meta_click_id: meta.meta_click_id,
+            // ─── Thiết bị & trình duyệt chi tiết ───
+            device_type: dev.device_type,
+            browser: dev.browser,
+            browser_version: dev.browser_version,
+            browser_engine: dev.browser_engine,
+            is_in_app_browser: dev.is_in_app_browser,
+            in_app_type: dev.in_app_type,
+            os: dev.os,
+            os_version: dev.os_version,
+            device_model_code: dev.device_model_code,
+            device_memory: dev.device_memory,
+            device_cores: dev.device_cores,
+            device_touchpoints: dev.device_touchpoints,
+            viewport_res: dev.viewport_res,
+            screen_res: dev.screen_res,
+            screen_color_depth: dev.screen_color_depth,
+            pixel_ratio: dev.pixel_ratio,
+            timezone: dev.timezone,
+            language: dev.language,
+            platform_info: dev.platform_info,
+            connection_type: dev.connection_type,
+            device_state: dev.device_state,
+            // ─── Hành vi ───
+            visible_seconds: visibleSeconds,
+            hidden_seconds: hiddenSeconds,
+            session_count: sessionCount,
+            is_new_visitor: sessionCount <= 1,
+            has_video_play: hasVideoPlayed,
+            has_zalo_click: hasZaloClicked,
+            has_tel_click: hasTelClicked,
+            scroll_depth_25: !!scrollMilestones[25],
+            scroll_depth_50: !!scrollMilestones[50],
+            scroll_depth_75: !!scrollMilestones[75],
+            scroll_depth_90: !!scrollMilestones[90],
+            scroll_depth_100: !!scrollMilestones[100],
             form_data: formData,
             time_on_page: Math.round((Date.now() - pageLoadTimestamp) / 1000),
             max_scroll: maxScrollDepth,
@@ -1130,9 +1629,11 @@
             // Server trả lỗi (4xx/5xx) ⇒ lead chưa chắc đã được tạo ⇒ mở khoá
             // để khách bấm lại được.
             unlockLeadSubmit();
+            disableSubmitButtons(false);
         } catch (err) {
             // Lỗi mạng ⇒ có thể request chưa tới server ⇒ mở khoá cho lần thử lại.
             unlockLeadSubmit();
+            disableSubmitButtons(false);
             try {
                 if (navigator.sendBeacon) {
                     const blob = new Blob([jsonBody], { type: 'application/json' });
@@ -1163,6 +1664,7 @@
 
     function showInputError(inputEl, message) {
         if (!inputEl) return;
+        formValidationErrors++;
         inputEl.style.borderColor = '#ef4444';
         inputEl.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.25)';
 
@@ -1388,9 +1890,16 @@
     window.ApexTracker = {
         visitorId: visitorId,
         sessionId: sessionId,
+        landingKey: LANDING_KEY,
         sendLeadToBackend: sendLeadToBackend,
         sendAnalyticsPing: sendAnalyticsPing,
         pushAction: pushAction,
+        // Alias tương thích ngược với tracker.js của landing cũ (doanh_chung):
+        // landing gọi `window.ApexTracker.send(type, value)` ⇒ đẩy vào timeline.
+        send: function (type, value) {
+            pushAction(String(type || 'event'), 'custom', String(value || ''));
+            sendAnalyticsPing();
+        },
         setRegistered: setRegistered,
         isRegistered: isRegistered,
         clearRegistered: clearRegistered,
@@ -1402,6 +1911,26 @@
         initAutoFormInterceptor: initAutoFormInterceptor,
         isValidVietnamPhone: isValidVietnamPhone,
         cleanPhoneValue: cleanPhoneValue,
+        // API mới (2026-11-12) — dùng cho landing tích hợp riêng (vd: doanh_chung)
+        collectMetaTracking: collectMetaTracking,
+        collectDeviceInfo: collectDeviceInfo,
+        detectInAppBrowser: detectInAppBrowser,
+        ensureChallengeReady: ensureChallengeReady,
+        getTrackingState: function () {
+            return {
+                visible_seconds: visibleSeconds,
+                hidden_seconds: hiddenSeconds,
+                session_count: sessionCount,
+                has_video_play: hasVideoPlayed,
+                has_zalo_click: hasZaloClicked,
+                has_tel_click: hasTelClicked,
+                form_submit_attempts: formSubmitAttempts,
+                form_validation_errors: formValidationErrors,
+                scroll_milestones: scrollMilestones,
+                max_scroll: maxScrollDepth,
+                clicks_count: totalClicksCount
+            };
+        },
         isAutofilled: function () { return isFormAutofilled; },
         getAutofillSource: function () { return autofillSource; }
     };

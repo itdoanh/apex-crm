@@ -142,6 +142,74 @@ func (s *Store) initSchema(ctx context.Context) error {
 	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS ad_platform VARCHAR(50) NOT NULL DEFAULT '';
 	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS ad_placement VARCHAR(100) NOT NULL DEFAULT '';
 
+	-- ══════════════════════════════════════════════════════════════
+	-- MỞ RỘNG THỐNG KÊ (landing doanh_chung — 2026-11-12)
+	-- ══════════════════════════════════════════════════════════════
+	-- Thiết bị chi tiết (model thật, không chỉ "mobile")
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_brand VARCHAR(50) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_model VARCHAR(120) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_model_code VARCHAR(60) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_name VARCHAR(160) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS os_version VARCHAR(30) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS browser_version VARCHAR(30) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS browser_engine VARCHAR(20) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_in_app_browser BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS in_app_type VARCHAR(30) NOT NULL DEFAULT '';
+
+	-- Trạng thái thiết bị / môi trường thực thi
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_memory INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_cores INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_touchpoints INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS viewport_res VARCHAR(30) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS screen_color_depth INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS pixel_ratio VARCHAR(20) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS timezone VARCHAR(60) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS language VARCHAR(40) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS platform_info VARCHAR(80) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS connection_type VARCHAR(30) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS device_state VARCHAR(120) NOT NULL DEFAULT '';
+
+	-- VPN / Proxy / Tor
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_vpn BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_proxy BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_tor BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS vpn_provider VARCHAR(100) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS vpn_confidence INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS vpn_reason VARCHAR(255) NOT NULL DEFAULT '';
+
+	-- Meta Click ID (Conversions API) & định danh lượt nhấp
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS fbclid VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS fbc VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS fbp VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS igshid VARCHAR(120) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS meta_click_id VARCHAR(255) NOT NULL DEFAULT '';
+
+	-- Meta Ads Macros (campaign.id / adset.id / ad.id / tên...)
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS utm_placement VARCHAR(120) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS campaign_name VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS adset_name VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS ad_name VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS ad_account_id VARCHAR(60) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS site_source_name VARCHAR(40) NOT NULL DEFAULT '';
+
+	-- Thời gian thực & hành vi (tách khỏi "duration_seconds" tổng)
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS visible_seconds INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS hidden_seconds INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS session_count INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS landing_path VARCHAR(255) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS referrer_host VARCHAR(160) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_new_visitor BOOLEAN NOT NULL DEFAULT TRUE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS has_video_play BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS has_zalo_click BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS has_tel_click BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS form_submit_attempts INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS form_validation_errors INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_25 BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_50 BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_75 BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_90 BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_100 BOOLEAN NOT NULL DEFAULT FALSE;
+
 	CREATE INDEX IF NOT EXISTS idx_sessions_landing_id ON analytics_sessions (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_nguon ON analytics_sessions (nguon);
 	CREATE INDEX IF NOT EXISTS idx_sessions_is_bot ON analytics_sessions (is_bot);
@@ -155,6 +223,14 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_sessions_utm_campaign ON analytics_sessions (utm_campaign);
 	CREATE INDEX IF NOT EXISTS idx_sessions_utm_content ON analytics_sessions (utm_content);
 	CREATE INDEX IF NOT EXISTS idx_sessions_actions_gin ON analytics_sessions USING gin (actions);
+	CREATE INDEX IF NOT EXISTS idx_sessions_device_model ON analytics_sessions (device_model);
+	CREATE INDEX IF NOT EXISTS idx_sessions_device_brand ON analytics_sessions (device_brand);
+	CREATE INDEX IF NOT EXISTS idx_sessions_fbclid ON analytics_sessions (fbclid);
+	CREATE INDEX IF NOT EXISTS idx_sessions_meta_click ON analytics_sessions (meta_click_id);
+	CREATE INDEX IF NOT EXISTS idx_sessions_is_vpn ON analytics_sessions (is_vpn);
+	CREATE INDEX IF NOT EXISTS idx_sessions_utm_placement ON analytics_sessions (utm_placement);
+	CREATE INDEX IF NOT EXISTS idx_sessions_campaign_name ON analytics_sessions (campaign_name);
+	CREATE INDEX IF NOT EXISTS idx_sessions_landing_first_seen ON analytics_sessions (landing_id, first_seen DESC);
 
 	-- Bảng cách ly các request rác, spam bot và payload bất thường (Spam Quarantine)
 	CREATE TABLE IF NOT EXISTS spam_quarantine (
@@ -625,8 +701,16 @@ func buildWhereClause(search string, landingID string, nguon string, status stri
 		idx++
 	}
 
-	if fromHour >= 0 && toHour >= 0 && toHour <= 23 && fromHour <= toHour {
-		conditions = append(conditions, fmt.Sprintf("EXTRACT(HOUR FROM thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::int BETWEEN $%d AND $%d", idx, idx+1))
+	// ⚠️ 2026-11-12: hỗ trợ khoảng giờ VÒNG QUA nửa đêm (vd "22h-06h").
+	// Điều kiện cũ `fromHour <= toHour` ⇒ khoảng đêm bị BỎ QUA hoàn toàn
+	// ⇒ bộ lọc "Buổi Đêm" không lọc gì cả.
+	if fromHour >= 0 && toHour >= 0 && toHour <= 23 {
+		if fromHour <= toHour {
+			conditions = append(conditions, fmt.Sprintf("EXTRACT(HOUR FROM thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::int BETWEEN $%d AND $%d", idx, idx+1))
+		} else {
+			// Khoảng vòng qua nửa đêm: giờ >= fromHour HOẶC giờ <= toHour
+			conditions = append(conditions, fmt.Sprintf("(EXTRACT(HOUR FROM thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::int >= $%d OR EXTRACT(HOUR FROM thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::int <= $%d)", idx, idx+1))
+		}
 		args = append(args, fromHour, toHour)
 		idx += 2
 	}
@@ -1087,6 +1171,25 @@ func (s *Store) GetCRMStats(search string, landingID string, nguon string, statu
 		}
 	}
 
+	// 12. PHỄU CHUYỂN ĐỔI THẬT (2026-11-12)
+	//
+	// ⚠️ TRƯỚC ĐÂY frontend tự ước lượng `totalLeads * 8` ⇒ phễu hiển thị sai
+	// hoàn toàn so với dữ liệu thật. Nay lấy số liệu thật từ
+	// `analytics_sessions` (lượt xem / cuộn / tương tác form / chuyển đổi).
+	funnelWhere, funnelArgs := buildAnalyticsWhereClauseFull(landingID, nguon, fromDate, toDate, 0)
+	funnelQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(*) FILTER (WHERE NOT is_bot)::int AS views,
+			COUNT(*) FILTER (WHERE NOT is_bot AND max_scroll_percent >= 50)::int AS scrolled,
+			COUNT(*) FILTER (WHERE NOT is_bot AND (has_interacted_form OR form_submit_attempts > 0))::int AS interacted,
+			COUNT(*) FILTER (WHERE NOT is_bot AND converted_lead)::int AS converted
+		FROM analytics_sessions
+		%s;
+	`, funnelWhere)
+
+	var funnelViews, funnelScrolled, funnelInteracted, funnelConverted int
+	_ = s.pool.QueryRow(ctx, funnelQuery, funnelArgs...).Scan(&funnelViews, &funnelScrolled, &funnelInteracted, &funnelConverted)
+
 	result := map[string]interface{}{
 		"summary": map[string]interface{}{
 			"total":           total,
@@ -1110,6 +1213,14 @@ func (s *Store) GetCRMStats(search string, landingID string, nguon string, statu
 		"autofill_ratio": map[string]interface{}{
 			"autofill": autofillCount,
 			"manual":   manualCount,
+		},
+		"funnel": map[string]interface{}{
+			"views":       funnelViews,
+			"scrolled":    funnelScrolled,
+			"interacted":  funnelInteracted,
+			"converted":   funnelConverted,
+			"high_intent": highIntent,
+			"closed":      closed,
 		},
 	}
 	return result, nil
@@ -1199,7 +1310,19 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			user_agent, device_type, browser, os, screen_res,
 			is_bot, bot_score, bot_reasons, duration_seconds, max_scroll_percent,
 			total_clicks, has_interacted_form, converted_lead, so_dien_thoai, lead_id,
-			actions, first_seen, last_seen
+			actions, first_seen, last_seen,
+			device_brand, device_model, device_model_code, device_name,
+			os_version, browser_version, browser_engine, is_in_app_browser, in_app_type,
+			device_memory, device_cores, device_touchpoints, viewport_res,
+			screen_color_depth, pixel_ratio, timezone, language, platform_info,
+			connection_type, device_state,
+			is_vpn, is_proxy, is_tor, vpn_provider, vpn_confidence, vpn_reason,
+			fbclid, fbc, fbp, igshid, meta_click_id,
+			utm_placement, campaign_name, adset_name, ad_name, ad_account_id, site_source_name,
+			visible_seconds, hidden_seconds, session_count, landing_path, referrer_host,
+			is_new_visitor, has_video_play, has_zalo_click, has_tel_click,
+			form_submit_attempts, form_validation_errors,
+			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8, $9,
@@ -1207,7 +1330,18 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			$19, $20, $21, $22, $23,
 			$24, $25, $26, $27, $28,
 			$29, $30, $31, $32, $33,
-			COALESCE($34::jsonb, '[]'::jsonb), NOW(), NOW()
+			COALESCE($34::jsonb, '[]'::jsonb), NOW(), NOW(),
+			$35, $36, $37, $38,
+			$39, $40, $41, $42, $43,
+			$44, $45, $46, $47,
+			$48, $49, $50, $51, $52,
+			$53, $54,
+			$55, $56, $57, $58, $59, $60,
+			$61, $62, $63, $64, $65,
+			$66, $67, $68, $69, $70, $71,
+			$72, $73, $74, $75, $76, $77,
+			$78, $79, $80, $81, $82, $83,
+			$84, $85, $86, $87, $88, $89
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
 			last_seen = NOW(),
@@ -1237,7 +1371,60 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 				WHEN jsonb_typeof($34::jsonb) = 'array' AND jsonb_array_length($34::jsonb) > 0
 				THEN COALESCE(analytics_sessions.actions, '[]'::jsonb) || $34::jsonb
 				ELSE COALESCE(analytics_sessions.actions, '[]'::jsonb)
-			END;
+			END,
+			device_brand = CASE WHEN EXCLUDED.device_brand != '' THEN EXCLUDED.device_brand ELSE analytics_sessions.device_brand END,
+			device_model = CASE WHEN EXCLUDED.device_model != '' THEN EXCLUDED.device_model ELSE analytics_sessions.device_model END,
+			device_model_code = CASE WHEN EXCLUDED.device_model_code != '' THEN EXCLUDED.device_model_code ELSE analytics_sessions.device_model_code END,
+			device_name = CASE WHEN EXCLUDED.device_name != '' THEN EXCLUDED.device_name ELSE analytics_sessions.device_name END,
+			os_version = CASE WHEN EXCLUDED.os_version != '' THEN EXCLUDED.os_version ELSE analytics_sessions.os_version END,
+			browser_version = CASE WHEN EXCLUDED.browser_version != '' THEN EXCLUDED.browser_version ELSE analytics_sessions.browser_version END,
+			browser_engine = CASE WHEN EXCLUDED.browser_engine != '' THEN EXCLUDED.browser_engine ELSE analytics_sessions.browser_engine END,
+			is_in_app_browser = analytics_sessions.is_in_app_browser OR EXCLUDED.is_in_app_browser,
+			in_app_type = CASE WHEN EXCLUDED.in_app_type != '' THEN EXCLUDED.in_app_type ELSE analytics_sessions.in_app_type END,
+			device_memory = GREATEST(analytics_sessions.device_memory, EXCLUDED.device_memory),
+			device_cores = GREATEST(analytics_sessions.device_cores, EXCLUDED.device_cores),
+			device_touchpoints = GREATEST(analytics_sessions.device_touchpoints, EXCLUDED.device_touchpoints),
+			viewport_res = CASE WHEN EXCLUDED.viewport_res != '' THEN EXCLUDED.viewport_res ELSE analytics_sessions.viewport_res END,
+			screen_color_depth = GREATEST(analytics_sessions.screen_color_depth, EXCLUDED.screen_color_depth),
+			pixel_ratio = CASE WHEN EXCLUDED.pixel_ratio != '' THEN EXCLUDED.pixel_ratio ELSE analytics_sessions.pixel_ratio END,
+			timezone = CASE WHEN EXCLUDED.timezone != '' THEN EXCLUDED.timezone ELSE analytics_sessions.timezone END,
+			language = CASE WHEN EXCLUDED.language != '' THEN EXCLUDED.language ELSE analytics_sessions.language END,
+			platform_info = CASE WHEN EXCLUDED.platform_info != '' THEN EXCLUDED.platform_info ELSE analytics_sessions.platform_info END,
+			connection_type = CASE WHEN EXCLUDED.connection_type != '' THEN EXCLUDED.connection_type ELSE analytics_sessions.connection_type END,
+			device_state = CASE WHEN EXCLUDED.device_state != '' THEN EXCLUDED.device_state ELSE analytics_sessions.device_state END,
+			is_vpn = analytics_sessions.is_vpn OR EXCLUDED.is_vpn,
+			is_proxy = analytics_sessions.is_proxy OR EXCLUDED.is_proxy,
+			is_tor = analytics_sessions.is_tor OR EXCLUDED.is_tor,
+			vpn_provider = CASE WHEN EXCLUDED.vpn_provider != '' THEN EXCLUDED.vpn_provider ELSE analytics_sessions.vpn_provider END,
+			vpn_confidence = GREATEST(analytics_sessions.vpn_confidence, EXCLUDED.vpn_confidence),
+			vpn_reason = CASE WHEN EXCLUDED.vpn_reason != '' THEN EXCLUDED.vpn_reason ELSE analytics_sessions.vpn_reason END,
+			fbclid = CASE WHEN EXCLUDED.fbclid != '' THEN EXCLUDED.fbclid ELSE analytics_sessions.fbclid END,
+			fbc = CASE WHEN EXCLUDED.fbc != '' THEN EXCLUDED.fbc ELSE analytics_sessions.fbc END,
+			fbp = CASE WHEN EXCLUDED.fbp != '' THEN EXCLUDED.fbp ELSE analytics_sessions.fbp END,
+			igshid = CASE WHEN EXCLUDED.igshid != '' THEN EXCLUDED.igshid ELSE analytics_sessions.igshid END,
+			meta_click_id = CASE WHEN EXCLUDED.meta_click_id != '' THEN EXCLUDED.meta_click_id ELSE analytics_sessions.meta_click_id END,
+			utm_placement = CASE WHEN EXCLUDED.utm_placement != '' THEN EXCLUDED.utm_placement ELSE analytics_sessions.utm_placement END,
+			campaign_name = CASE WHEN EXCLUDED.campaign_name != '' THEN EXCLUDED.campaign_name ELSE analytics_sessions.campaign_name END,
+			adset_name = CASE WHEN EXCLUDED.adset_name != '' THEN EXCLUDED.adset_name ELSE analytics_sessions.adset_name END,
+			ad_name = CASE WHEN EXCLUDED.ad_name != '' THEN EXCLUDED.ad_name ELSE analytics_sessions.ad_name END,
+			ad_account_id = CASE WHEN EXCLUDED.ad_account_id != '' THEN EXCLUDED.ad_account_id ELSE analytics_sessions.ad_account_id END,
+			site_source_name = CASE WHEN EXCLUDED.site_source_name != '' THEN EXCLUDED.site_source_name ELSE analytics_sessions.site_source_name END,
+			visible_seconds = GREATEST(analytics_sessions.visible_seconds, EXCLUDED.visible_seconds),
+			hidden_seconds = GREATEST(analytics_sessions.hidden_seconds, EXCLUDED.hidden_seconds),
+			session_count = GREATEST(analytics_sessions.session_count, EXCLUDED.session_count),
+			landing_path = CASE WHEN EXCLUDED.landing_path != '' THEN EXCLUDED.landing_path ELSE analytics_sessions.landing_path END,
+			referrer_host = CASE WHEN EXCLUDED.referrer_host != '' THEN EXCLUDED.referrer_host ELSE analytics_sessions.referrer_host END,
+			is_new_visitor = analytics_sessions.is_new_visitor AND EXCLUDED.is_new_visitor,
+			has_video_play = analytics_sessions.has_video_play OR EXCLUDED.has_video_play,
+			has_zalo_click = analytics_sessions.has_zalo_click OR EXCLUDED.has_zalo_click,
+			has_tel_click = analytics_sessions.has_tel_click OR EXCLUDED.has_tel_click,
+			form_submit_attempts = GREATEST(analytics_sessions.form_submit_attempts, EXCLUDED.form_submit_attempts),
+			form_validation_errors = GREATEST(analytics_sessions.form_validation_errors, EXCLUDED.form_validation_errors),
+			scroll_depth_25 = analytics_sessions.scroll_depth_25 OR EXCLUDED.scroll_depth_25,
+			scroll_depth_50 = analytics_sessions.scroll_depth_50 OR EXCLUDED.scroll_depth_50,
+			scroll_depth_75 = analytics_sessions.scroll_depth_75 OR EXCLUDED.scroll_depth_75,
+			scroll_depth_90 = analytics_sessions.scroll_depth_90 OR EXCLUDED.scroll_depth_90,
+			scroll_depth_100 = analytics_sessions.scroll_depth_100 OR EXCLUDED.scroll_depth_100;
 	`
 
 	var leadIDVal interface{}
@@ -1253,6 +1440,18 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 		p.IsBot, p.BotScore, p.BotReasons, p.DurationSeconds, p.MaxScrollPercent,
 		p.ClicksCount, p.HasInteractedForm, p.ConvertedLead, p.Phone, leadIDVal,
 		string(actionsJSON),
+		p.DeviceBrand, p.DeviceModel, p.DeviceModelCode, p.DeviceName,
+		p.OSVersion, p.BrowserVersion, p.BrowserEngine, p.IsInAppBrowser, p.InAppType,
+		p.DeviceMemory, p.DeviceCores, p.DeviceTouchpoints, p.ViewportRes,
+		p.ScreenColorDepth, p.PixelRatio, p.Timezone, p.Language, p.PlatformInfo,
+		p.ConnectionType, p.DeviceState,
+		p.IsVPN, p.IsProxy, p.IsTor, p.VPNProvider, p.VPNConfidence, p.VPNReason,
+		p.Fbclid, p.Fbc, p.Fbp, p.Igshid, p.MetaClickID,
+		p.UTMPlacement, p.CampaignName, p.AdsetName, p.AdName, p.AdAccountID, p.SiteSourceName,
+		p.VisibleSeconds, p.HiddenSeconds, p.SessionCount, p.LandingPath, p.ReferrerHost,
+		p.IsNewVisitor, p.HasVideoPlay, p.HasZaloClick, p.HasTelClick,
+		p.FormSubmitAttempts, p.FormValidationError,
+		p.ScrollDepth25, p.ScrollDepth50, p.ScrollDepth75, p.ScrollDepth90, p.ScrollDepth100,
 	)
 	return err
 }
@@ -1308,12 +1507,81 @@ func buildAnalyticsWhereClause(landingID string, nguon string) (string, []interf
 	return "WHERE " + strings.Join(conditions, " AND "), args
 }
 
+// buildAnalyticsWhereClauseFull bộ lọc analytics ĐẦY ĐỦ (landing + nguồn +
+// khoảng ngày theo múi giờ Asia/Ho_Chi_Minh).
+//
+// ⚠️ Lý do tồn tại (2026-11-12): các hàm thống kê cũ chỉ dùng
+// `buildAnalyticsWhereClause` ⇒ bộ lọc "Từ ngày / Đến ngày" trên CRM bị
+// BỎ QUA hoàn toàn ⇒ số liệu biểu đồ không khớp với bảng lead ⇒ "thống kê sai".
+//
+// fromDate/toDate: định dạng YYYY-MM-DD (rỗng = không giới hạn).
+// days: số ngày gần nhất; <= 0 = không giới hạn. Chỉ dùng khi KHÔNG có
+// from/to date cụ thể để tránh cắt bớt dữ liệu ngoài khoảng đã chọn.
+func buildAnalyticsWhereClauseFull(landingID, nguon, fromDate, toDate string, days int) (string, []interface{}) {
+	return buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate, days, -1, -1)
+}
+
+// buildAnalyticsWhereClauseFullRange như buildAnalyticsWhereClauseFull nhưng
+// hỗ trợ thêm lọc theo khung giờ trong ngày (fromHour/toHour, 0-23).
+// -1 = không lọc.
+func buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate string, days int, fromHour int, toHour int) (string, []interface{}) {
+	var conditions []string
+	var args []interface{}
+	idx := 1
+
+	if s := strings.TrimSpace(landingID); s != "" {
+		conditions = append(conditions, fmt.Sprintf("landing_id = $%d", idx))
+		args = append(args, s)
+		idx++
+	}
+	if s := strings.TrimSpace(nguon); s != "" {
+		conditions = append(conditions, fmt.Sprintf("nguon = $%d", idx))
+		args = append(args, s)
+		idx++
+	}
+	if s := strings.TrimSpace(fromDate); s != "" {
+		conditions = append(conditions, fmt.Sprintf(
+			"(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= ($%d)::date", idx))
+		args = append(args, s)
+		idx++
+	}
+	if s := strings.TrimSpace(toDate); s != "" {
+		conditions = append(conditions, fmt.Sprintf(
+			"(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= ($%d)::date", idx))
+		args = append(args, s)
+		idx++
+	}
+	if days > 0 && strings.TrimSpace(fromDate) == "" && strings.TrimSpace(toDate) == "" {
+		conditions = append(conditions, fmt.Sprintf(
+			"(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= ((NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ($%d::int))", idx))
+		args = append(args, days)
+		idx++
+	}
+	if fromHour >= 0 && toHour >= 0 && toHour <= 23 {
+		if fromHour <= toHour {
+			conditions = append(conditions, fmt.Sprintf(
+				"EXTRACT(HOUR FROM first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::int BETWEEN $%d AND $%d", idx, idx+1))
+		} else {
+			// Khoảng vòng qua nửa đêm (vd 22h-06h)
+			conditions = append(conditions, fmt.Sprintf(
+				"(EXTRACT(HOUR FROM first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::int >= $%d OR EXTRACT(HOUR FROM first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh')::int <= $%d)", idx, idx+1))
+		}
+		args = append(args, fromHour, toHour)
+		idx += 2
+	}
+
+	if len(conditions) == 0 {
+		return "", args
+	}
+	return "WHERE " + strings.Join(conditions, " AND "), args
+}
+
 // GetAnalyticsOverview trả về báo cáo tổng quan lượt xem, người thật, bot, CR%
 func (s *Store) GetAnalyticsOverview(landingID string, nguon string) (*models.AnalyticsOverview, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClause(landingID, nguon)
+	whereClause, args := buildAnalyticsWhereClauseFull(landingID, nguon, "", "", 0)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -1357,11 +1625,14 @@ func (s *Store) GetAnalyticsOverview(landingID string, nguon string) (*models.An
 }
 
 // GetLandingPerformance so sánh hiệu quả giữa các Landing Page
-func (s *Store) GetLandingPerformance(landingID string, nguon string) ([]models.LandingStatItem, error) {
+//
+// ⚠️ KHÔNG lọc theo landing_id (bảng này dùng để SO SÁNH các landing),
+// chỉ lọc theo nguồn + khoảng ngày.
+func (s *Store) GetLandingPerformance(landingID string, nguon string, fromDate string, toDate string, fromHour int, toHour int) ([]models.LandingStatItem, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClause(landingID, nguon)
+	whereClause, args := buildAnalyticsWhereClauseFull("", nguon, fromDate, toDate, 0)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -1412,11 +1683,11 @@ func (s *Store) GetLandingPerformance(landingID string, nguon string) ([]models.
 }
 
 // GetSourcePerformance thống kê theo Nguồn traffic & Content quảng cáo
-func (s *Store) GetSourcePerformance(landingID string, nguon string) ([]models.SourceStatItem, error) {
+func (s *Store) GetSourcePerformance(landingID string, nguon string, fromDate string, toDate string, fromHour int, toHour int) ([]models.SourceStatItem, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClause(landingID, nguon)
+	whereClause, args := buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate, 0, fromHour, toHour)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -1541,6 +1812,20 @@ func (s *Store) ListAnalyticsSessions(page, limit int, landingID, nguon, filterB
 			is_bot, bot_score, bot_reasons, duration_seconds, max_scroll_percent,
 			total_clicks, has_interacted_form, converted_lead, so_dien_thoai, lead_id,
 			actions::text,
+			COALESCE(device_brand, ''), COALESCE(device_model, ''), COALESCE(device_model_code, ''), COALESCE(device_name, ''),
+			COALESCE(os_version, ''), COALESCE(browser_version, ''), COALESCE(browser_engine, ''),
+			is_in_app_browser, COALESCE(in_app_type, ''),
+			device_memory, device_cores, device_touchpoints, COALESCE(viewport_res, ''),
+			screen_color_depth, COALESCE(pixel_ratio, ''), COALESCE(timezone, ''), COALESCE(language, ''),
+			COALESCE(platform_info, ''), COALESCE(connection_type, ''), COALESCE(device_state, ''),
+			is_vpn, is_proxy, is_tor, COALESCE(vpn_provider, ''), vpn_confidence, COALESCE(vpn_reason, ''),
+			COALESCE(fbclid, ''), COALESCE(fbc, ''), COALESCE(fbp, ''), COALESCE(igshid, ''), COALESCE(meta_click_id, ''),
+			COALESCE(utm_placement, ''), COALESCE(campaign_name, ''), COALESCE(adset_name, ''),
+			COALESCE(ad_name, ''), COALESCE(ad_account_id, ''), COALESCE(site_source_name, ''),
+			visible_seconds, hidden_seconds, session_count, COALESCE(landing_path, ''), COALESCE(referrer_host, ''),
+			is_new_visitor, has_video_play, has_zalo_click, has_tel_click,
+			form_submit_attempts, form_validation_errors,
+			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100,
 			TO_CHAR(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 			TO_CHAR(last_seen AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM analytics_sessions
@@ -1569,6 +1854,20 @@ func (s *Store) ListAnalyticsSessions(page, limit int, landingID, nguon, filterB
 			&sess.IsBot, &sess.BotScore, &sess.BotReasons, &sess.DurationSeconds, &sess.MaxScrollPercent,
 			&sess.TotalClicks, &sess.HasInteractedForm, &sess.ConvertedLead, &sess.Phone, &sess.LeadID,
 			&actionsStr,
+			&sess.DeviceBrand, &sess.DeviceModel, &sess.DeviceModelCode, &sess.DeviceName,
+			&sess.OSVersion, &sess.BrowserVersion, &sess.BrowserEngine,
+			&sess.IsInAppBrowser, &sess.InAppType,
+			&sess.DeviceMemory, &sess.DeviceCores, &sess.DeviceTouchpoints, &sess.ViewportRes,
+			&sess.ScreenColorDepth, &sess.PixelRatio, &sess.Timezone, &sess.Language,
+			&sess.PlatformInfo, &sess.ConnectionType, &sess.DeviceState,
+			&sess.IsVPN, &sess.IsProxy, &sess.IsTor, &sess.VPNProvider, &sess.VPNConfidence, &sess.VPNReason,
+			&sess.Fbclid, &sess.Fbc, &sess.Fbp, &sess.Igshid, &sess.MetaClickID,
+			&sess.UTMPlacement, &sess.CampaignName, &sess.AdsetName,
+			&sess.AdName, &sess.AdAccountID, &sess.SiteSourceName,
+			&sess.VisibleSeconds, &sess.HiddenSeconds, &sess.SessionCount, &sess.LandingPath, &sess.ReferrerHost,
+			&sess.IsNewVisitor, &sess.HasVideoPlay, &sess.HasZaloClick, &sess.HasTelClick,
+			&sess.FormSubmitAttempts, &sess.FormValidationError,
+			&sess.ScrollDepth25, &sess.ScrollDepth50, &sess.ScrollDepth75, &sess.ScrollDepth90, &sess.ScrollDepth100,
 			&sess.FirstSeen,
 			&sess.LastSeen,
 		)
@@ -1598,6 +1897,20 @@ func (s *Store) GetSessionDetail(sessionID string) (*models.AnalyticsSession, er
 			is_bot, bot_score, bot_reasons, duration_seconds, max_scroll_percent,
 			total_clicks, has_interacted_form, converted_lead, so_dien_thoai, lead_id,
 			actions::text,
+			COALESCE(device_brand, ''), COALESCE(device_model, ''), COALESCE(device_model_code, ''), COALESCE(device_name, ''),
+			COALESCE(os_version, ''), COALESCE(browser_version, ''), COALESCE(browser_engine, ''),
+			is_in_app_browser, COALESCE(in_app_type, ''),
+			device_memory, device_cores, device_touchpoints, COALESCE(viewport_res, ''),
+			screen_color_depth, COALESCE(pixel_ratio, ''), COALESCE(timezone, ''), COALESCE(language, ''),
+			COALESCE(platform_info, ''), COALESCE(connection_type, ''), COALESCE(device_state, ''),
+			is_vpn, is_proxy, is_tor, COALESCE(vpn_provider, ''), vpn_confidence, COALESCE(vpn_reason, ''),
+			COALESCE(fbclid, ''), COALESCE(fbc, ''), COALESCE(fbp, ''), COALESCE(igshid, ''), COALESCE(meta_click_id, ''),
+			COALESCE(utm_placement, ''), COALESCE(campaign_name, ''), COALESCE(adset_name, ''),
+			COALESCE(ad_name, ''), COALESCE(ad_account_id, ''), COALESCE(site_source_name, ''),
+			visible_seconds, hidden_seconds, session_count, COALESCE(landing_path, ''), COALESCE(referrer_host, ''),
+			is_new_visitor, has_video_play, has_zalo_click, has_tel_click,
+			form_submit_attempts, form_validation_errors,
+			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100,
 			TO_CHAR(first_seen AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 			TO_CHAR(last_seen AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM analytics_sessions
@@ -1616,6 +1929,20 @@ func (s *Store) GetSessionDetail(sessionID string) (*models.AnalyticsSession, er
 		&sess.IsBot, &sess.BotScore, &sess.BotReasons, &sess.DurationSeconds, &sess.MaxScrollPercent,
 		&sess.TotalClicks, &sess.HasInteractedForm, &sess.ConvertedLead, &sess.Phone, &sess.LeadID,
 		&actionsStr,
+		&sess.DeviceBrand, &sess.DeviceModel, &sess.DeviceModelCode, &sess.DeviceName,
+		&sess.OSVersion, &sess.BrowserVersion, &sess.BrowserEngine,
+		&sess.IsInAppBrowser, &sess.InAppType,
+		&sess.DeviceMemory, &sess.DeviceCores, &sess.DeviceTouchpoints, &sess.ViewportRes,
+		&sess.ScreenColorDepth, &sess.PixelRatio, &sess.Timezone, &sess.Language,
+		&sess.PlatformInfo, &sess.ConnectionType, &sess.DeviceState,
+		&sess.IsVPN, &sess.IsProxy, &sess.IsTor, &sess.VPNProvider, &sess.VPNConfidence, &sess.VPNReason,
+		&sess.Fbclid, &sess.Fbc, &sess.Fbp, &sess.Igshid, &sess.MetaClickID,
+		&sess.UTMPlacement, &sess.CampaignName, &sess.AdsetName,
+		&sess.AdName, &sess.AdAccountID, &sess.SiteSourceName,
+		&sess.VisibleSeconds, &sess.HiddenSeconds, &sess.SessionCount, &sess.LandingPath, &sess.ReferrerHost,
+		&sess.IsNewVisitor, &sess.HasVideoPlay, &sess.HasZaloClick, &sess.HasTelClick,
+		&sess.FormSubmitAttempts, &sess.FormValidationError,
+		&sess.ScrollDepth25, &sess.ScrollDepth50, &sess.ScrollDepth75, &sess.ScrollDepth90, &sess.ScrollDepth100,
 		&sess.FirstSeen,
 		&sess.LastSeen,
 	)
@@ -1627,11 +1954,11 @@ func (s *Store) GetSessionDetail(sessionID string) (*models.AnalyticsSession, er
 }
 
 // GetGeoAnalytics trả về thống kê lượt truy cập, leads và tỷ lệ chuyển đổi CR% theo tỉnh thành, vùng miền và ISP
-func (s *Store) GetGeoAnalytics(landingID string, nguon string) (map[string]interface{}, error) {
+func (s *Store) GetGeoAnalytics(landingID string, nguon string, fromDate string, toDate string, fromHour int, toHour int) (map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClause(landingID, nguon)
+	whereClause, args := buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate, 0, fromHour, toHour)
 
 	// 1. Top Tỉnh / Thành phố
 	cityQuery := fmt.Sprintf(`
@@ -1759,11 +2086,11 @@ func (s *Store) GetGeoAnalytics(landingID string, nguon string) (map[string]inte
 }
 
 // GetAdPlacementAnalytics trả về thống kê lượt truy cập, leads và tỷ lệ chuyển đổi chi tiết theo Nền tảng & Vị trí quảng cáo
-func (s *Store) GetAdPlacementAnalytics(landingID string, nguon string) (map[string]interface{}, error) {
+func (s *Store) GetAdPlacementAnalytics(landingID string, nguon string, fromDate string, toDate string, fromHour int, toHour int) (map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClause(landingID, nguon)
+	whereClause, args := buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate, 0, fromHour, toHour)
 
 	// 1. Phân bổ theo Nền tảng (Meta Ads, Google Ads, TikTok Ads, Zalo Ads, Direct, Referral...)
 	platformQuery := fmt.Sprintf(`

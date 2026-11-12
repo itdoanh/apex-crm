@@ -76,6 +76,13 @@ func main() {
 		log.Printf("[WARN] Không thể seed landing page mặc định: %v", err)
 	}
 
+	// Tự động seed landing 'doanh_chung' (buổi chia sẻ đầu tư hàng hóa phái sinh)
+	// từ mã nguồn trong `frontend/landing/doanh_chung`.
+	// KHÔNG ghi đè nếu landing đã tồn tại (để giữ chỉnh sửa trong Code Studio).
+	if err := store.SeedDoanhChungLanding(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể seed landing doanh_chung: %v", err)
+	}
+
 	// Đồng bộ file tĩnh dùng chung (tracker.js, config.json) từ đĩa vào bảng landing_files.
 	// Edge Router phục vụ file theo thứ tự: landing_files (DB) TRƯỚC, rồi mới tới đĩa.
 	// Nếu không sync, bản DB cũ sẽ "che" bản đĩa mới ⇒ sửa code trong git không có tác dụng.
@@ -222,6 +229,13 @@ func main() {
 	mux.HandleFunc("/api/analytics/ad-placements", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleAdPlacementAnalytics)))
 	mux.HandleFunc("/api/analytics/sessions", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleListSessions)))
 	mux.HandleFunc("/api/analytics/session/", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleSessionDetail)))
+	// Báo cáo analytics mở rộng (2026-11-12)
+	mux.HandleFunc("/api/analytics/timeseries", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleTimeseries)))
+	mux.HandleFunc("/api/analytics/devices", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleDevices)))
+	mux.HandleFunc("/api/analytics/meta-macros", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleMetaMacros)))
+	mux.HandleFunc("/api/analytics/bots", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleBotAnalytics)))
+	mux.HandleFunc("/api/analytics/vpn", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleVPNAnalytics)))
+	mux.HandleFunc("/api/analytics/landing-report", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleLandingReport)))
 
 	// Lead Ingestion & Management APIs (POST submit lead là public, GET danh sách và thao tác là bảo vệ Admin)
 	mux.HandleFunc("/api/leads", leadHandler.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {

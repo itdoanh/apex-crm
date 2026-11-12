@@ -17,6 +17,21 @@ import (
 // Nên đặt CHALLENGE_SECRET trong .env để có thể rotate secret mà không cần sửa code.
 const defaultChallengeSecretKey = "apex_fintech_security_secret_2026_salt_xyz99"
 
+// challengeTTL là thời hạn của một thử thách Proof-of-Work.
+//
+// Mặc định 10 phút (thay vì 5 phút). Lý do: khách có thể mở landing, đọc nội dung
+// và điền form trong thời gian dài (đặc biệt là form nhiều trường ở landing bán
+// chứng khoán). Challenge lấy lúc tải trang mà hết hạn sau 5 phút ⇒ lead thật
+// bị từ chối với lý do "hết hạn" ⇒ mất lead (bug 2026-11-12).
+const challengeTTL = 10 * time.Minute
+
+// challengeClockSkewGrace là sai số đồng hồ được chấp nhận (giây).
+//
+// Server đồng bộ NTP chưa hoàn hảo, client cũng có thể lệch vài giây. Nếu kiểm tra
+// hết hạn quá khắt, một challenge còn hợp lệ có thể bị từ chối ⇒ mất lead thật.
+// Dung sai 60 giây là quá đủ để hấp thụ sai số mà vẫn chặn được replay cũ.
+const challengeClockSkewGrace = 60 * time.Second
+
 // Mã lý do xác thực Proof-of-Work.
 // Dùng mã thay vì so khớp chuỗi để phân loại chính xác trong handler.
 const (
@@ -122,7 +137,7 @@ func GenerateChallenge(difficulty int) (*ChallengeResponse, error) {
 	}
 	salt := hex.EncodeToString(rawSalt)
 
-	expiresAt := time.Now().Add(5 * time.Minute).Unix()
+	expiresAt := time.Now().Add(challengeTTL).Unix()
 
 	// Ký HMAC để đảm bảo challenge không bị client sửa đổi thông số
 	message := fmt.Sprintf("%s:%s:%d:%d", challengeID, salt, difficulty, expiresAt)
@@ -163,7 +178,10 @@ func VerifyChallenge(challengeID, salt string, difficulty int, expiresAt int64, 
 	}
 
 	// 1. Kiểm tra thời hạn hiệu lực
-	if time.Now().Unix() > expiresAt {
+	//
+	// Chấp nhận sai số đồng hồ (clock skew) trong khoảng `challengeClockSkewGrace`
+	// để không mất lead thật khi server/client lệch vài giây.
+	if time.Now().Add(challengeClockSkewGrace).Unix() > expiresAt {
 		return PowResult{OK: false, Code: PowCodeExpired, Reason: "Thử thách xác thực đã hết hạn"}
 	}
 

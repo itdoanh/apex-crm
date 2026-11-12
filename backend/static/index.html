@@ -519,6 +519,203 @@
         <!-- ========================================================== -->
         <section id="sectionTabAnalytics" class="hidden space-y-6">
 
+            <!-- ========================================================== -->
+            <!-- BÁO CÁO RIÊNG TỪNG LANDING PAGE (2026-11-12)                 -->
+            <!-- Mỗi landing có bộ thống kê + biểu đồ + báo cáo riêng        -->
+            <!-- ========================================================== -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+                <!-- Header + chọn landing -->
+                <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie text-orange-400"></i>
+                            <span>Báo Cáo Riêng Theo Landing Page</span>
+                        </h2>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Chọn 1 landing page để xem toàn bộ số liệu riêng: view / người thật / bot / lead / CR / thiết bị / VPN / Meta Ads</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                            <span class="text-[11px] text-slate-400"><i class="fa-solid fa-layer-group text-cyan-400 mr-1"></i>Landing:</span>
+                            <select id="reportLandingSelect" onchange="onReportLandingChange()" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer max-w-[220px]">
+                                <option value="">— Tất cả landing —</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-1">
+                            <span class="text-[11px] text-slate-400">Khoảng:</span>
+                            <button data-lr-granularity="hour" onclick="setReportGranularity('hour')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Giờ</button>
+                            <button data-lr-granularity="day" onclick="setReportGranularity('day')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Ngày</button>
+                            <button data-lr-granularity="week" onclick="setReportGranularity('week')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Tuần</button>
+                        </div>
+                        <button onclick="loadLandingReport(true)" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate"></i> Tải lại
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPI grid -->
+                <div class="p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Tổng Lượt Xem</div>
+                        <div id="lrTotalViews" class="text-xl font-black text-white font-mono">0</div>
+                        <div id="lrUniqueVisitors" class="text-[11px] text-slate-500 mt-0.5">0 khách unique</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-emerald-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Người Thật</div>
+                        <div id="lrHumanVisitors" class="text-xl font-black text-emerald-400 font-mono">0</div>
+                        <div id="lrBotVisitors" class="text-[11px] text-slate-500 mt-0.5">0 bot</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-orange-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Leads</div>
+                        <div id="lrTotalLeads" class="text-xl font-black text-orange-400 font-mono">0</div>
+                        <div id="lrConversionRate" class="text-[11px] text-slate-500 mt-0.5">CR 0%</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-cyan-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Thời Gian Xem TB</div>
+                        <div id="lrAvgDuration" class="text-xl font-black text-cyan-300 font-mono">0s</div>
+                        <div id="lrAvgScroll" class="text-[11px] text-slate-500 mt-0.5">scroll 0%</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-rose-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">VPN / Proxy</div>
+                        <div id="lrVpnVisitors" class="text-xl font-black text-rose-300 font-mono">0</div>
+                        <div id="lrVpnRate" class="text-[11px] text-slate-500 mt-0.5">0% lượt</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-purple-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Trình Duyệt Trong App</div>
+                        <div id="lrInAppVisitors" class="text-xl font-black text-purple-300 font-mono">0</div>
+                        <div id="lrMetaClicks" class="text-[11px] text-slate-500 mt-0.5">0 click Meta</div>
+                    </div>
+                </div>
+
+                <!-- Biểu đồ timeseries + thiết bị -->
+                <div class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 border-t border-slate-800">
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4 lg:col-span-2">
+                        <h3 class="text-xs font-bold text-white mb-1 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-area text-orange-400"></i>
+                            <span id="lrTimeseriesTitle">Xu Hướng Lượt Xem / Người Thật / Bot / Lead</span>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 mb-3" id="lrTimeseriesSub">—</p>
+                        <div class="h-64 relative">
+                            <canvas id="chartReportTimeseries"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-1 flex items-center gap-1.5">
+                            <i class="fa-solid fa-mobile-screen text-cyan-400"></i>
+                            <span>Top Thiết Bị (Model Thật)</span>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 mb-3">VD: "Samsung Galaxy A52", "iPhone 13"</p>
+                        <div class="h-64 relative">
+                            <canvas id="chartReportDevices"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- In-app browser + bot + vpn + browser -->
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 border-t border-slate-800">
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-window-maximize text-purple-400"></i>
+                            <span>Trình Duyệt Trong App vs Ngoài</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportInApp"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-robot text-rose-400"></i>
+                            <span>Top Trình Duyệt</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportBrowser"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                            <span>Lý Do Phát Hiện Bot</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportBots"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-sky-400"></i>
+                            <span>Nhà Cung Cấp VPN</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportVPN"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng Meta Ads Macros -->
+                <div class="border-t border-slate-800">
+                    <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <i class="fa-brands fa-meta text-blue-400"></i>
+                                <span>Hiệu Quả Meta Ads (Campaign / Adset / Ad / Placement)</span>
+                            </h3>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Dùng URL Parameters: <code class="text-slate-300">utm_campaign={{campaign.id}}&amp;utm_content={{adset.id}}&amp;utm_term={{ad.id}}&amp;utm_placement={{placement}}&amp;campaign_name={{campaign.name}}&amp;adset_name={{adset.name}}&amp;ad_name={{ad.name}}</code></p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">Chiến Dịch</th>
+                                    <th class="py-3 px-4">Nhóm QC</th>
+                                    <th class="py-3 px-4">Bài QC</th>
+                                    <th class="py-3 px-4">Vị Trí</th>
+                                    <th class="py-3 px-4 text-center">View</th>
+                                    <th class="py-3 px-4 text-center">Người Thật</th>
+                                    <th class="py-3 px-4 text-center">Lead</th>
+                                    <th class="py-3 px-4 text-center">CR%</th>
+                                    <th class="py-3 px-4 text-center">Meta Click</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lrMacroTableBody" class="divide-y divide-slate-800/70">
+                                <tr><td colspan="9" class="py-6 text-center text-slate-500">Chưa có dữ liệu</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Bảng thiết bị chi tiết -->
+                <div class="border-t border-slate-800">
+                    <div class="p-4 bg-slate-850 border-b border-slate-800">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-mobile-screen-button text-cyan-400"></i>
+                            <span>Bảng Thiết Bị &amp; Trình Duyệt Chi Tiết</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Tên thương mại thiết bị đã phân tích từ User-Agent (VD: SM-A525F → Samsung Galaxy A52)</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">Thiết Bị</th>
+                                    <th class="py-3 px-4">Thương Hiệu</th>
+                                    <th class="py-3 px-4">Mã Model</th>
+                                    <th class="py-3 px-4 text-center">View</th>
+                                    <th class="py-3 px-4 text-center">Người Thật</th>
+                                    <th class="py-3 px-4 text-center">Lead</th>
+                                    <th class="py-3 px-4 text-center">CR%</th>
+                                    <th class="py-3 px-4 text-center">Thời Gian TB</th>
+                                    <th class="py-3 px-4 text-center">Scroll TB</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lrDeviceTableBody" class="divide-y divide-slate-800/70">
+                                <tr><td colspan="9" class="py-6 text-center text-slate-500">Chưa có dữ liệu</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
             <!-- Row 1: Biểu đồ Giờ Vàng (24h) & Xu Hướng Ngày (30d) -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Chart 1: Khung Giờ Vàng 24h -->

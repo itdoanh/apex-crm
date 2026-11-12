@@ -474,6 +474,95 @@ Mỗi landing có một cây file riêng trong bảng `landing_files`, quản l�
 
 Backend tự parse `ad_platform` / `ad_placement` từ UTM + referrer.
 
+### 🟢 Chuỗi UTM Meta Ads chuẩn (8 macros — cấu hình 1 lần trong Meta Ads Manager)
+
+Dán vào **URL Parameters** ở cấp độ Quảng cáo (Ad level):
+
+```
+utm_medium=paid&utm_source={{site_source_name}}&utm_placement={{placement}}&utm_campaign={{campaign.id}}&utm_content={{adset.id}}&utm_term={{ad.id}}&campaign_name={{campaign.name}}&adset_name={{adset.name}}&ad_name={{ad.name}}
+```
+
+| Tham số | Macro Meta | Ý nghĩa | Ghi vào DB |
+|---|---|---|---|
+| `utm_source` | `{{site_source_name}}` | `fb`/`ig`/`msg`/`an` | `utm_source` (đã chuẩn hoá) |
+| `utm_placement` | `{{placement}}` | `Facebook_Reels`, `Facebook_Stories`, `Audience_Network_Rewarded_Videos`… | `utm_placement` + `ad_placement` |
+| `utm_campaign` | `{{campaign.id}}` | ID chiến dịch | `utm_campaign` |
+| `utm_content` | `{{adset.id}}` | ID nhóm quảng cáo | `utm_content` |
+| `utm_term` | `{{ad.id}}` | ID bài quảng cáo | `utm_term` |
+| `campaign_name` | `{{campaign.name}}` | Tên chiến dịch | `campaign_name` |
+| `adset_name` | `{{adset.name}}` | Tên nhóm (chứa thông tin target) | `adset_name` |
+| `ad_name` | `{{ad.name}}` | Tên bài quảng cáo | `ad_name` |
+
+> `{{account.id}}` **không tồn tại** trong Meta. Muốn phân biệt nhiều tài khoản quảng cáo
+> cùng đổ về 1 landing → gõ cứng `&acc_id=tk01` trong ô URL Parameters.
+
+**Định danh người dùng thay thế UID Facebook** (được đọc tự động bởi `tracker.js`):
+
+| Tham số | Nguồn | Ghi vào DB |
+|---|---|---|
+| `fbclid` | Query string Meta tự gắn khi click | `fbclid` |
+| `_fbc` | Cookie Meta Pixel | `fbc` |
+| `_fbp` | Cookie Meta Pixel | `fbp` |
+| `igshid` | Instagram share link | `igshid` |
+| `meta_click_id` | Một số dạng CTA của Meta | `meta_click_id` |
+
+> `_fbc` được **dựng tự động** theo chuẩn Meta (`fb.1.0.<fbclid>`) nếu trình duyệt
+> chưa gắn cookie `_fbc` ⇒ CAPI stitch được cả khi Pixel bị chặn.
+
+### 📱 Thu thập thông tin thiết bị & hành vi (2026-11-12)
+
+`tracker.js` thu thập **toàn bộ** những gì web có thể biết về người dùng:
+
+| Nhóm | Trường |
+|---|---|
+| Trình duyệt | `browser`, `browser_version`, `browser_engine` |
+| In-app browser | `is_in_app_browser`, `in_app_type` — phân biệt `Facebook In-App` (`FBAV`/`FBAN`), `Instagram`, `Zalo`, `TikTok`, `Cốc Cốc` vs trình duyệt ngoài |
+| Thiết bị | `device_brand`, `device_model`, `device_model_code`, `device_name` — map mã thật (`SM-A525F` → **Samsung Galaxy A52**), iOS UA → **iPhone 15 Pro**… |
+| Phần cứng | `device_memory` (RAM MB), `device_cores` (CPU), `device_touchpoints`, `screen_res`, `viewport_res`, `screen_color_depth`, `pixel_ratio` |
+| Môi trường | `timezone`, `language`, `platform_info`, `connection_type` (4g/5g), `device_state` |
+| VPN | `is_vpn`, `is_proxy`, `is_tor`, `vpn_provider`, `vpn_confidence`, `vpn_reason` |
+| Hành vi | `duration_seconds`, `max_scroll_percent` (mốc 25/50/75/90/100%), `total_clicks`, `visible_seconds`, `hidden_seconds`, `has_interacted_form`, `form_submit_attempts`, `video_play`, `zalo_clicks`, `tel_clicks`, `events[]` (timeline) |
+
+### 🔐 Proof-of-Work (PoW) — vòng đời challenge (fix 2026-11-12)
+
+| Mốc | Giá trị |
+|---|---|
+| TTL server | **600 giây** (10 phút) — `backend/security/challenge.go` |
+| Dung sai lệch đồng hồ | **60 giây** (clock skew grace) |
+| Biên an toàn client | **90 giây** — client tự lấy challenge mới nếu `expires_at <= now + 90` |
+| Hash format | `SHA-256(challenge_id + ":" + salt + ":" + solution)` — phải khớp **chính xác** client & server |
+| Difficulty | `3` ⇒ hash bắt đầu bằng `"000"` |
+
+**Luồng submit an toàn (client):**
+1. `ensureChallengeReady()` — nếu challenge sắp hết hạn → `GET /api/auth/challenge` lấy challenge mới và giải ngay.
+2. `disableSubmitButtons(true)` — **disable nút ngay khi click**, trước khi gọi mạng ⇒ chặn double-click.
+3. Khoá idempotency theo số điện thoại trong 1 khoảng thời gian ⇒ 1 số = 1 lần gửi.
+4. Server kiểm tra replay bằng `LoadOrStore` trên nonce ⇒ challenge dùng 1 lần là duy nhất.
+
+> ⚠️ **Sai format hash là nguyên nhân #2 gây lỗi PoW.** Client và server **phải** dùng
+> cùng công thức nối chuỗi. Xem `docs/SECURITY.md` mục PoW.
+
+### 🔒 Cách ly tracking giữa các landing (bắt buộc)
+
+`tracker.js` namespace hoá **toàn bộ** storage theo `landing_id`:
+
+| Storage | Key |
+|---|---|
+| visitor ID | `apex_vid_<landing_id>` |
+| session ID | `apex_session_id_<landing_id>` |
+| cờ đã đăng ký | `apex_lead_registered_<landing_id>` |
+| cookie dedup | `apex_dedup_<landing_id>` |
+
+⇒ Không bao giờ có chuyện visitor của landing A bị ghi nhận sang landing B.
+Landing mới **bắt buộc** khai báo:
+
+```html
+<script src="/p/doanh_chung/tracker.js"
+        data-landing-id="doanh_chung"
+        data-nguon="doanh_chung"></script>
+```
+và `config.json` phải có `landing_id` + `nguon` **khớp chính xác**.
+
 ### URL lead (`url`)
 
 Tracker gửi kèm `url: window.location.href` — **URL đầy đủ của trang đang đăng ký** kèm query string.
@@ -576,6 +665,49 @@ Code Studio (`Ctrl+S`) hoặc upload file qua File Manager.
 - Hoặc dùng Feature Flag trong CRM
 
 > ⚠️ Khi tắt `is_active`, nhớ `landingCache.Reload()` (CRM tự làm, nhưng nếu sửa trực tiếp DB thì phải restart backend).
+
+---
+
+## 9.1 Landing `doanh_chung` (thêm 2026-11-12)
+
+| Hạng mục | Giá trị |
+|---|---|
+| `landing_id` / `nguon` | `doanh_chung` |
+| Nguồn mã | `C:\code\apex_moi\apex\chungkhoan\chung` → copy vào `frontend/landing/doanh_chung/` |
+| File chính | `chung.html` |
+| Script | `assets/js/protect.js`, `assets/js/apex-adapter.js` |
+
+### Cấu trúc
+
+```
+frontend/landing/doanh_chung/
+├── chung.html
+├── config.json          ← landing_id + nguon = doanh_chung
+├── assets/
+│   ├── css/…
+│   ├── img/…
+│   └── js/
+│       ├── protect.js       ← chống chèn trùng, autofill-safe
+│       └── apex-adapter.js  ← bridge form → ApexTracker.sendLeadToBackend()
+```
+
+### Điểm khác biệt so với landing cũ
+
+| Điểm | `landing_cu` / `mxv_080_online` | `doanh_chung` |
+|---|---|---|
+| Storage key | namespace theo `landing_id` | namespace theo `landing_id` (tách riêng hoàn toàn) |
+| Tracker | `tracker.js` (dùng chung) | `tracker.js` (dùng chung) — namespace tự động theo `landing_id` |
+| Bridge form | inline script | `assets/js/apex-adapter.js` — 1 nơi duy nhất gọi `sendLeadToBackend()` |
+| Meta Pixel | trong `settings` CRM | trong `settings` CRM (không hardcode trong HTML) |
+| Google Sheets | qua API `/api/leads` | qua API `/api/leads` — **không** hardcode secret trong file |
+
+### ⚠️ Quy tắc
+
+1. **KHÔNG** hardcode Google Sheets API key / script URL vào HTML của landing.
+   `apex-adapter.js` chỉ expose `window.ApexSheetsDirect` làm shim tương thích, nhưng
+   dữ liệu vẫn đi qua `POST /api/leads` ⇒ không rò rỉ secret.
+2. **MỘT** handler gọi `ApexTracker.sendLeadToBackend()` (xem mục 3 mục 5).
+3. `data-landing-id` và `data-nguon` trong thẻ `<script>` **phải** là `doanh_chung`.
 
 ---
 

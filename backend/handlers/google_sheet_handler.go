@@ -678,6 +678,49 @@ func (h *GoogleSheetHandler) HandleGetDefaultMappings(w http.ResponseWriter, r *
 		{"key": "referrer", "label": "Referrer (Trang Trước)"},
 		{"key": "tracking_json", "label": "Toàn Bộ JSON Tracking"},
 		{"key": "custom_text", "label": "Văn Bản Tùy Chọn Cố Định"},
+
+		// ─── Meta Ads macros (2026-11-12) ───────────────────────────
+		{"key": "utm_placement", "label": "Meta Placement ({{placement}})"},
+		{"key": "campaign_name", "label": "Meta Campaign Name"},
+		{"key": "adset_name", "label": "Meta Adset Name"},
+		{"key": "ad_name", "label": "Meta Ad Name"},
+		{"key": "ad_account_id", "label": "Meta Account ID"},
+		{"key": "site_source_name", "label": "Meta Site Source Name"},
+
+		// ─── Định danh lượt nhấp Meta (CAPI) ─────────────────────────
+		{"key": "fbclid", "label": "Meta Click ID (fbclid)"},
+		{"key": "fbc", "label": "Meta Cookie _fbc"},
+		{"key": "fbp", "label": "Meta Cookie _fbp"},
+		{"key": "meta_click_id", "label": "Meta Click ID Tổng"},
+
+		// ─── Thiết bị & trình duyệt (2026-11-12) ───────────────────
+		{"key": "device_brand", "label": "Hãng Thiết Bị"},
+		{"key": "device_name", "label": "Tên Thiết Bị (Model Thật)"},
+		{"key": "device_model_code", "label": "Mã Model Thiết Bị"},
+		{"key": "browser_version", "label": "Phiên Bản Trình Duyệt"},
+		{"key": "is_in_app_browser", "label": "Trình Duyệt Trong App"},
+		{"key": "in_app_type", "label": "Loại App (FB/IG/Zalo/TikTok)"},
+		{"key": "device_memory", "label": "RAM (GB)"},
+		{"key": "device_cores", "label": "Số Lõi CPU"},
+		{"key": "device_touchpoints", "label": "Số Điểm Chạm"},
+		{"key": "viewport_res", "label": "Kích Thước Viewport"},
+		{"key": "screen_color_depth", "label": "Độ Sâu Màu Màn Hình"},
+		{"key": "pixel_ratio", "label": "Pixel Ratio"},
+		{"key": "timezone", "label": "Múi Giờ"},
+		{"key": "language", "label": "Ngôn Ngữ"},
+		{"key": "connection_type", "label": "Loại Kết Nối (4g/5g)"},
+		{"key": "device_state", "label": "Trạng Thái Thiết Bị"},
+
+		// ─── VPN & hành vi (2026-11-12) ─────────────────────────────
+		{"key": "is_vpn", "label": "Dùng VPN"},
+		{"key": "is_proxy", "label": "Dùng Proxy"},
+		{"key": "is_tor", "label": "Dùng Tor"},
+		{"key": "vpn_provider", "label": "Nhà Cung Cấp VPN"},
+		{"key": "vpn_confidence", "label": "Độ Tin Cậy VPN"},
+		{"key": "vpn_reason", "label": "Lý Do Phát Hiện VPN"},
+		{"key": "visible_seconds", "label": "Thời Gian Hiển Thị Trang"},
+		{"key": "hidden_seconds", "label": "Thời Gian Ẩn Trang"},
+		{"key": "session_count", "label": "Số Phiên Truy Cập"},
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -54,7 +54,7 @@ Hệ thống xử lý traffic quảng cáo tài chính có **CPA cao** → mỗi
 ```go
 challengeID := "ch_" + hex(random 16 bytes)
 salt        := hex(random 16 bytes)
-expiresAt   := now + 5 phút
+expiresAt   := now + 10 phút          // challengeTTL
 message     := challengeID + ":" + salt + ":" + difficulty + ":" + expiresAt
 signature   := HMAC-SHA256(message, challengeSecretKey)
 ```
@@ -67,7 +67,7 @@ Server trả về `{ challenge_id, salt, difficulty, expires_at, signature }`.
 ```
 
 **Server verify** (`VerifyChallenge`) — 4 bước:
-1. **Hết hạn?** `now > expiresAt` → fail.
+1. **Hết hạn?** `now + 60s > expiresAt` → fail. (Dung sai lệch đồng hồ 60 giây — `challengeClockSkewGrace`)
 2. **Chữ ký HMAC hợp lệ?** So sánh bằng `hmac.Equal` (constant-time) → fail nếu client sửa difficulty/expiresAt.
 3. **Đúng bài toán?** `SHA256(challenge_id + ":" + salt + ":" + solution)` phải bắt đầu bằng `difficulty` chữ `"0"`.
 4. **Replay?** Key = `challenge_id:solution` lưu trong `sync.Map` (`usedNonces`), TTL 10 phút → đã dùng thì fail.
@@ -145,13 +145,31 @@ Cả 3 đều gọi `ApexTracker.sendLeadToBackend()` ⇒ **cùng 1 payload** (k
 
 > ⚠️ **Không được phá autofill-safe** khi sửa `tracker.js` (xem mục 4).
 
+### 🩹 4 nguyên nhân gốc gây lỗi "Proof-of-Work" (fix 2026-11-12)
+
+| # | Nguyên nhân | Dấu hiệu | Fix đã áp dụng |
+|---|---|---|---|
+| 1 | **Challenge hết hạn** — khách ở trên trang > TTL rồi mới bấm gửi | `challenge_expires_at` nhỏ hơn `time_on_page` | Server TTL 5′ → **10′**; client `ensureChallengeReady()` tự lấy challenge mới + giải lại **tại thời điểm submit** nếu `expires_at <= now + 90s` |
+| 2 | **Sai thuật toán băm / sai format chuỗi** | Hash không bắt đầu `"000"` dù solution đúng | Công thức **bắt buộc**: `SHA256(challenge_id + ":" + salt + ":" + solution)`, SHA-256 (không SHA-1/MD5) — phải **giống hệt** giữa `tracker.js` và `challenge.go` |
+| 3 | **Replay / double-click** | `challenge_signature` bị từ chối lần gửi thứ 2 | Client `disableSubmitButtons(true)` **ngay khi click** (trước khi gọi mạng) + khoá idempotency theo SĐT; server `LoadOrStore` nonce ⇒ challenge dùng 1 lần |
+| 4 | **Lệch đồng hồ hệ thống** | Challenge vừa tạo đã báo hết hạn | Server chấp nhận sai số **60 giây** (`challengeClockSkewGrace`) |
+
+> ✅ **Đã kiểm tra server production (2026-11-11)**: `date /T` trên `WS2025` = `Thu 11/12/2026`,
+> khớp với giờ local ⇒ **không** có clock skew. Nguyên nhân chính là #1 (hết hạn) và #3 (double-click).
+
+> ⚠️ **Lưu ý thứ tự ưu tiên khi sửa PoW**: đừng đụng vào `usedNonces`/`duplicateSubmitWindow`.
+> Lớp bảo vệ #1 (fingerprint server) là lớp duy nhất **không phụ thuộc client** ⇒
+> vẫn giữ được tín hiệu "gửi trùng do client" mà không ghi lead thật vào vùng cách ly.
+
 ### Cấu hình
 
 | Tham số | Giá trị | Vị trí |
 |---|---|---|
 | Difficulty mặc định | `3` (SHA-256 bắt đầu bằng `"000"`, client mất ~15–30ms) | `challenge.go` |
 | Difficulty tối đa | `6` | `ParseDifficulty` |
-| TTL challenge | 5 phút | `GenerateChallenge` |
+| TTL challenge | **10 phút** (`challengeTTL`) — nâng từ 5 phút 2026-11-12 vì khách đọc/điền form lâu | `GenerateChallenge` |
+| Dung sai lệch đồng hồ | **60 giây** (`challengeClockSkewGrace`) | `challenge.go` |
+| Biên an toàn client | **90 giây** — client tự lấy challenge mới nếu `expires_at <= now + 90` | `tracker.js` → `ensureChallengeReady()` |
 | TTL nonce cache | 10 phút, dọn mỗi 5 phút | `usedNonces` |
 | Cửa sổ "gửi trùng do client" | 60 giây | `duplicateSubmitWindow` |
 | Khoá gửi trùng phía client | 30 giây | `tracker.js` → `LEAD_DEDUP_WINDOW_MS` |

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -186,17 +187,123 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 	// Trích xuất IP thực và User-Agent
 	rawUA := r.UserAgent()
 
-	// Nhận diện thiết bị và trình duyệt nếu client chưa truyền
-	dev, brw, osName := parseUserAgentInfo(rawUA)
-	if p.DeviceType == "" {
-		p.DeviceType = dev
+	// ─── Phân tích thiết bị chi tiết (model thật, trình duyệt trong app, ...) ───
+	//
+	// Ưu tiên dữ liệu client gửi lên (JS có thể đọc navigator.userAgentData),
+	// fallback về phân tích User-Agent phía server.
+	if p.DeviceType == "" || p.Browser == "" || p.OS == "" || p.DeviceModel == "" {
+		devInfo := security.ParseDeviceInfo(rawUA)
+		if p.DeviceType == "" {
+			p.DeviceType = devInfo.DeviceType
+		}
+		if p.Browser == "" {
+			p.Browser = devInfo.Browser
+		}
+		if p.OS == "" {
+			p.OS = devInfo.OS
+		}
+		if p.DeviceBrand == "" {
+			p.DeviceBrand = devInfo.Brand
+		}
+		if p.DeviceModel == "" {
+			p.DeviceModel = devInfo.Model
+		}
+		if p.DeviceModelCode == "" {
+			p.DeviceModelCode = devInfo.ModelCode
+		}
+		if p.DeviceName == "" {
+			p.DeviceName = devInfo.Model
+		}
+		if p.OSVersion == "" {
+			p.OSVersion = devInfo.OSVersion
+		}
+		if p.BrowserVersion == "" {
+			p.BrowserVersion = devInfo.BrowserVersion
+		}
+		if p.BrowserEngine == "" {
+			p.BrowserEngine = devInfo.Engine
+		}
+		if !p.IsInAppBrowser && devInfo.IsInAppBrowser {
+			p.IsInAppBrowser = true
+			p.InAppType = devInfo.InAppType
+		}
+		if p.PlatformInfo == "" {
+			p.PlatformInfo = devInfo.Platform
+		}
 	}
-	if p.Browser == "" {
-		p.Browser = brw
+
+	// ─── Phát hiện VPN / Proxy / Tor ───
+	//
+	// Dựa trên: IP thuộc dải datacenter/VPN đã biết + header proxy tiêu chuẩn.
+	if !p.IsVPN && !p.IsProxy {
+		headers := map[string]string{}
+		for _, key := range []string{
+			"X-Forwarded-For", "X-Real-IP", "Via", "X-Proxy-Id",
+			"Proxy-Connection", "X-Forwarded-Proto", "CF-Connecting-IP",
+		} {
+			if v := r.Header.Get(key); v != "" {
+				headers[strings.ToLower(key)] = v
+			}
+		}
+		vpn := security.ResolveVPN(clientIP, headers)
+		if vpn != nil {
+			if vpn.IsVPN {
+				p.IsVPN = true
+			}
+			if vpn.IsProxy {
+				p.IsProxy = true
+			}
+			if vpn.IsTor {
+				p.IsTor = true
+			}
+			if p.VPNProvider == "" {
+				p.VPNProvider = vpn.Provider
+			}
+			if vpn.ConfidencePct > p.VPNConfidence {
+				p.VPNConfidence = vpn.ConfidencePct
+			}
+			if p.VPNReason == "" {
+				p.VPNReason = vpn.Reason
+			}
+		}
 	}
-	if p.OS == "" {
-		p.OS = osName
+
+	// ─── Thu thập mã định danh lượt nhấp Meta (CAPI) ───
+	//
+	// Ưu tiên giá trị client gửi lên (đã đọc cookie `_fbc`/`_fbp` ở JS),
+	// fallback đọc từ query string entry_url.
+	if p.Fbclid == "" || p.Fbc == "" || p.Fbp == "" {
+		cookies := map[string]string{}
+		if c, err := r.Cookie("fbc"); err == nil {
+			cookies["_fbc"] = c.Value
+		}
+		if c, err := r.Cookie("fbp"); err == nil {
+			cookies["_fbp"] = c.Value
+		}
+		ids := security.ResolveMetaClickIDs(p.EntryURL, cookies)
+		if p.Fbclid == "" {
+			p.Fbclid = ids.Fbclid
+		}
+		if p.Fbc == "" {
+			p.Fbc = ids.Fbc
+		}
+		if p.Fbp == "" {
+			p.Fbp = ids.Fbp
+		}
+		if p.Igshid == "" {
+			p.Igshid = ids.Igshid
+		}
 	}
+	if p.MetaClickID == "" && p.Fbclid != "" {
+		p.MetaClickID = p.Fbclid
+	}
+
+	// ─── Bổ sung macro Meta Ads từ query string nếu client chưa gửi ───
+	//
+	// Meta thay thế macro trong URL lúc click, ví dụ:
+	//   ?utm_campaign={{campaign.id}}&campaign_name={{campaign.name}}
+	// ⇒ sau khi Meta render, URL thật sẽ chứa giá trị cụ thể.
+	applyMetaMacrosFromURL(&p)
 
 	// Kiểm tra bot phía server
 	serverIsBot, serverScore, serverReason := detectServerBot(rawUA)
@@ -264,12 +371,75 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// applyMetaMacrosFromURL bổ sung các macro Meta Ads còn thiếu từ query string.
+//
+// Một số landing (đặc biệt là landing export từ bên thứ ba) chỉ gửi URL mà
+// không tách sẵn từng tham số. Hàm này đọc trực tiếp từ URL để không bỏ sót
+// thông số quảng cáo.
+func applyMetaMacrosFromURL(p *models.AnalyticsEventPayload) {
+	if p.EntryURL == "" {
+		return
+	}
+	u, err := url.Parse(p.EntryURL)
+	if err != nil {
+		return
+	}
+	q := u.Query()
+
+	pick := func(dst *string, keys ...string) {
+		if *dst != "" {
+			return
+		}
+		for _, k := range keys {
+			if v := strings.TrimSpace(q.Get(k)); v != "" {
+				*dst = v
+				return
+			}
+		}
+	}
+
+	pick(&p.UTMSource, "utm_source")
+	pick(&p.UTMMedium, "utm_medium")
+	pick(&p.UTMCampaign, "utm_campaign")
+	pick(&p.UTMContent, "utm_content")
+	pick(&p.UTMTerm, "utm_term")
+	pick(&p.UTMPlacement, "utm_placement", "placement")
+	pick(&p.CampaignName, "campaign_name")
+	pick(&p.AdsetName, "adset_name")
+	pick(&p.AdName, "ad_name")
+	pick(&p.AdAccountID, "ad_account_id", "acc_id", "ad_account")
+	pick(&p.SiteSourceName, "site_source_name")
+	pick(&p.Fbclid, "fbclid")
+	pick(&p.Igshid, "igshid")
+}
+
+
+// parseHourRange đọc from_hour / to_hour từ query string.
+// Trả về (-1, -1) nếu không có hoặc không hợp lệ.
+func parseHourRange(q url.Values) (int, int) {
+	fromHour := -1
+	toHour := -1
+	if v := strings.TrimSpace(q.Get("from_hour")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 23 {
+			fromHour = n
+		}
+	}
+	if v := strings.TrimSpace(q.Get("to_hour")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 23 {
+			toHour = n
+		}
+	}
+	return fromHour, toHour
+}
+
 // HandleOverview trả về báo cáo tổng quan
 func (h *AnalyticsHandler) HandleOverview(w http.ResponseWriter, r *http.Request) {
-	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	nguon := strings.TrimSpace(r.URL.Query().Get("nguon"))
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
 
-	overview, err := h.store.GetAnalyticsOverview(landingID, nguon)
+	overview, err := h.store.GetOverviewExtended(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), hourFrom, hourTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -284,12 +454,168 @@ func (h *AnalyticsHandler) HandleOverview(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// HandleTimeseries trả về chuỗi thời gian (giờ / ngày / tuần)
+func (h *AnalyticsHandler) HandleTimeseries(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+	granularity := q.Get("granularity")
+	if granularity == "" {
+		granularity = "day"
+	}
+	days := db.ParseIntSafe(q.Get("days"), 30)
+
+	f := db.NewAnalyticsFilter(landingID, nguon, q.Get("from_date"), q.Get("to_date"), days).WithHourRange(hourFrom, hourTo)
+	items, err := h.store.GetAnalyticsTimeSeries(f, granularity)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"granularity": granularity,
+		"data":        items,
+	})
+}
+
+// HandleDevices thống kê theo thiết bị / trình duyệt / in-app browser
+func (h *AnalyticsHandler) HandleDevices(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+	dimension := q.Get("dimension")
+	if dimension == "" {
+		dimension = "model"
+	}
+	limit := db.ParseIntSafe(q.Get("limit"), 20)
+
+	f := db.NewAnalyticsFilter(landingID, nguon, q.Get("from_date"), q.Get("to_date"), db.ParseIntSafe(q.Get("days"), 30)).WithHourRange(hourFrom, hourTo)
+	items, err := h.store.GetDeviceAnalytics(f, dimension, limit)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"dimension": dimension,
+		"data":      items,
+	})
+}
+
+// HandleMetaMacros thống kê theo bộ macro Meta Ads
+func (h *AnalyticsHandler) HandleMetaMacros(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+	limit := db.ParseIntSafe(q.Get("limit"), 50)
+
+	f := db.NewAnalyticsFilter(landingID, nguon, q.Get("from_date"), q.Get("to_date"), db.ParseIntSafe(q.Get("days"), 30)).WithHourRange(hourFrom, hourTo)
+	items, err := h.store.GetMetaMacroAnalytics(f, limit)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    items,
+	})
+}
+
+// HandleBotAnalytics thống kê bot chi tiết
+func (h *AnalyticsHandler) HandleBotAnalytics(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+
+	f := db.NewAnalyticsFilter(landingID, nguon, q.Get("from_date"), q.Get("to_date"), db.ParseIntSafe(q.Get("days"), 30)).WithHourRange(hourFrom, hourTo)
+	data, err := h.store.GetBotAnalytics(f, db.ParseIntSafe(q.Get("limit"), 20))
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    data,
+	})
+}
+
+// HandleVPNAnalytics thống kê VPN / Proxy / Tor
+func (h *AnalyticsHandler) HandleVPNAnalytics(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+
+	f := db.NewAnalyticsFilter(landingID, nguon, q.Get("from_date"), q.Get("to_date"), db.ParseIntSafe(q.Get("days"), 30)).WithHourRange(hourFrom, hourTo)
+	data, err := h.store.GetVPNAnalytics(f)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    data,
+	})
+}
+
+// HandleLandingReport báo cáo TỔNG HỢP riêng cho 1 landing page.
+//
+// Gom đủ: tổng quan, timeseries (giờ/ngày/tuần), thiết bị, macro Meta,
+// bot, VPN, địa lý, nguồn traffic, vị trí quảng cáo.
+func (h *AnalyticsHandler) HandleLandingReport(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
+	days := db.ParseIntSafe(q.Get("days"), 30)
+
+	report, err := h.store.GetLandingReportRange(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), days, hourFrom, hourTo)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    report,
+	})
+}
+
 // HandleLandingPerformance so sánh hiệu quả các Landing
 func (h *AnalyticsHandler) HandleLandingPerformance(w http.ResponseWriter, r *http.Request) {
-	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	nguon := strings.TrimSpace(r.URL.Query().Get("nguon"))
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
 
-	items, err := h.store.GetLandingPerformance(landingID, nguon)
+	items, err := h.store.GetLandingPerformance(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), hourFrom, hourTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -306,10 +632,12 @@ func (h *AnalyticsHandler) HandleLandingPerformance(w http.ResponseWriter, r *ht
 
 // HandleSourcePerformance thống kê theo nguồn và content
 func (h *AnalyticsHandler) HandleSourcePerformance(w http.ResponseWriter, r *http.Request) {
-	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	nguon := strings.TrimSpace(r.URL.Query().Get("nguon"))
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
 
-	items, err := h.store.GetSourcePerformance(landingID, nguon)
+	items, err := h.store.GetSourcePerformance(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), hourFrom, hourTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -381,10 +709,12 @@ func (h *AnalyticsHandler) HandleSessionDetail(w http.ResponseWriter, r *http.Re
 
 // HandleGeoAnalytics thống kê địa lý theo Tỉnh/Thành phố, Vùng miền và Nhà mạng viễn thông
 func (h *AnalyticsHandler) HandleGeoAnalytics(w http.ResponseWriter, r *http.Request) {
-	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	nguon := strings.TrimSpace(r.URL.Query().Get("nguon"))
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
 
-	geoData, err := h.store.GetGeoAnalytics(landingID, nguon)
+	geoData, err := h.store.GetGeoAnalytics(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), hourFrom, hourTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -401,10 +731,12 @@ func (h *AnalyticsHandler) HandleGeoAnalytics(w http.ResponseWriter, r *http.Req
 
 // HandleAdPlacementAnalytics thống kê chi tiết theo Nền tảng & Vị trí quảng cáo (FB vs Insta vs AN vs Messenger, Google Search vs GDN vs YouTube...)
 func (h *AnalyticsHandler) HandleAdPlacementAnalytics(w http.ResponseWriter, r *http.Request) {
-	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	nguon := strings.TrimSpace(r.URL.Query().Get("nguon"))
+	q := r.URL.Query()
+	landingID := strings.TrimSpace(q.Get("landing_id"))
+	nguon := strings.TrimSpace(q.Get("nguon"))
+	hourFrom, hourTo := parseHourRange(q)
 
-	adData, err := h.store.GetAdPlacementAnalytics(landingID, nguon)
+	adData, err := h.store.GetAdPlacementAnalytics(landingID, nguon, strings.TrimSpace(q.Get("from_date")), strings.TrimSpace(q.Get("to_date")), hourFrom, hourTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

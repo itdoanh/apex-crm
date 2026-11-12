@@ -1,0 +1,19 @@
+{
+  "landing_id": "doanh_chung",
+  "nguon": "doanh_chung",
+  "title": "Tối Ưu Dòng Tiền Đầu Tư 2026 | Buổi Chia Sẻ Trực Tuyến APEX Fintech - MXV",
+  "meta_description": "Buổi chia sẻ trực tuyến miễn phí 2 giờ cùng Chuyên gia Nguyễn Tuấn Anh. Học cách giao dịch hàng hóa phái sinh trong phiên, quản trị vốn và rủi ro.",
+  "og_image": "assets/img/apex_top1_thiphan_quy2_2026.webp",
+  "hotline": "0984386538",
+  "zalo_link": "https://zalo.me/0984386538",
+  "facebook_pixel_id": "",
+  "google_analytics_id": "",
+  "tiktok_pixel_id": "",
+  "custom_head_scripts": "",
+  "custom_body_scripts": "",
+  "form_config": {
+    "require_phone": true,
+    "require_name": true,
+    "success_redirect": "chucmung.html"
+  }
+}

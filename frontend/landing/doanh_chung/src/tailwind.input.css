@@ -1,0 +1,4 @@
+/* Tailwind CSS – bản build local cho landing chứng khoán (thay cho cdn.tailwindcss.com) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
