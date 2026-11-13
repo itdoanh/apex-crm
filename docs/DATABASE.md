@@ -206,6 +206,23 @@ bao giờ được tạo ⇒ `fbevents.js` tự tạo instance thứ hai ⇒ ph�
 |---|---|
 | `RepairMetaPixelSnippet()` | Chạy lúc khởi động server. Thay literal `f._bq=n` → `f._fbq=n` trong `landing_pages.code_html` + `landing_files.content`. Dùng `strpos()` (KHÔNG dùng `LIKE` vì `_` là wildcard) và `replace()` (literal, không phải regex). |
 
+### ⚠️ Đồng bộ `settings` bản gốc ↔ bản domain (fix 2026-11-13)
+
+Bản domain (`domain <> ''`) được tạo ra từ lúc deploy landing và **chỉ chứa một phần
+cấu hình** — các trường SEO (`title`, `og_image`, `meta_description`) bị để trống.
+
+`GetLandingPage(domain, page_id)` **ưu tiên bản domain** ⇒ landing chạy thật trên
+domain đích mất tiêu đề/description. Đây là lý do ô "Tiêu đề SEO" trong CRM trông
+trống sau khi deploy.
+
+| Hàm store | Quy tắc |
+|---|---|
+| `RepairDuplicateLandingSettings()` | Chạy lúc khởi động server. Với mỗi `page_id` có cả bản gốc và bản domain, **điền các khoá TRỐNG** ở bản domain từ bản gốc. **KHÔNG** ghi đè giá trị đã có ⇒ `path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode` riêng của domain được giữ nguyên. |
+| `SaveLandingPage()` → `mergeDomainSettings()` | Trước khi upsert bản domain, gộp `settings` mới với `settings` đang có của bản domain. Upsert thẳng sẽ **xoá mất** các khoá domain-specific. |
+
+> Bản gốc = nguồn **mặc định** của landing · Bản domain = **override theo domain**.
+> Quy tắc chung: giá trị rỗng = "chưa cấu hình" ⇒ kế thừa từ bản gốc.
+
 ### `settings` JSONB — feature flags & branding
 
 ```json

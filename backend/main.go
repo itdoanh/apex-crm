@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -49,6 +50,24 @@ func setStaticCacheHeaders(w http.ResponseWriter, filePath string) {
 		// Ảnh / font / media: cache dài hạn (kèm ETag/Last-Modified mặc định của http.ServeFile)
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 	}
+}
+
+// recoveryMiddleware bắt panic trong handler để 1 lỗi parse dữ liệu (vd UA lạ)
+// không làm request chết và trả 500. Không có middleware này, một lỗi index out of range
+// trong ParseDeviceInfo làm mất toàn bộ event tracking của phiên đó.
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[ERROR] Panic trong handler %s %s: %v\n%s",
+					r.Method, r.URL.Path, rec, debug.Stack())
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"success":false,"error":"internal server error"}`))
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -101,6 +120,13 @@ func main() {
 	// ⇒ PageView bị đếm sai/lặp, ảnh hưởng tối ưu ngân sách Meta Ads.
 	if err := store.RepairMetaPixelSnippet(context.Background()); err != nil {
 		log.Printf("[WARN] Không thể sửa typo Meta Pixel trong HTML landing: %v", err)
+	}
+
+	// Đồng bộ `settings` giữa bản gốc (domain='') và bản theo domain của cùng
+	// page_id. Bản domain thường thiếu title/meta_description ⇒ landing chạy trên
+	// domain đích mất SEO. Chỉ điền khoá TRỐNG, không ghi đè giá trị đã có.
+	if err := store.RepairDuplicateLandingSettings(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể đồng bộ settings landing gốc ↔ domain: %v", err)
 	}
 
 	// Tự động seed tên miền mặc định (hanghoaphaisinh.net, dautuhanghoa.vn)
@@ -788,7 +814,7 @@ func main() {
 	serverAddr := ":" + cfg.Port
 	server := &http.Server{
 		Addr:              serverAddr,
-		Handler:           mux,
+		Handler:           recoveryMiddleware(mux),
 		ReadHeaderTimeout: 3 * time.Second,  // Chống Slowloris attack hiệu quả
 		ReadTimeout:       10 * time.Second, // Timeout đọc dữ liệu
 		WriteTimeout:      10 * time.Second, // Timeout ghi phản hồi

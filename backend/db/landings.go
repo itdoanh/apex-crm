@@ -547,8 +547,22 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 	`
 
 	for _, dom := range targetDomains {
+		rowSettingsJSON := settingsJSON
+
+		if dom != "" {
+			// Bản theo domain có thể chứa cấu hình RIÊNG không có ở bản gốc
+			// (vd `path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode`).
+			// Upsert thẳng sẽ XOÁ mất các khoá đó ⇒ gộp trước khi ghi.
+			merged, err := s.mergeDomainSettings(ctx, dom, p.PageID, p.Settings)
+			if err == nil {
+				if b, err2 := json.Marshal(merged); err2 == nil {
+					rowSettingsJSON = b
+				}
+			}
+		}
+
 		if _, err := s.pool.Exec(ctx, upsertSQL,
-			p.PageID, dom, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, settingsJSON, p.CodeHTML,
+			p.PageID, dom, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, rowSettingsJSON, p.CodeHTML,
 		); err != nil {
 			return err
 		}
@@ -576,6 +590,35 @@ func (s *Store) landingPageRowExists(ctx context.Context, domain, pageID string)
 		domain, pageID,
 	).Scan(&exists)
 	return err == nil && exists
+}
+
+// mergeDomainSettings gộp `settings` của bản domain hiện có với `settings` mới.
+//
+// Thứ tự ưu tiên:
+//  1. Giá trị mới (p.Settings) — người dùng vừa lưu trên CRM.
+//  2. Giá trị đang có ở bản domain (vd `google_sheet_ids` cấu hình riêng cho domain).
+//  3. Bỏ qua — không tự ý điền.
+//
+// Hàm này ngăn việc upsert bản domain làm mất cấu hình domain-specific.
+func (s *Store) mergeDomainSettings(ctx context.Context, domain, pageID string, incoming map[string]interface{}) (map[string]interface{}, error) {
+	var existingBytes []byte
+	err := s.pool.QueryRow(ctx,
+		"SELECT settings FROM landing_pages WHERE domain = $1 AND page_id = $2",
+		domain, pageID,
+	).Scan(&existingBytes)
+	if err != nil {
+		// Chưa có bản domain ⇒ dùng luôn settings mới.
+		return incoming, nil
+	}
+
+	existing := make(map[string]interface{})
+	if len(existingBytes) > 0 {
+		_ = json.Unmarshal(existingBytes, &existing)
+	}
+
+	// Bản domain là "mặc định" cũ; settings mới ghi đè lên.
+	merged := mergeSettingsMaps(existing, incoming)
+	return merged, nil
 }
 
 // findExistingLandingDomain tìm domain của row landing đang tồn tại (bản domain-specific).

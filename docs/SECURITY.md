@@ -304,6 +304,26 @@ Mọi hành động admin được ghi vào `admin_audit_logs`: action, resource
 
 ---
 
+## 9.1 Panic recovery middleware
+
+**File:** `backend/main.go` (`recoveryMiddleware`)
+
+Server bọc toàn bộ router bằng `recoveryMiddleware`. Mục đích: **một lỗi parse dữ liệu
+(UA lạ, header thiếu) không được làm chết request** — trả `500` với JSON chuẩn và
+ghi stack trace vào `server.log`.
+
+Bối cảnh: `security.ParseDeviceInfo()` đọc User-Agent bằng regex. Trước khi có
+middleware, một regex chỉ có **1 capture group** nhưng code truy cận `m[2]`
+(case `Vivo Browser` / `OPPO Browser`) → `panic: index out of range [2] with length 2`
+→ **mất toàn bộ event tracking của phiên đó** và log server bị ngập stack trace.
+
+> ⚠️ **Khi thêm regex mới trong `security/device.go`:**
+> 1. Đếm số capture group của regex.
+> 2. Chỉ truy cận `m[N]` với `N <= số group` (điều kiện `len(m) > N` bảo đảm an toàn).
+> 3. Test với UA thật của trình duyệt đó (Vivo Browser, OPPO Browser, Huawei Browser…).
+
+---
+
 ## 10. Bảo vệ tài nguyên SSL
 
 `GET /api/internal/check-domain?domain=X`:

@@ -389,14 +389,14 @@ func ParseDeviceInfo(ua string) *DeviceInfo {
 	case strings.Contains(uaLower, "oppo browser"), strings.Contains(uaLower, "oppobrowser"):
 		info.Browser = "OPPO Browser"
 		if m := reOPPOSVer.FindStringSubmatch(ua); len(m) > 1 {
-			info.BrowserVersion = m[2]
+			info.BrowserVersion = m[1]
 		}
 		info.Engine = "Blink"
 
 	case strings.Contains(uaLower, "vivo browser"), strings.Contains(uaLower, "vivobrowser"):
 		info.Browser = "Vivo Browser"
 		if m := reVivoVer.FindStringSubmatch(ua); len(m) > 1 {
-			info.BrowserVersion = m[2]
+			info.BrowserVersion = m[1]
 		}
 		info.Engine = "Blink"
 
