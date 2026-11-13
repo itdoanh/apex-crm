@@ -139,6 +139,25 @@ Backend tự khử trùng ở tầng PostgreSQL (`db.SaveLead` → trả về `i
 ⇒ Mỗi lead chỉ tạo **1 dòng** trong Google Sheets. Trước đây mỗi request gửi trùng đều
 ghi 1 dòng Sheet ⇒ Sheet hiện nhiều dòng giống nhau cùng thời gian.
 
+#### Chọn sheet nhận lead (sửa 2026-11-13 — lead bắn tràn sang nhiều sheet)
+
+Backend chọn sheet nhận lead theo **2 tầng lọc**:
+
+| Tầng | Cấu hình | Hành vi |
+|---|---|---|
+| 1 | `landing_pages.settings.google_sheet_ids` + `google_sheet_sync_mode` | `selected` ⇒ chỉ gửi vào đúng các sheet được tick · `all` ⇒ mọi sheet khớp · `disabled` ⇒ không gửi |
+| 2 | `google_sheet_configs.filter_landing_id` | rỗng ⇒ nhận mọi landing · có giá trị ⇒ chỉ nhận landing đó |
+
+⚠️ **Khi landing đã cấu hình `google_sheet_ids` (mode `selected`), backend chỉ gửi
+vào đúng các sheet đó** — kể cả khi sheet đó có `filter_landing_id = ''` (đang là
+"nhận tất cả"). Nếu không, lead của landing này sẽ bị gửi sang sheet của landing
+khác.
+
+Backend tra cấu hình theo **domain của URL khách vừa gửi form** (`leads.url`) và
+gộp **mọi row** của landing trong `landing_pages` (bản gốc `domain=''` + bản theo
+domain) — vì `google_sheet_ids` thường chỉ nằm ở bản theo domain. Chi tiết tại
+`docs/DATABASE.md` § "Đồng bộ lead sang Google Sheets".
+
 Lưu ý vận hành: nếu cấu hình `form_config.success_redirect` chứa **domain** (VD
 `ads.giaodichhanghoatuonglai.com/chucmung`), `<base href="/landing/">` sẽ phân giải thành
 `/landing/ads.giaodichhanghoatuonglai.com/chucmung` — vẫn là **trang có form** ⇒ khách bị

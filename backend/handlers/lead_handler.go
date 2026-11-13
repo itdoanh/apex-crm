@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -167,6 +168,32 @@ func extractFirstString(data map[string]interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// extractHostFromURL lấy hostname (không kèm port, không kèm "www.") từ 1 URL.
+//
+// Dùng để tra cấu hình Google Sheets theo ĐÚNG domain mà khách vừa gửi form
+// (fix 2026-11-13): 1 landing có thể chạy trên nhiều domain, mỗi domain có thể
+// gán bảng tính riêng.
+func extractHostFromURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+
+	// Thêm scheme nếu thiếu để url.Parse xử lý đúng
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.ToLower(strings.TrimSpace(u.Hostname()))
+	host = strings.TrimPrefix(host, "www.")
+	return host
 }
 
 // enrichLeadTracking bổ sung thông số Meta Ads, thiết bị & VPN vào tracking JSON
@@ -1022,47 +1049,52 @@ func (h *LeadHandler) syncLeadToGoogleSheets(lead *models.Lead, rawData map[stri
 	}
 
 	var targetSheetIDs []int
-	var syncMode string // "selected", "all", "disabled"
+	syncMode := "" // "selected", "all", "disabled"
+	hasSheetConfig := false
 
-	// 1. Kiểm tra cấu hình riêng của landing page này (từ RAM cache siêu tốc hoặc DB)
+	// 1. Lấy domain mà khách vừa gửi form (từ URL trang) để tra cấu hình
+	//    Google Sheets ĐÚNG theo landing đang chạy trên domain đó.
+	leadDomain := extractHostFromURL(lead.URL)
+	if leadDomain == "" {
+		leadDomain = extractHostFromURL(extractFirstString(rawData, "url", "page_url", "entry_url", "landing_url"))
+	}
+
+	// 2. Đọc cấu hình riêng của landing page này.
+	//
+	// ⚠️ BẤT BUỘC gộp từ MỌI row của landing (fix 2026-11-13 — lead bắn tràn
+	//    sang nhiều sheet):
+	//    `landing_pages` có PK composite `(domain, page_id)` ⇒ 1 landing tồn tại
+	//    ở NHIỀU row: bản GỐC (`domain=''`, template) + bản THEO DOMAIN.
+	//    `google_sheet_ids` / `google_sheet_sync_mode` thường CHỈ nằm ở bản theo
+	//    domain. Đọc bản gốc ⇒ không có sheet IDs ⇒ rơi vào nhánh "đồng bộ mặc
+	//    định" ⇒ khớp MỌI sheet active ⇒ lead của landing này bị gửi sang
+	//    sheet của landing khác (đúng triệu chứng anh itdoanh báo).
 	if h.landingCache != nil {
-		lp := h.landingCache.Get("", lead.LandingID)
-		if lp == nil {
-			lp = h.landingCache.GetByPageID(lead.LandingID)
-		}
-		if lp == nil {
-			lp, _ = h.store.GetLandingPage("", lead.LandingID)
-			if lp == nil {
-				lp, _ = h.store.GetLandingPageByID(lead.LandingID)
-			}
-		}
+		syncMode, targetSheetIDs, hasSheetConfig = h.landingCache.GetSheetSyncSettings(leadDomain, lead.LandingID)
+	}
 
-		if lp != nil && lp.Settings != nil {
-			if mode, ok := lp.Settings["google_sheet_sync_mode"].(string); ok {
-				syncMode = strings.TrimSpace(mode)
-			}
-			// Nếu landing page chọn "disabled" -> Dừng ngay, không gửi lead sang bất kỳ sheet nào
-			if syncMode == "disabled" {
-				fmt.Printf("[GOOGLE_SHEET_SYNC_INFO] Landing '%s' đã tắt đồng bộ Google Sheet.\n", lead.LandingID)
-				return
-			}
-
-			// Đọc danh sách sheet IDs riêng được gán cho Landing Page này
-			if rawIDs, ok := lp.Settings["google_sheet_ids"].([]interface{}); ok {
-				for _, idVal := range rawIDs {
-					switch v := idVal.(type) {
-					case float64:
-						targetSheetIDs = append(targetSheetIDs, int(v))
-					case int:
-						targetSheetIDs = append(targetSheetIDs, v)
-					case string:
-						if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-							targetSheetIDs = append(targetSheetIDs, n)
-						}
-					}
-				}
-			}
+	// 3. Fallback khi RAM cache chưa có landing này (landing vừa tạo, cache miss).
+	//    Gộp MỌI row của landing (bản gốc + bản theo domain) để không bỏ sót
+	//    `google_sheet_ids` chỉ nằm ở bản domain.
+	if !hasSheetConfig {
+		if mode, ids, found := h.store.GetLandingSheetSyncSettings(leadDomain, lead.LandingID); found {
+			syncMode = mode
+			targetSheetIDs = ids
+			hasSheetConfig = mode != "" || ids != nil
 		}
+	}
+
+	// 4. Nếu landing page chọn "disabled" -> Dừng ngay, không gửi lead sang bất kỳ sheet nào
+	if syncMode == "disabled" {
+		fmt.Printf("[GOOGLE_SHEET_SYNC_INFO] Landing '%s' đã tắt đồng bộ Google Sheet.\n", lead.LandingID)
+		return
+	}
+
+	// 5. Landing đã cấu hình "chỉ các sheet đã chọn" nhưng danh sách rỗng
+	//    -> KHÔNG gửi bừa bãi vào mọi sheet.
+	if hasSheetConfig && syncMode != "all" && len(targetSheetIDs) == 0 {
+		fmt.Printf("[GOOGLE_SHEET_SYNC_INFO] Landing '%s' không có Google Sheet nào được gán -> bỏ qua đồng bộ.\n", lead.LandingID)
+		return
 	}
 
 	configs, err := h.store.GetActiveGoogleSheetConfigsForLead(lead.LandingID, lead.Nguon, targetSheetIDs, syncMode)

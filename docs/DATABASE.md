@@ -217,11 +217,15 @@ trống sau khi deploy.
 
 | Hàm store | Quy tắc |
 |---|---|
-| `RepairDuplicateLandingSettings()` | Chạy lúc khởi động server. Với mỗi `page_id` có cả bản gốc và bản domain, **điền các khoá TRỐNG** ở bản domain từ bản gốc. **KHÔNG** ghi đè giá trị đã có ⇒ `path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode` riêng của domain được giữ nguyên. |
+| `RepairDuplicateLandingSettings()` | Chạy lúc khởi động server. 2 bước:<br>① `repairDomainFromBase()` — với mỗi `page_id` có cả bản gốc và bản domain, **điền các khoá TRỐNG** ở bản domain từ bản gốc. **KHÔNG** ghi đè giá trị đã có ⇒ `path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode` riêng của domain được giữ nguyên.<br>② `repairBaseFromDomain()` — đồng bộ **NGƯỢC** `google_sheet_sync_mode` + `google_sheet_ids` từ bản domain (mới nhất) về bản gốc **khi bản gốc chưa có**. Bản gốc là nơi các đường đọc `domain = ''` lấy cấu hình ⇒ nếu bản gốc thiếu ⇒ lead bắn tràn sang mọi sheet (xem mục Google Sheets bên dưới). |
 | `SaveLandingPage()` → `mergeDomainSettings()` | Trước khi upsert bản domain, gộp `settings` mới với `settings` đang có của bản domain. Upsert thẳng sẽ **xoá mất** các khoá domain-specific. |
+| `SaveLandingPage()` → `mergeBaseSheetSettings()` | Khi ghi bản gốc, gộp thêm `google_sheet_sync_mode` + `google_sheet_ids` từ bản domain mới nhất (chỉ khi bản gốc chưa có). |
+| `GetLandingSheetSyncSettings(domain, page_id)` | Đọc cấu hình sheet gộp từ **MỌI row** của landing. Ưu tiên: row khớp domain → bản gốc → row mới nhất. Dùng làm fallback khi RAM cache miss. |
 
 > Bản gốc = nguồn **mặc định** của landing · Bản domain = **override theo domain**.
 > Quy tắc chung: giá trị rỗng = "chưa cấu hình" ⇒ kế thừa từ bản gốc.
+> **Ngoại lệ cấu hình sheet:** `google_sheet_sync_mode` + `google_sheet_ids` là cấu
+> hình ở **MỨC LANDING** ⇒ phải đồng bộ 2 chiều (bản gốc ↔ bản domain).
 
 ### `settings` JSONB — feature flags & branding
 
@@ -542,6 +546,42 @@ google_sheet_sync_logs (
     row_range, lead_phone, lead_name, error_message, synced_at
 )
 ```
+
+### ⚠️ Đồng bộ lead sang Google Sheets — cách chọn sheet (fix 2026-11-13)
+
+Có **2 tầng lọc** độc lập. Landing quyết định sheet nào được nhận lead; sheet
+quyết định có nhận landing nào.
+
+| Tầng | Nguồn cấu hình | Giá trị | Ý nghĩa |
+|---|---|---|---|
+| 1. Landing → sheet | `landing_pages.settings.google_sheet_ids` + `google_sheet_sync_mode` | `selected` | Chỉ gửi vào đúng các sheet được tick |
+| | | `all` | Gửi vào mọi sheet khớp bộ lọc của sheet |
+| | | `disabled` | Không gửi sheet nào |
+| 2. Sheet → landing | `google_sheet_configs.filter_landing_id` | rỗng | Nhận lead của **mọi** landing |
+| | | `landing_id` | Chỉ nhận lead của landing đó |
+
+**Quy tắc bất biến:** khi landing đã cấu hình `google_sheet_ids` (mode `selected`),
+backend **chỉ** gửi vào đúng các sheet đó — kể cả khi sheet đó có
+`filter_landing_id = ''` (đang là "nhận tất cả"). Ngược lại, lead sẽ bị tràn sang
+sheet của landing khác.
+
+**Root cause lỗi "lead bắn về cả 2 sheet" (2026-11-13):**
+`landing_pages` có PK composite `(domain, page_id)` ⇒ 1 landing tồn tại ở NHIỀU row
+(bản gốc `domain=''` + bản theo domain). Cấu hình `google_sheet_ids` chỉ nằm ở
+**bản theo domain**. Handler đọc `landingCache.Get("", page_id)` ⇒ luôn ra **bản
+gốc** ⇒ không có `google_sheet_ids` ⇒ rơi vào nhánh "đồng bộ mặc định" ⇒ khớp
+**mọi** sheet active có `filter_landing_id = ''`.
+
+⇒ Fix đã áp dụng:
+- `cache.LandingCache.GetSheetSyncSettings(domain, page_id)` — gộp **mọi row** của
+  landing, ưu tiên row khớp domain của lead.
+- `db.Store.GetLandingSheetSyncSettings(domain, page_id)` — fallback tương tự khi
+  cache miss.
+- Handler tra domain từ `lead.URL` để chọn đúng bản cấu hình.
+- `RepairDuplicateLandingSettings` đồng bộ 2 chiều cấu hình sheet giữa bản gốc
+  và bản domain.
+- Nhánh `targetSheetIDs` trong `GetActiveGoogleSheetConfigsForLead` cũng tôn trọng
+  `filter_landing_id` (chống tràn chéo landing).
 
 ---
 

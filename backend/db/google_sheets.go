@@ -241,6 +241,10 @@ func (s *Store) GetActiveGoogleSheetConfigsForLead(landingID, nguon string, targ
 	}
 
 	// 2. Nếu landing page chỉ định 1 hoặc nhiều Google Sheet cụ thể (hoặc syncMode == "selected" với targetSheetIDs > 0)
+	//
+	// ⚠️ CHỈ đồng bộ sang sheet được landing gán — nhưng vẫn phải TÔN TRỌNG bộ
+	//    lọc riêng của sheet (`filter_landing_id`). Nếu sheet có `filter_landing_id`
+	//    khác landing hiện tại ⇒ KHÔNG gửi (chống lead tràn chéo landing).
 	if len(targetSheetIDs) > 0 && syncMode != "all" {
 		query := `
 			SELECT id, name, auth_type, credentials_json, spreadsheet_id, spreadsheet_name,
@@ -252,10 +256,11 @@ func (s *Store) GetActiveGoogleSheetConfigsForLead(landingID, nguon string, targ
 			FROM google_sheet_configs
 			WHERE is_active = TRUE
 			  AND id = ANY($1)
-			  AND (filter_nguon = '' OR filter_nguon = $2)
+			  AND (filter_landing_id = '' OR filter_landing_id = $2)
+			  AND (filter_nguon = '' OR filter_nguon = $3)
 			ORDER BY id ASC;
 		`
-		rows, err := s.pool.Query(ctx, query, targetSheetIDs, nguon)
+		rows, err := s.pool.Query(ctx, query, targetSheetIDs, landingID, nguon)
 		if err != nil {
 			return nil, fmt.Errorf("lỗi tìm kiếm cấu hình Google Sheet theo targetSheetIDs: %w", err)
 		}

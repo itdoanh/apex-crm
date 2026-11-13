@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -253,6 +255,141 @@ func (s *Store) GetLandingPageByID(pageID string) (*models.LandingPage, error) {
 	return &p, nil
 }
 
+// GetLandingSheetSyncSettings lấy cấu hình đồng bộ Google Sheets của 1 landing
+// bằng cách gộp MỌI row của cùng `page_id` (bản gốc `domain=''` + bản theo
+// domain).
+//
+// ⚠️ BẮT BUỘC (fix 2026-11-13 — lead bắn tràn sang nhiều sheet):
+//   `landing_pages` có PK composite `(domain, page_id)` ⇒ 1 landing tồn tại ở
+//   NHIỀU row. Cấu hình `google_sheet_ids` / `google_sheet_sync_mode` thường
+//   CHỈ nằm ở bản theo domain. Nếu đọc bản gốc ⇒ không có sheet IDs ⇒
+//   backend rơi vào nhánh "đồng bộ mặc định" ⇒ khớp MỌI sheet active ⇒
+//   lead của landing này bị gửi sang sheet của landing khác.
+//
+// Thứ tự ưu tiên khi gộp:
+//  1. Row khớp `domain` (domain khách vừa gửi form)
+//  2. Row gốc (`domain = ''`)
+//  3. Row mới cập nhật nhất
+//
+// Trả về `found = false` nếu landing không tồn tại trong DB.
+func (s *Store) GetLandingSheetSyncSettings(domain, pageID string) (mode string, sheetIDs []int, found bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT domain, settings, updated_at
+		FROM landing_pages
+		WHERE page_id = $1
+		ORDER BY updated_at DESC;
+	`
+	rows, err := s.pool.Query(ctx, query, pageID)
+	if err != nil {
+		return "", nil, false
+	}
+	defer rows.Close()
+
+	type row struct {
+		domain    string
+		settings  map[string]interface{}
+		updatedAt string
+	}
+	all := make([]row, 0, 4)
+	for rows.Next() {
+		var dom string
+		var settingsBytes []byte
+		var updatedAt string
+		if err := rows.Scan(&dom, &settingsBytes, &updatedAt); err != nil {
+			continue
+		}
+		st := make(map[string]interface{})
+		if len(settingsBytes) > 0 {
+			_ = json.Unmarshal(settingsBytes, &st)
+		}
+		all = append(all, row{domain: strings.ToLower(strings.TrimSpace(dom)), settings: st, updatedAt: updatedAt})
+	}
+	if len(all) == 0 {
+		return "", nil, false
+	}
+
+	// Sắp xếp theo thứ tự ưu tiên.
+	domainKey := strings.ToLower(strings.TrimSpace(domain))
+	sort.SliceStable(all, func(i, j int) bool {
+		pi, pj := sheetSyncPriority(all[i].domain, domainKey), sheetSyncPriority(all[j].domain, domainKey)
+		if pi != pj {
+			return pi < pj
+		}
+		return all[i].updatedAt > all[j].updatedAt
+	})
+
+	for _, r := range all {
+		if r.settings == nil {
+			continue
+		}
+		if mode == "" {
+			if m, ok := r.settings["google_sheet_sync_mode"].(string); ok && strings.TrimSpace(m) != "" {
+				mode = strings.TrimSpace(m)
+			}
+		}
+		if sheetIDs == nil {
+			if raw, ok := r.settings["google_sheet_ids"]; ok {
+				sheetIDs = parseSheetIDsFromJSON(raw)
+			}
+		}
+	}
+
+	if mode == "" && len(sheetIDs) > 0 {
+		mode = "selected"
+	}
+
+	return mode, sheetIDs, true
+}
+
+// sheetSyncPriority xếp hạng row theo mức độ ưu tiên khi gộp cấu hình sheet.
+func sheetSyncPriority(rowDomain, wantDomain string) int {
+	switch {
+	case wantDomain != "" && rowDomain == wantDomain:
+		return 0
+	case rowDomain == "":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// parseSheetIDsFromJSON chuyển giá trị `google_sheet_ids` (JSONB) thành []int.
+func parseSheetIDsFromJSON(raw interface{}) []int {
+	switch t := raw.(type) {
+	case []interface{}:
+		out := make([]int, 0, len(t))
+		for _, item := range t {
+			switch v := item.(type) {
+			case float64:
+				out = append(out, int(v))
+			case int:
+				out = append(out, v)
+			case int64:
+				out = append(out, int(v))
+			case string:
+				if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+					out = append(out, n)
+				}
+			}
+		}
+		return out
+	case []int:
+		return t
+	case []string:
+		out := make([]int, 0, len(t))
+		for _, s := range t {
+			if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+				out = append(out, n)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // ListLandingPages trả về danh sách tất cả các landing page kèm số lượng lead và lượt truy cập
 //
 // ⚠️ DEDUPE THEO `page_id` (fix 2026-11-13):
@@ -351,7 +488,16 @@ func dedupeLandingPagesByPageID(list []models.LandingPage) []models.LandingPage 
 	best := make(map[string]*entry, len(list))
 	order := make([]string, 0, len(list))
 
-	for i := range list {
+	// ⚠️ Duyệt TỪ CŨ ĐẾN MỚI (reverse).
+	//
+	// `ListLandingPages` sắp xếp `updated_at DESC` ⇒ phần tử ĐẦU là bản MỚI
+	// NHẤT. `mergeSettingsMaps(base, incoming)` cho phép `incoming` GHI ĐÈ
+	// `base` ⇒ nếu duyệt theo thứ tự mới→cũ thì bản CŨ sẽ đè lên bản mới
+	// (vd `google_sheet_ids` của landing bị hiển thị sai sheet trong CRM).
+	//
+	// ⇒ Duyệt ngược lại để bản MỚI ghi đè bản CŨ, đúng nguyên tắc
+	//   "bản cập nhật sau là bản đang chạy thật".
+	for i := len(list) - 1; i >= 0; i-- {
 		p := list[i]
 		key := strings.ToLower(strings.TrimSpace(p.PageID))
 		if key == "" {
@@ -559,6 +705,21 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 					rowSettingsJSON = b
 				}
 			}
+		} else if dom == "" && len(targetDomains) > 1 {
+			// Bản GỐC: gộp thêm cấu hình Google Sheets đang lưu ở bản domain
+			// để 2 bản luôn có cùng cấu hình sheet.
+			//
+			// ⚠️ BẮT BUỘC (fix 2026-11-13 — lead bắn tràn sang nhiều sheet):
+			//   `google_sheet_ids` là cấu hình ở MỨC LANDING. Nếu bản gốc thiếu
+			//   ⇒ mọi đường đọc landing bằng `domain = ''` không thấy cấu hình ⇒
+			//   CRM hiển thị sai sheet và backend có thể rơi vào nhánh "đồng bộ
+			//   mặc định" ⇒ lead bắn vào MỌI sheet active.
+			merged, err := s.mergeBaseSheetSettings(ctx, p.PageID, p.Settings)
+			if err == nil {
+				if b, err2 := json.Marshal(merged); err2 == nil {
+					rowSettingsJSON = b
+				}
+			}
 		}
 
 		if _, err := s.pool.Exec(ctx, upsertSQL,
@@ -590,6 +751,70 @@ func (s *Store) landingPageRowExists(ctx context.Context, domain, pageID string)
 		domain, pageID,
 	).Scan(&exists)
 	return err == nil && exists
+}
+
+// mergeBaseSheetSettings gộp cấu hình Google Sheets từ các bản THEO DOMAIN vào
+// `settings` mới dùng để ghi bản GỐC (`domain = ''`).
+//
+// ⚠️ BẮT BUỘC (fix 2026-11-13 — lead bắn tràn sang nhiều sheet):
+//   `google_sheet_ids` / `google_sheet_sync_mode` là cấu hình ở MỨC LANDING.
+//   Bản gốc là template (thường không có 2 khoá này) trong khi bản theo domain
+//   mới là nơi CRM lưu cấu hình sheet. Nếu bản gốc thiếu ⇒ mọi đường đọc
+//   landing bằng `domain = ''` không thấy cấu hình ⇒ CRM hiển thị sai sheet và
+//   backend có thể rơi vào nhánh "đồng bộ mặc định" ⇒ lead bắn vào MỌI sheet.
+//
+// ⇒ Gộp từ bản domain MỚI NHẤT, chỉ điền khoá CHƯA có ở bản gốc.
+func (s *Store) mergeBaseSheetSettings(ctx context.Context, pageID string, incoming map[string]interface{}) (map[string]interface{}, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT settings
+		FROM landing_pages
+		WHERE page_id = $1 AND domain <> ''
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, pageID)
+	if err != nil {
+		return incoming, nil
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return incoming, nil
+	}
+
+	var settingsBytes []byte
+	if err := rows.Scan(&settingsBytes); err != nil {
+		return incoming, nil
+	}
+
+	domSettings := make(map[string]interface{})
+	if len(settingsBytes) > 0 {
+		_ = json.Unmarshal(settingsBytes, &domSettings)
+	}
+
+	merged := make(map[string]interface{}, len(incoming))
+	for k, v := range incoming {
+		merged[k] = v
+	}
+
+	for _, key := range []string{"google_sheet_sync_mode", "google_sheet_ids"} {
+		domVal, ok := domSettings[key]
+		if !ok || domVal == nil {
+			continue
+		}
+		if s, isStr := domVal.(string); isStr && strings.TrimSpace(s) == "" {
+			continue
+		}
+		// Bản gốc đã có giá trị ⇒ KHÔNG ghi đè (bản gốc là nguồn mặc định).
+		if existing, ok2 := merged[key]; ok2 {
+			if es, ok3 := existing.(string); ok3 && strings.TrimSpace(es) == "" {
+				merged[key] = domVal
+			}
+			continue
+		}
+		merged[key] = domVal
+	}
+
+	return merged, nil
 }
 
 // mergeDomainSettings gộp `settings` của bản domain hiện có với `settings` mới.

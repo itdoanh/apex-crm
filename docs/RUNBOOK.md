@@ -177,6 +177,43 @@ SELECT * FROM google_sheet_sync_logs ORDER BY id DESC LIMIT 10;
 4. File `C:\apex\backend\service-account.json` còn tồn tại & đúng?
 5. Landing có bật sync không (trong CRM: Cấu Hình Bảng Tính Google Sheets Nhận Lead)?
 
+### ⚠️ Lead bắn SANG NHIỀU SHEET (triệu chứng: test landing A lại vào cả sheet của landing B)
+
+**Nguyên nhân thường gặp (đã fix 2026-11-13):** landing có **nhiều row** trong
+`landing_pages` (bản gốc `domain=''` + bản theo domain) mà cấu hình
+`google_sheet_ids` chỉ nằm ở bản theo domain. Đọc nhầm bản gốc ⇒ không có sheet
+IDs ⇒ backend rơi vào nhánh "đồng bộ mặc định" ⇒ khớp **mọi** sheet active có
+`filter_landing_id = ''`.
+
+**Kiểm tra:**
+```sql
+-- 1. Landing có nhiều row không? Cấu hình sheet nằm ở row nào?
+SELECT page_id, domain, settings->'google_sheet_ids' AS sheet_ids,
+       settings->>'google_sheet_sync_mode' AS mode,
+       updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh' AS updated
+FROM landing_pages
+WHERE page_id = 'doanh_chung'
+ORDER BY updated_at DESC;
+
+-- 2. Lead gần nhất có bắn vào mấy sheet?
+SELECT l.lead_id, ld.landing_id, l.config_id, c.name, c.filter_landing_id,
+       TO_CHAR(l.synced_at AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI:SS') AS synced
+FROM google_sheet_sync_logs l
+JOIN google_sheet_configs c ON c.id = l.config_id
+JOIN leads ld ON ld.id = l.lead_id
+ORDER BY l.id DESC LIMIT 20;
+
+-- 3. Sheet nào đang "nhận tất cả" (filter rỗng) — thủ phạm gửi tràn
+SELECT id, name, filter_landing_id, filter_nguon, is_active
+FROM google_sheet_configs ORDER BY id;
+```
+
+**Cách xử lý:**
+- Cấu hình `google_sheet_ids` cho TẤT CẢ landing (mode `selected`) trong CRM.
+- Đặt `filter_landing_id` cho sheet nếu muốn giới hạn theo landing.
+- Restart backend sau khi sửa ⇒ `RepairDuplicateLandingSettings` đồng bộ 2 chiều
+  cấu hình sheet giữa bản gốc và bản domain.
+
 ### Kiểm tra service account
 ```cmd
 curl http://127.0.0.1:8080/api/integrations/sheets/bot-info -H "Authorization: Bearer <token>"
