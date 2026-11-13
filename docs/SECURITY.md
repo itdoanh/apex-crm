@@ -302,6 +302,32 @@ Mọi hành động admin được ghi vào `admin_audit_logs`: action, resource
 - Chặn file ẩn: basename bắt đầu bằng `.` → `404`
 - Whitelist đuôi file được phục vụ công khai (`.html .js .css .json .png .jpg .svg .webp .woff2 .mp4 .pdf`...)
 
+### 9.2 CRM Admin KHÔNG được phục vụ trên custom domain (fix 2026-11-13)
+
+**File:** `backend/main.go` (`adminHandler` + `landingEdgeRouter`)
+
+**Bối cảnh:** route gốc `/` của `ads.giaodichhanghoatuonglai.com` trỏ tới
+`landing_232` đã bị deactivate ⇒ không còn landing nào phục vụ ⇒ request `/` rơi
+xuống nhánh cuối "redirect về `/admin`". Kết quả đã xác nhận trên production:
+
+| URL | Trước khi sửa |
+|---|---|
+| `https://ads.giaodichhanghoatuonglai.com/` | `302` → `/admin` |
+| `https://ads.giaodichhanghoatuonglai.com/admin/` | `200` — **phục vụ giao diện CRM Admin** |
+
+⇒ CRM Admin bị **lộ ra domain public** (dù endpoint admin vẫn yêu cầu đăng nhập,
+giao diện và tài nguyên vẫn bị công khai).
+
+**Cách sửa (2 chỗ):**
+
+1. `adminHandler`: trên custom domain, các path quản trị
+   (`/admin`, `/admin/*`, `/ads`, `/ads/*`, `/studio.html`) → **trả 404**.
+2. `landingEdgeRouter`: chỉ redirect root `/` → `/admin` trên **domain quản trị**
+   (`crm.hanghoaphaisinh.net`, `localhost`, `127.0.0.1`, `103.124.95.232`).
+   Custom domain → **trả 404**.
+
+> Quản trị vẫn truy cập CRM bình thường qua `https://crm.hanghoaphaisinh.net/ads`.
+
 ---
 
 ## 9.1 Panic recovery middleware

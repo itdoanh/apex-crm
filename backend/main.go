@@ -362,7 +362,8 @@ func main() {
 		// VÀ domainCache có route khớp với reqPath trên host này (ví dụ: host "ads.giaodichhanghoatuonglai.com" có route "/ads" hoặc "/landing")
 		// -> Nhường quyền xử lý cho multi-domain edge router, KHÔNG ĐƯỢC chặn để hiện Admin!
 		normHost := cache.NormalizeHost(r.Host)
-		if normHost != "crm.hanghoaphaisinh.net" && normHost != "localhost" && normHost != "127.0.0.1" && normHost != "103.124.95.232" {
+		isCustomDomain := normHost != "crm.hanghoaphaisinh.net" && normHost != "localhost" && normHost != "127.0.0.1" && normHost != "103.124.95.232"
+		if isCustomDomain {
 			if domainCache != nil && domainCache.HasDomain(r.Host) {
 				if _, _, _, _, found := domainCache.ResolveRoute(r.Host, reqPath); found {
 					if landingEdgeRouter != nil {
@@ -370,6 +371,26 @@ func main() {
 						return
 					}
 				}
+			}
+
+			// 🚨 CHỐNG LỘ CRM ADMIN TRÊN CUSTOM DOMAIN (fix 2026-11-13)
+			//
+			// VẤN ĐỀ: route gốc `/` của `ads.giaodichhanghoatuonglai.com` trỏ tới
+			// `landing_232` đã bị deactivate ⇒ không còn landing nào phục vụ ⇒
+			// request `/` rơi xuống nhánh cuối "redirect về /admin" ⇒ CUSTOM DOMAIN
+			// PUBLIC bị điều hướng tới CRM Admin (đã xác nhận trên production:
+			// GET https://ads.giaodichhanghoatuonglai.com/ → 302 /admin, và
+			// GET https://ads.giaodichhanghoatuonglai.com/admin/ → 200 phục vụ
+			// giao diện Admin CRM).
+			//
+			// CÁCH SỬA: trên custom domain, các đường dẫn quản trị (/admin, /ads,
+			// /studio.html) KHÔNG BAO GIỜ được phục vụ ⇒ trả 404. Người quản trị
+			// vẫn vào CRM bình thường qua crm.hanghoaphaisinh.net/ads.
+			if reqPath == "/admin" || reqPath == "/admin/" || strings.HasPrefix(reqPath, "/admin/") ||
+				reqPath == "/ads" || reqPath == "/ads/" || strings.HasPrefix(reqPath, "/ads/") ||
+				reqPath == "/studio.html" {
+				http.NotFound(w, r)
+				return
 			}
 		}
 
@@ -732,7 +753,19 @@ func main() {
 		}
 
 		// 3. Nếu là root '/' và không thuộc domain route nào -> redirect về /admin
+		//
+		// ⚠️ CHỈ áp dụng cho domain QUẢN TRỊ (crm.hanghoaphaisinh.net, localhost).
+		// Trên CUSTOM DOMAIN, redirect tới /admin sẽ LỘ giao diện CRM Admin ra
+		// domain public (đã xác nhận trên production 2026-11-13:
+		// ads.giaodichhanghoatuonglai.com/ → 302 /admin).
+		// ⇒ Custom domain trả 404 rõ ràng thay vì điều hướng tới CRM.
 		if reqPath == "/" {
+			normHost := cache.NormalizeHost(r.Host)
+			isAdminHost := normHost == "crm.hanghoaphaisinh.net" || normHost == "localhost" || normHost == "127.0.0.1" || normHost == "103.124.95.232"
+			if !isAdminHost {
+				http.NotFound(w, r)
+				return
+			}
 			http.Redirect(w, r, "/admin", http.StatusFound)
 			return
 		}

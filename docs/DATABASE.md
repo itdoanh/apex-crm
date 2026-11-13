@@ -438,14 +438,30 @@ hoá (`add(...)` cho biến, `addConst(...)` cho hằng số) ⇒ không lệch 
 
 ### 5.6. Đồng bộ attribution & cờ `converted_lead` (migration 2026-11-13)
 
-Migration chạy **tự động** trong `initSchema` (`backend/db/db.go`), theo đúng thứ tự
+> ⚠️ **Migration DỮ LIỆU KHÔNG được đặt trong `initSchema`** (sự cố 2026-11-13).
+>
+> `initSchema` dùng chung context với `NewStore`. Migration dữ liệu quét bảng
+> `leads` + `analytics_sessions` nên vượt quá thời gian cho phép ⇒ backend **FATAL
+> lúc khởi động** ⇒ production trả **503**. Đã xảy ra thật lúc 05:34 ngày
+> 13-11-2026 (sau khi deploy bản đầu) ⇒ phải rollback binary cũ.
+>
+> ⇒ Kiến trúc đúng:
+> | Phần | Context | Timeout | Chạy ở |
+> |---|---|---|---|
+> | Kết nối pool + ping | `connCtx` | 10 giây | đồng bộ |
+> | DDL (`initSchema`) | `schemaCtx` | 60 giây | đồng bộ |
+> | Migration dữ liệu (`migrateAnalyticsAttribution`) | context riêng | 2 phút | **goroutine** |
+>
+> Lỗi migration **KHÔNG** chặn backend khởi động — chỉ log `[MIGRATION][WARN]`.
+
+Migration chạy **tự động** trong `migrateAnalyticsAttribution()`, theo đúng thứ tự
 B1 → B5 (idempotent, chạy lại nhiều lần vẫn an toàn):
 
 | Bước | Việc | Vì sao |
 |---|---|---|
 | **B1** | `INSERT` session tối thiểu cho lead có `tracking.session_id` nhưng chưa có dòng session | Lead đã ghi vào bảng `leads` nhưng biểu đồ không thấy (analytics ping bị throttle/mất). Đo production 13-11: 8 lead chỉ 2 khớp session |
 | **B2** | `UPDATE` gắn `lead_id` + `converted_lead = TRUE` cho session đã có nhưng `lead_id` NULL | Khớp qua `l.tracking->>'session_id'` |
-| **B3** | Gắn `lead_id` qua action `type = 'converted'` (khớp SĐT trong `detail->>'phone'`) | Session có dấu vết đăng ký nhưng chưa gắn lead. Chỉ gắn session có `first_seen` **nhỏ nhất** ⇒ 1 lead ↔ 1 session, không nhân bản |
+| **B3** | Gắn `lead_id` qua action `type = 'converted'` (khớp SĐT trong `detail->>'phone'`) | Session có dấu vết đăng ký nhưng chưa gắn lead. Dùng CTE `ROW_NUMBER() OVER (PARTITION BY phone ORDER BY first_seen)` ⇒ chọn session đầu tiên, **không nhân bản** lead. Bản đầu dùng correlated subquery `MIN(first_seen)` ⇒ O(n²) ⇒ timeout |
 | **B4** | Khôi phục `landing_id` / `nguon` của session **theo landing của lead** | Session gốc bị ghi đè khi khách đi từ landing sang trang "chúc mừng" (dùng chung cookie phiên) |
 | **B5** | `converted_lead = FALSE` cho mọi session **không có lead thật** | Cờ do client gửi lên dựa trên cookie 180 ngày ⇒ tín sai. Chạy CUỐI CÙNG để backend là nguồn sự thật duy nhất |
 

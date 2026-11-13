@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -19,8 +20,9 @@ type Store struct {
 
 // NewStore khởi tạo kết nối PostgreSQL connection pool và tự động tạo/cập nhật bảng
 func NewStore(connString string) (*Store, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Timeout cho phần KẾT NỐI pool (ping).
+	connCtx, connCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer connCancel()
 
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
@@ -33,24 +35,43 @@ func NewStore(connString string) (*Store, error) {
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
 
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	pool, err := pgxpool.NewWithConfig(connCtx, config)
 	if err != nil {
 		return nil, fmt.Errorf("không thể kết nối PostgreSQL pool: %w", err)
 	}
 
 	// Kiểm tra kết nối
-	if err := pool.Ping(ctx); err != nil {
+	if err := pool.Ping(connCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("không thể ping tới PostgreSQL: %w", err)
 	}
 
 	store := &Store{pool: pool}
 
-	// Khởi tạo/cập nhật schema
-	if err := store.initSchema(ctx); err != nil {
+	// Khởi tạo/cập nhật schema (DDL).
+	//
+	// ⚠️ Dùng context RIÊNG với timeout 60 giây (không dùng chung context 10s
+	// của phần kết nối). Lý do: DDL gồm nhiều câu CREATE TABLE IF NOT EXISTS +
+	// ALTER TABLE ADD COLUMN IF NOT EXISTS + CREATE INDEX; trên máy chậm hoặc
+	// khi bảng lớn có thể vượt 10 giây ⇒ backend FATAL lúc khởi động ⇒
+	// production 503. Đã xảy ra ngày 13-11-2026 (do migration dữ liệu nằm
+	// chung DDL), nay đã tách migration data ra riêng + timeout riêng cho DDL.
+	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer schemaCancel()
+
+	if err := store.initSchema(schemaCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("lỗi khởi tạo bảng CSDL: %w", err)
 	}
+
+	// Migration DỮ LIỆU analytics (đồng bộ attribution + cờ converted_lead).
+	//
+	// ⚠️ Chạy SAU initSchema, trong GOROUTINE riêng, với context RIÊNG
+	// (timeout 2 phút) — không dùng chung context 10s của NewStore, vì
+	// migration quét bảng leads + analytics_sessions nên vượt quá thời gian
+	// đó ⇒ đã gây FATAL lúc khởi động server (503) ngày 13-11-2026.
+	// Lỗi migration KHÔNG chặn backend khởi động (chỉ log cảnh báo).
+	go store.migrateAnalyticsAttribution()
 
 	return store, nil
 }
@@ -248,161 +269,20 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_sessions_utm_placement ON analytics_sessions (utm_placement);
 	CREATE INDEX IF NOT EXISTS idx_sessions_campaign_name ON analytics_sessions (campaign_name);
 	CREATE INDEX IF NOT EXISTS idx_sessions_landing_first_seen ON analytics_sessions (landing_id, first_seen DESC);
-
-	-- ══════════════════════════════════════════════════════════════════════
+	-- ──────────────────────────────────────────────────────────────────────
 	-- ĐỒNG BỘ CỜ converted_lead VỚI BẢNG leads (fix 2026-11-13)
-	-- ══════════════════════════════════════════════════════════════════════
+	-- ──────────────────────────────────────────────────────────────────────
 	--
-	-- VẤN ĐỀ: cột analytics_sessions.converted_lead được set TRUE bởi 2 con đường:
-	--   1. AssociateLeadToSession() — đúng (khách vừa đăng ký).
-	--   2. Client gửi cờ converted_lead trong payload analytics — đây là trạng
-	--      thái COOKIE 180 NGÀY ⇒ một phiên MỚI của khách đã đăng ký trước đó
-	--      cũng bị đánh dấu converted.
+	-- ⚠️ QUAN TRỌNG: migration DỮ LIỆU (B1→B5) KHÔNG nằm ở đây.
+	-- Lý do: initSchema dùng CHUNG context với NewStore (timeout 10 giây).
+	-- Migration dữ liệu cần thời gian lâu hơn (quét bảng leads +
+	-- analytics_sessions) ⇒ nếu để trong DDL sẽ làm backend FATAL lúc
+	-- khởi động (timeout: context deadline exceeded) — đã xảy ra trên
+	-- production 2026-11-13 05:34.
 	--
-	-- HẬU QUẢ (đã đo trên production): 581 session converted_lead = TRUE
-	-- nhưng bảng leads chỉ có 285 lead ⇒ biểu đồ báo 581 lead, CRM báo 285 ⇒
-	-- SỐ LIỆU CHỒNG CHÉO, CR tính sai (trang "Chúc mừng" hiện CR = 100%).
-	--
-	-- CÁCH SỬA: để backend là nguồn sự thật duy nhất.
-	--   - Client KHÔNG được tự set cờ converted_lead trong payload analytics.
-	--   - Cờ chỉ TRUE khi lead_id thực sự liên kết tới bảng leads.
-	--
-	-- THỨ TỰ CÁC BƯỚC (quan trọng — chạy đúng thứ tự):
-	--   B1. Tạo dòng session tối thiểu cho lead chưa có session.
-	--   B2. Gắn lead_id cho session qua tracking.session_id.
-	--   B3. Gắn lead_id cho session qua action 'converted' (SĐT trong action).
-	--   B4. Khôi phục landing_id/nguon của session theo landing của lead.
-	--   B5. CUỐI CÙNG: gỡ converted_lead cho mọi session không có lead thật.
-
-	-- B1. BACKFILL SESSION THIẾU CHO LEAD ĐÃ GHI (fix 2026-11-13)
-	--
-	-- VẤN ĐỀ: nhiều lead có tracking.session_id nhưng KHÔNG có dòng tương ứng
-	-- trong analytics_sessions (analytics ping bị throttle / mất / server
-	-- restart giữa lúc ghi lead). Đo trên production ngày 13-11: 8 lead, chỉ
-	-- 2 có session ⇒ biểu đồ "lượt xem" và "lead" thấp hơn thực tế.
-	--
-	-- CÁCH SỬA: tự tạo dòng session tối thiểu cho các lead còn thiếu, gắn
-	-- converted_lead = TRUE + lead_id ⇒ số liệu lịch sử khớp với CRM.
-	INSERT INTO analytics_sessions (
-	    session_id, visitor_id, landing_id, nguon,
-	    so_dien_thoai, lead_id, converted_lead, has_interacted_form,
-	    duration_seconds, actions, first_seen, last_seen
-	)
-	SELECT
-	    l.tracking->>'session_id',
-	    COALESCE(NULLIF(l.tracking->>'visitor_id', ''), l.tracking->>'session_id'),
-	    COALESCE(NULLIF(l.landing_id, ''), 'default_landing'),
-	    COALESCE(NULLIF(l.nguon, ''), l.landing_id),
-	    l.so_dien_thoai,
-	    l.id,
-	    TRUE, TRUE,
-	    0,
-	    jsonb_build_array(jsonb_build_object(
-	        'time', 0,
-	        'type', 'converted',
-	        'target', 'registrationForm',
-	        'text', 'Hoàn tất đăng ký',
-	        'detail', jsonb_build_object('lead_id', l.id, 'phone', l.so_dien_thoai)
-	    )),
-	    l.thoi_gian, l.thoi_gian
-	FROM leads l
-	WHERE COALESCE(l.tracking->>'session_id', '') != ''
-	  AND NOT EXISTS (
-	    SELECT 1 FROM analytics_sessions s WHERE s.session_id = l.tracking->>'session_id'
-	  )
-	ON CONFLICT (session_id) DO NOTHING;
-
-	-- B2. Gắn lead_id cho các session đã có nhưng chưa trỏ tới lead nào
-	-- (trường hợp UPDATE cũ khớp session nhưng lead_id bị NULL).
-	UPDATE analytics_sessions s
-	SET converted_lead = TRUE,
-	    lead_id = l.id,
-	    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
-	FROM leads l
-	WHERE s.session_id = l.tracking->>'session_id'
-	  AND (s.lead_id IS NULL OR s.lead_id <> l.id);
-
-	-- ══════════════════════════════════════════════════════════════════════
-	-- SỬA ATTRIBUTION LANDING BỊ GHI ĐÈ (fix 2026-11-13)
-	-- ══════════════════════════════════════════════════════════════════════
-	--
-	-- VẤN ĐỀ: cookie phiên dùng CHUNG giữa landing và trang "chúc mừng"
-	-- ⇒ cùng 1 session_id được gửi lên lần lượt với landing_id = landing_cu
-	-- rồi landing_lznoew. Vì ON CONFLICT DO UPDATE ghi đè landing_id
-	-- ⇒ phiên gốc của landing_cu bị "chuyển" sang lznoew.
-	--
-	-- HẬU QUẢ (đo trên production): landing_lznoew có 270 view + 270 converted
-	-- (CR = 100%) trong khi đó là trang CHỈ ĐỂ XEM; landing_cu mất lead.
-	--
-	-- CÁCH SỬA:
-	--   B3. Gắn session ↔ lead bằng SĐT trong action 'converted' (trường hợp
-	--      session chưa có lead_id nhưng khách ĐÃ đăng ký thật).
-	--   B4. Khôi phục landing_id/nguon của session theo landing của lead.
-	--
-	-- ⚠️ Chỉ gắn MỘT session cho MỘT lead (dùng session có first_seen nhỏ
-	--    nhất) để tránh 1 lead bị "nhân bản" sang nhiều session.
-	UPDATE analytics_sessions s
-	SET lead_id = l.id,
-	    converted_lead = TRUE,
-	    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
-	FROM leads l
-	WHERE s.lead_id IS NULL
-	  AND EXISTS (
-	    SELECT 1 FROM jsonb_array_elements(COALESCE(s.actions, '[]'::jsonb)) e
-	    WHERE e->>'type' = 'converted'
-	      AND COALESCE(e->'detail'->>'phone', '') = l.so_dien_thoai
-	  )
-	  AND s.first_seen = (
-	    SELECT MIN(s3.first_seen) FROM analytics_sessions s3
-	    WHERE s3.lead_id IS NULL
-	      AND EXISTS (
-	        SELECT 1 FROM jsonb_array_elements(COALESCE(s3.actions, '[]'::jsonb)) e
-	        WHERE e->>'type' = 'converted'
-	          AND COALESCE(e->'detail'->>'phone', '') = l.so_dien_thoai
-	      )
-	  );
-
-	-- B4. Khôi phục landing_id/nguon của session theo landing CỦA LEAD.
-	UPDATE analytics_sessions s
-	SET landing_id = l.landing_id,
-	    nguon = COALESCE(NULLIF(l.nguon, ''), l.landing_id)
-	FROM leads l
-	WHERE s.lead_id = l.id
-	  AND COALESCE(l.landing_id, '') != ''
-	  AND s.landing_id <> l.landing_id;
-
-	-- B5. GỠ cờ converted cho mọi session KHÔNG có lead thật.
-	--
-	-- ⚠️ Chạy SAU CÙNG để backend là nguồn sự thật duy nhất: cờ converted
-	--    chỉ TRUE khi session liên kết được tới 1 lead thật trong bảng leads.
-	-- (Dữ liệu lịch sử của các phiên này vẫn giữ nguyên, chỉ cờ chuyển đổi bị gỡ.)
-	UPDATE analytics_sessions s
-	SET converted_lead = FALSE
-	WHERE s.converted_lead = TRUE
-	  AND (
-	    s.lead_id IS NULL
-	    OR NOT EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id)
-	  );
-
-	-- ══════════════════════════════════════════════════════════════════════
-	-- CHUẨN HOÁ NGUỒN THEO TỪNG LANDING (fix 2026-11-13)
-	-- ══════════════════════════════════════════════════════════════════════
-	--
-	-- VẤN ĐỀ: nguồn mặc định cũ là landing_chinh cho MỌI landing
-	-- (landing_cu, landing_lznoew, landing_232, mxv_080_online đều ghi chung
-	-- 1 nguồn) ⇒ bộ lọc "Nguồn" không tách được, số liệu chồng chéo.
-	--
-	-- CÁCH SỬA: mỗi landing có nguồn riêng = chính landing_id của nó.
-	UPDATE leads
-	SET nguon = landing_id
-	WHERE (nguon = '' OR nguon = 'landing_chinh')
-	  AND COALESCE(landing_id, '') != '';
-
-	UPDATE analytics_sessions
-	SET nguon = landing_id
-	WHERE (nguon = '' OR nguon = 'landing_chinh')
-	  AND COALESCE(landing_id, '') != '';
-
+	-- ⇒ Migration data được tách sang hàm migrateAnalyticsAttribution()
+	--   chạy với context RIÊNG (timeout 2 phút) SAU khi DDL hoàn tất.
+	--   Xem backend/db/db.go → migrateAnalyticsAttribution.
 	-- Bảng cách ly các request rác, spam bot và payload bất thường (Spam Quarantine)
 	CREATE TABLE IF NOT EXISTS spam_quarantine (
 		id BIGSERIAL PRIMARY KEY,
@@ -592,6 +472,191 @@ func (s *Store) initSchema(ctx context.Context) error {
 	`
 	_, err := s.pool.Exec(ctx, schemaSQL)
 	return err
+}
+
+// migrateAnalyticsAttribution chạy migration DỮ LIỆU cho bảng analytics.
+//
+// ⚠️ TÁCH RIÊNG khỏi `initSchema` (fix sự cố 2026-11-13):
+//
+// VÌ SAO TÁCH:
+// `initSchema` dùng CHUNG context với `NewStore` — timeout chỉ 10 giây. Migration
+// dữ liệu phải quét bảng `leads` + `analytics_sessions` nên vượt quá 10 giây ⇒
+// backend bị FATAL lúc khởi động ("timeout: context deadline exceeded") ⇒
+// production trả 503. Đã xảy ra thật lúc 05:34 ngày 13-11-2026.
+//
+// ⇒ Hàm này chạy với context RIÊNG (timeout 2 phút) và chạy SAU khi DDL xong.
+//   Lỗi migration KHÔNG làm backend chết — chỉ log cảnh báo, backend vẫn phục vụ.
+//
+// THỨ TỰ (phải đúng):
+//   B1. Tạo dòng session tối thiểu cho lead chưa có session.
+//   B2. Gắn lead_id cho session qua tracking.session_id.
+//   B3. Gắn lead_id cho session qua action 'converted' (SĐT trong action).
+//   B4. Khôi phục landing_id/nguon của session theo landing của lead.
+//   B5. CUỐI CÙNG: gỡ converted_lead cho mọi session không có lead thật.
+//
+// Tất cả đều IDEMPOTENT — chạy lại nhiều lần vẫn cho cùng kết quả.
+func (s *Store) migrateAnalyticsAttribution() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	steps := []struct {
+		name string
+		sql  string
+	}{
+		{
+			// B1. BACKFILL SESSION THIẾU CHO LEAD ĐÃ GHI
+			//
+			// VẤN ĐỀ: nhiều lead có tracking.session_id nhưng KHÔNG có dòng tương ứng
+			// trong analytics_sessions (analytics ping bị throttle / mất / server
+			// restart giữa lúc ghi lead). Đo trên production ngày 13-11: 8 lead, chỉ
+			// 2 có session ⇒ biểu đồ "lượt xem" và "lead" thấp hơn thực tế.
+			//
+			// CÁCH SỬA: tự tạo dòng session tối thiểu cho các lead còn thiếu, gắn
+			// converted_lead = TRUE + lead_id ⇒ số liệu lịch sử khớp với CRM.
+			name: "B1 backfill session cho lead",
+			sql: `
+				INSERT INTO analytics_sessions (
+				    session_id, visitor_id, landing_id, nguon,
+				    so_dien_thoai, lead_id, converted_lead, has_interacted_form,
+				    duration_seconds, actions, first_seen, last_seen
+				)
+				SELECT
+				    l.tracking->>'session_id',
+				    COALESCE(NULLIF(l.tracking->>'visitor_id', ''), l.tracking->>'session_id'),
+				    COALESCE(NULLIF(l.landing_id, ''), 'default_landing'),
+				    COALESCE(NULLIF(l.nguon, ''), l.landing_id),
+				    l.so_dien_thoai,
+				    l.id,
+				    TRUE, TRUE,
+				    0,
+				    jsonb_build_array(jsonb_build_object(
+				        'time', 0,
+				        'type', 'converted',
+				        'target', 'registrationForm',
+				        'text', 'Hoàn tất đăng ký',
+				        'detail', jsonb_build_object('lead_id', l.id, 'phone', l.so_dien_thoai)
+				    )),
+				    l.thoi_gian, l.thoi_gian
+				FROM leads l
+				WHERE COALESCE(l.tracking->>'session_id', '') != ''
+				  AND NOT EXISTS (
+				    SELECT 1 FROM analytics_sessions s WHERE s.session_id = l.tracking->>'session_id'
+				  )
+				ON CONFLICT (session_id) DO NOTHING;
+			`,
+		},
+		{
+			// B2. Gắn lead_id cho các session đã có nhưng chưa trỏ tới lead nào.
+			name: "B2 gắn lead_id qua tracking.session_id",
+			sql: `
+				UPDATE analytics_sessions s
+				SET converted_lead = TRUE,
+				    lead_id = l.id,
+				    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
+				FROM leads l
+				WHERE s.session_id = l.tracking->>'session_id'
+				  AND (s.lead_id IS NULL OR s.lead_id <> l.id);
+			`,
+		},
+		{
+			// B3. Gắn session ↔ lead bằng SĐT trong action 'converted'.
+			//
+			// ⚠️ TỐI ƯU: bản đầu dùng correlated subquery MIN(first_seen) ⇒ quét
+			// lại toàn bảng `analytics_sessions` cho MỖI dòng ⇒ O(n²) ⇒ timeout.
+			// Nay dùng CTE gom SĐT → session đầu tiên (ROW_NUMBER) rồi join 1 lần.
+			name: "B3 gắn lead_id qua action converted",
+			sql: `
+				WITH first_conv AS (
+				    SELECT
+				        COALESCE(e->'detail'->>'phone', '') AS phone,
+				        s.session_id,
+				        ROW_NUMBER() OVER (PARTITION BY COALESCE(e->'detail'->>'phone', '') ORDER BY s.first_seen ASC) AS rn
+				    FROM analytics_sessions s
+				    CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.actions, '[]'::jsonb)) e
+				    WHERE e->>'type' = 'converted'
+				      AND COALESCE(e->'detail'->>'phone', '') != ''
+				),
+				picked AS (
+				    SELECT phone, session_id FROM first_conv WHERE rn = 1
+				)
+				UPDATE analytics_sessions s
+				SET lead_id = l.id,
+				    converted_lead = TRUE,
+				    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
+				FROM picked p
+				JOIN leads l ON l.so_dien_thoai = p.phone
+				WHERE s.session_id = p.session_id
+				  AND s.lead_id IS NULL;
+			`,
+		},
+		{
+			// B4. Khôi phục landing_id/nguon của session theo landing CỦA LEAD.
+			//
+			// VẤN ĐỀ: cookie phiên dùng CHUNG giữa landing và trang "chúc mừng"
+			// ⇒ cùng 1 session_id được gửi lên lần lượt với landing_id = landing_cu
+			// rồi landing_lznoew ⇒ phiên gốc của landing_cu bị "chuyển" sang lznoew.
+			// Đo trên production: landing_lznoew có 270 view + 270 converted (CR 100%)
+			// trong khi đó chỉ là trang CHỈ ĐỂ XEM; landing_cu mất lead.
+			name: "B4 khôi phục landing_id/nguon theo lead",
+			sql: `
+				UPDATE analytics_sessions s
+				SET landing_id = l.landing_id,
+				    nguon = COALESCE(NULLIF(l.nguon, ''), l.landing_id)
+				FROM leads l
+				WHERE s.lead_id = l.id
+				  AND COALESCE(l.landing_id, '') != ''
+				  AND s.landing_id <> l.landing_id;
+			`,
+		},
+		{
+			// B5. GỠ cờ converted cho mọi session KHÔNG có lead thật.
+			//
+			// ⚠️ Chạy SAU CÙNG để backend là nguồn sự thật duy nhất: cờ converted
+			// chỉ TRUE khi session liên kết được tới 1 lead thật trong bảng leads.
+			name: "B5 gỡ cờ converted không có lead thật",
+			sql: `
+				UPDATE analytics_sessions s
+				SET converted_lead = FALSE
+				WHERE s.converted_lead = TRUE
+				  AND (
+				    s.lead_id IS NULL
+				    OR NOT EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id)
+				  );
+			`,
+		},
+		{
+			// CHUẨN HOÁ NGUỒN THEO TỪNG LANDING.
+			//
+			// VẤN ĐỀ: nguồn mặc định cũ là landing_chinh cho MỌI landing
+			// (landing_cu, landing_lznoew, landing_232, mxv_080_online đều ghi chung
+			// 1 nguồn) ⇒ bộ lọc "Nguồn" không tách được, số liệu chồng chéo.
+			name: "C chuẩn hoá nguon theo landing",
+			sql: `
+				UPDATE leads
+				SET nguon = landing_id
+				WHERE (nguon = '' OR nguon = 'landing_chinh')
+				  AND COALESCE(landing_id, '') != '';
+
+				UPDATE analytics_sessions
+				SET nguon = landing_id
+				WHERE (nguon = '' OR nguon = 'landing_chinh')
+				  AND COALESCE(landing_id, '') != '';
+			`,
+		},
+	}
+
+	for _, step := range steps {
+		start := time.Now()
+		if _, err := s.pool.Exec(ctx, step.sql); err != nil {
+			if ctx.Err() != nil {
+				log.Printf("[MIGRATION][WARN] Migration '%s' da timeout — bo qua (backend van chay)", step.name)
+				return
+			}
+			log.Printf("[MIGRATION][WARN] Migration '%s' that bai: %v", step.name, err)
+			continue
+		}
+		log.Printf("[MIGRATION] OK %s (%v)", step.name, time.Since(start).Round(time.Millisecond))
+	}
 }
 
 // Close đóng kết nối pool an toàn
