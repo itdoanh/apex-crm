@@ -270,6 +270,30 @@ func main() {
 	mux.HandleFunc("/api/analytics/vpn", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleVPNAnalytics)))
 	mux.HandleFunc("/api/analytics/landing-report", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(analyticsHandler.HandleLandingReport)))
 
+	// ══════════════════════════════════════════════════════════════
+	// HỆ THỐNG BÁO CÁO & BIỂU ĐỒ MỚI (thiết kế lại 2026-11-13)
+	// ══════════════════════════════════════════════════════════════
+	// Tất cả endpoint dùng CHUNG bộ lọc toàn cục (db.ReportFilter) ⇒ KPI,
+	// biểu đồ và bảng trong 6 tab luôn thống nhất với nhau.
+	reportHandler := handlers.NewReportHandler(store)
+	reportAuth := func(h http.HandlerFunc) http.HandlerFunc {
+		return authHandler.RequireAdminAuth(h)
+	}
+	mux.HandleFunc("/api/analytics/report/summary", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleSummary)))
+	mux.HandleFunc("/api/analytics/report/timeseries", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleTimeSeries)))
+	mux.HandleFunc("/api/analytics/report/landings", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleLandingLeaderboard)))
+	mux.HandleFunc("/api/analytics/report/meta", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleMeta)))
+	mux.HandleFunc("/api/analytics/report/ad-hierarchy", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleAdHierarchy)))
+	mux.HandleFunc("/api/analytics/report/heatmap", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleHeatmap)))
+	mux.HandleFunc("/api/analytics/report/behavior", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleBehavior)))
+	mux.HandleFunc("/api/analytics/report/form", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleForm)))
+	mux.HandleFunc("/api/analytics/report/devices", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleDevices)))
+	mux.HandleFunc("/api/analytics/report/security", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleSecurity)))
+	mux.HandleFunc("/api/analytics/report/quarantine", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleQuarantine)))
+	mux.HandleFunc("/api/analytics/report/quarantine/approve", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleApproveQuarantine)))
+	mux.HandleFunc("/api/analytics/report/journey", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleJourney)))
+	mux.HandleFunc("/api/analytics/report/filters", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleFilterOptions)))
+
 	// Lead Ingestion & Management APIs (POST submit lead là public, GET danh sách và thao tác là bảo vệ Admin)
 	mux.HandleFunc("/api/leads", leadHandler.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

@@ -210,6 +210,23 @@ func (s *Store) initSchema(ctx context.Context) error {
 	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_90 BOOLEAN NOT NULL DEFAULT FALSE;
 	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS scroll_depth_100 BOOLEAN NOT NULL DEFAULT FALSE;
 
+	-- ══════════════════════════════════════════════════════════════
+	-- PHỄU BIỂU MẪU & AUTOFILL (thiết kế lại báo cáo — 2026-11-13)
+	-- ══════════════════════════════════════════════════════════════
+	-- Trước đây is_autofill / autofill_source / fill_duration_ms chỉ nằm
+	-- trong leads.tracking (JSONB) ⇒ chỉ thống kê được trên lead ĐÃ tạo,
+	-- không tính được cho phiên bỏ form. Báo cáo "Phễu Biểu Mẫu" cần số liệu
+	-- ở MỨC PHIÊN ⇒ đưa các cột này vào analytics_sessions.
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS is_autofill BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS autofill_source VARCHAR(40) NOT NULL DEFAULT '';
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS fill_duration_ms INTEGER NOT NULL DEFAULT 0;
+	-- Phiên đã bấm submit ≥ 1 lần VÀ không dính lỗi validate ở lần cuối
+	-- ⇒ đã vượt qua bước kiểm tra dữ liệu (khác với form_submit_attempts
+	-- chỉ đếm số lần bấm).
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS validation_passed BOOLEAN NOT NULL DEFAULT FALSE;
+	-- Tổng thời gian user đã focus vào form (ms) — dùng cho "Avg Fill Duration".
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS form_focus_ms INTEGER NOT NULL DEFAULT 0;
+
 	CREATE INDEX IF NOT EXISTS idx_sessions_landing_id ON analytics_sessions (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_nguon ON analytics_sessions (nguon);
 	CREATE INDEX IF NOT EXISTS idx_sessions_is_bot ON analytics_sessions (is_bot);
@@ -1322,7 +1339,8 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			visible_seconds, hidden_seconds, session_count, landing_path, referrer_host,
 			is_new_visitor, has_video_play, has_zalo_click, has_tel_click,
 			form_submit_attempts, form_validation_errors,
-			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100
+			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100,
+			is_autofill, autofill_source, fill_duration_ms, validation_passed, form_focus_ms
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8, $9,
@@ -1341,7 +1359,8 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			$66, $67, $68, $69, $70, $71,
 			$72, $73, $74, $75, $76, $77,
 			$78, $79, $80, $81, $82, $83,
-			$84, $85, $86, $87
+			$84, $85, $86, $87,
+			$88, $89, $90, $91, $92
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
 			last_seen = NOW(),
@@ -1424,7 +1443,12 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			scroll_depth_50 = analytics_sessions.scroll_depth_50 OR EXCLUDED.scroll_depth_50,
 			scroll_depth_75 = analytics_sessions.scroll_depth_75 OR EXCLUDED.scroll_depth_75,
 			scroll_depth_90 = analytics_sessions.scroll_depth_90 OR EXCLUDED.scroll_depth_90,
-			scroll_depth_100 = analytics_sessions.scroll_depth_100 OR EXCLUDED.scroll_depth_100;
+			scroll_depth_100 = analytics_sessions.scroll_depth_100 OR EXCLUDED.scroll_depth_100,
+			is_autofill = analytics_sessions.is_autofill OR EXCLUDED.is_autofill,
+			autofill_source = CASE WHEN EXCLUDED.autofill_source != '' THEN EXCLUDED.autofill_source ELSE analytics_sessions.autofill_source END,
+			fill_duration_ms = GREATEST(analytics_sessions.fill_duration_ms, EXCLUDED.fill_duration_ms),
+			validation_passed = analytics_sessions.validation_passed OR EXCLUDED.validation_passed,
+			form_focus_ms = GREATEST(analytics_sessions.form_focus_ms, EXCLUDED.form_focus_ms);
 	`
 
 	var leadIDVal interface{}
@@ -1452,6 +1476,7 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 		p.IsNewVisitor, p.HasVideoPlay, p.HasZaloClick, p.HasTelClick,
 		p.FormSubmitAttempts, p.FormValidationError,
 		p.ScrollDepth25, p.ScrollDepth50, p.ScrollDepth75, p.ScrollDepth90, p.ScrollDepth100,
+		p.IsAutofill, p.AutofillSource, p.FillDurationMs, p.ValidationPassed, p.FormFocusMs,
 	)
 	return err
 }

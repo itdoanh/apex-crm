@@ -101,6 +101,16 @@ type AnalyticsEventPayload struct {
 	ScrollDepth75       bool   `json:"scroll_depth_75,omitempty"`
 	ScrollDepth90       bool   `json:"scroll_depth_90,omitempty"`
 	ScrollDepth100      bool   `json:"scroll_depth_100,omitempty"`
+
+	// ─── Phễu biểu mẫu & autofill (mức PHIÊN — 2026-11-13) ─────
+	//
+	// Trước đây các trường này chỉ có trong payload `/api/leads` (lưu vào
+	// `leads.tracking`) ⇒ không thống kê được cho phiên BỎ form.
+	IsAutofill       bool   `json:"is_autofill,omitempty"`
+	AutofillSource   string `json:"autofill_source,omitempty"`
+	FillDurationMs   int    `json:"fill_duration_ms,omitempty"`
+	ValidationPassed bool   `json:"validation_passed,omitempty"`
+	FormFocusMs      int    `json:"form_focus_ms,omitempty"`
 }
 
 // ActionItem đại diện cho một hành vi của người dùng trong Timeline
@@ -214,6 +224,13 @@ type AnalyticsSession struct {
 	ScrollDepth75       bool   `json:"scroll_depth_75"`
 	ScrollDepth90       bool   `json:"scroll_depth_90"`
 	ScrollDepth100      bool   `json:"scroll_depth_100"`
+
+	// ─── Phễu biểu mẫu & autofill (2026-11-13) ───────────────────
+	IsAutofill       bool   `json:"is_autofill"`
+	AutofillSource   string `json:"autofill_source"`
+	FillDurationMs   int    `json:"fill_duration_ms"`
+	ValidationPassed bool   `json:"validation_passed"`
+	FormFocusMs      int    `json:"form_focus_ms"`
 }
 
 // GeoStatItem thống kê lượt truy cập và lead theo khu vực địa lý

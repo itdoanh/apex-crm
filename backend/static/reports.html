@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apex Fintech — Trung Tâm Báo Cáo &amp; Biểu Đồ</title>
+    <base href="/ads/">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="config.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#fff7ed', 100: '#ffedd5', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+                        slate: { 750: '#243247', 850: '#172033', 950: '#0b0f19' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/crm.css">
+    <link rel="stylesheet" href="css/reports.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-orange-500 selection:text-white">
+
+<!-- ══════════════════════════════════════════════════════════════════
+     MÀN HÌNH ĐĂNG NHẬP (Admin)
+     ══════════════════════════════════════════════════════════════════ -->
+<div id="adminLoginScreen" class="fixed inset-0 z-[200] bg-slate-950 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-7 shadow-2xl">
+        <div class="text-center mb-6">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center font-black text-white text-2xl mx-auto shadow-lg shadow-orange-500/25">A</div>
+            <h2 class="mt-3 font-black text-lg text-white">Trung Tâm Báo Cáo</h2>
+            <p class="text-xs text-slate-400 mt-1">Đăng nhập quản trị để xem báo cáo</p>
+        </div>
+        <form onsubmit="return handleAdminLogin(event)" class="space-y-3">
+            <input type="text" id="loginUsername" placeholder="Tên đăng nhập" autocomplete="username"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-orange-500">
+            <input type="password" id="loginPassword" placeholder="Mật khẩu" autocomplete="current-password"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-orange-500">
+            <div id="loginErrorMessage" class="hidden bg-rose-950/70 border border-rose-800 text-rose-300 text-xs rounded-lg px-3 py-2">
+                <span id="loginErrorText"></span>
+            </div>
+            <button type="submit" id="btnLoginSubmit"
+                class="w-full bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold py-2.5 rounded-xl transition shadow-lg shadow-orange-600/20">
+                Đăng Nhập
+            </button>
+        </form>
+        <a href="/ads/" class="block text-center text-[11px] text-slate-500 hover:text-slate-300 mt-4 transition">
+            <i class="fa-solid fa-arrow-left mr-1"></i>Quay lại CRM
+        </a>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     HEADER
+     ══════════════════════════════════════════════════════════════════ -->
+<header class="bg-slate-900/95 backdrop-blur border-b border-slate-800 sticky top-0 z-40 px-4 lg:px-8 py-3">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center font-black text-white text-xl shadow-lg shadow-orange-500/25">A</div>
+            <div>
+                <h1 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                    <span>Trung Tâm Báo Cáo &amp; Biểu Đồ</span>
+                </h1>
+                <p class="text-xs text-slate-400">Thống kê đa landing · Attribution Meta Ads · Phễu chuyển đổi · Chống bot</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+            <span class="bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <i class="fa-solid fa-user-shield text-emerald-400"></i>
+                <span id="headerAdminUsername">admin</span>
+            </span>
+            <a href="/ads/" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-users-line text-orange-400"></i><span>CRM</span>
+            </a>
+            <button type="button" onclick="handleAdminLogout()" class="bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-xs px-3 py-2 rounded-xl border border-rose-800 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-right-from-bracket"></i><span>Thoát</span>
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     BỘ LỌC TOÀN CỤC (STICKY)
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="globalFilterBar" class="sticky top-[61px] z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 lg:px-8 py-2.5">
+    <div class="max-w-[1600px] mx-auto space-y-2">
+
+        <!-- Hàng 1: thời gian + so sánh + lưu chọn -->
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-slate-400 font-semibold mr-1"><i class="fa-regular fa-calendar-days text-orange-400 mr-1"></i>Thời gian:</span>
+                <button onclick="setTimePreset('today')" data-preset="today" class="rp-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">Hôm nay</button>
+                <button onclick="setTimePreset('yesterday')" data-preset="yesterday" class="rp-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">Hôm qua</button>
+                <button onclick="setTimePreset('7days')" data-preset="7days" class="rp-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">7 ngày qua</button>
+                <button onclick="setTimePreset('30days')" data-preset="30days" class="rp-btn active bg-orange-600 border-orange-600 text-white transition">30 ngày qua</button>
+                <button onclick="setTimePreset('thisMonth')" data-preset="thisMonth" class="rp-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">Tháng này</button>
+                <button onclick="setTimePreset('year')" data-preset="year" class="rp-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">1 năm qua</button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                    <span class="text-[11px] text-slate-400">Từ:</span>
+                    <input type="date" id="rpFromDate" onchange="onCustomDateChange()" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer">
+                </div>
+                <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                    <span class="text-[11px] text-slate-400">Đến:</span>
+                    <input type="date" id="rpToDate" onchange="onCustomDateChange()" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer">
+                </div>
+
+                <!-- So sánh kỳ trước -->
+                <label class="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 cursor-pointer select-none" title="Hiển thị % tăng/giảm so với kỳ liền trước">
+                    <input type="checkbox" id="rpCompare" onchange="refreshActiveTab()" class="accent-orange-500 w-3.5 h-3.5">
+                    <span class="text-[11px] text-slate-300 font-semibold">So sánh kỳ trước</span>
+                </label>
+
+                <!-- Chất lượng traffic -->
+                <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                    <span class="text-[11px] text-slate-400"><i class="fa-solid fa-shield-halved text-rose-400 mr-1"></i>Traffic:</span>
+                    <select id="rpTrafficScope" onchange="refreshActiveTab()" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer">
+                        <option value="human">Người thật (mặc định)</option>
+                        <option value="all">Tất cả traffic</option>
+                        <option value="bot">Chỉ bot / nghi ngờ</option>
+                    </select>
+                </div>
+
+                <button onclick="toggleAdvancedFilters()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders"></i><span>Bộ lọc nâng cao</span>
+                    <span id="rpAdvancedCount" class="hidden bg-orange-600 text-white text-[10px] px-1.5 rounded-full font-mono">0</span>
+                </button>
+
+                <button onclick="refreshActiveTab()" class="bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-orange-600 transition shadow flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Hàng 2: bộ lọc nâng cao -->
+        <div id="rpAdvancedFilters" class="hidden pt-2 border-t border-slate-800/80 space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-slate-400 font-semibold"><i class="fa-solid fa-layer-group text-orange-400 mr-1"></i>Landing:</span>
+
+                <!-- Multi-select landing -->
+                <div class="relative">
+                    <button onclick="toggleLandingDropdown(event)" id="rpLandingBtn" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 hover:border-orange-500 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-sitemap text-orange-400"></i>
+                        <span id="rpLandingLabel">Tất cả Landing</span>
+                        <i class="fa-solid fa-chevron-down text-[9px] text-slate-500"></i>
+                    </button>
+                    <div id="rpLandingDropdown" class="hidden absolute z-50 mt-1 w-64 max-h-72 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2">
+                        <div class="flex gap-1.5 mb-2">
+                            <button onclick="selectAllLandings()" class="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg py-1 transition">Chọn tất cả</button>
+                            <button onclick="clearLandings()" class="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg py-1 transition">Bỏ chọn</button>
+                        </div>
+                        <div id="rpLandingList" class="space-y-0.5"></div>
+                    </div>
+                </div>
+
+                <select id="rpNguon" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả nguồn</option></select>
+                <select id="rpLandingPath" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả đường dẫn</option></select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-slate-400 font-semibold"><i class="fa-brands fa-meta text-sky-400 mr-1"></i>Meta Ads:</span>
+                <select id="rpAdAccount" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả tài khoản QC</option></select>
+                <select id="rpCampaign" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả chiến dịch</option></select>
+                <select id="rpAdset" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả nhóm QC</option></select>
+                <select id="rpAdName" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả mẫu QC</option></select>
+                <select id="rpSiteSource" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả nền tảng</option></select>
+                <select id="rpPlacement" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả vị trí</option></select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-slate-400 font-semibold"><i class="fa-solid fa-users-gear text-emerald-400 mr-1"></i>Đối tượng &amp; thiết bị:</span>
+                <select id="rpVisitorType" onchange="refreshActiveTab()" class="rp-select">
+                    <option value="all">Tất cả khách</option>
+                    <option value="new">Khách mới</option>
+                    <option value="returning">Khách quay lại</option>
+                </select>
+                <select id="rpDeviceType" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả thiết bị</option></select>
+                <select id="rpOS" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả hệ điều hành</option></select>
+                <select id="rpInApp" onchange="refreshActiveTab()" class="rp-select">
+                    <option value="">Tất cả trình duyệt</option>
+                    <option value="1">Chỉ In-App Browser</option>
+                    <option value="0">Chỉ trình duyệt ngoài</option>
+                </select>
+                <select id="rpInAppType" onchange="refreshActiveTab()" class="rp-select"><option value="">Tất cả loại In-App</option></select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-slate-400 font-semibold"><i class="fa-regular fa-clock text-amber-400 mr-1"></i>Khung giờ:</span>
+                <div class="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                    <span class="text-[11px] text-slate-400">Từ giờ</span>
+                    <select id="rpFromHour" onchange="refreshActiveTab()" class="rp-hour-select"></select>
+                    <span class="text-[11px] text-slate-400">đến giờ</span>
+                    <select id="rpToHour" onchange="refreshActiveTab()" class="rp-hour-select"></select>
+                </div>
+                <span class="text-[10px] text-slate-500 italic">Hỗ trợ quay vòng qua nửa đêm (vd 22h → 06h)</span>
+                <button onclick="resetReportFilters()" class="text-slate-400 hover:text-white text-[11px] underline transition ml-auto">Đặt lại toàn bộ</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SUB-TAB ĐIỀU HƯỚNG (6 PHÂN HỆ BÁO CÁO)
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="bg-slate-900/60 border-b border-slate-800 px-4 lg:px-8 py-2.5">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center gap-1.5" id="rpSubTabs">
+        <button onclick="switchReportTab('overview')" data-rtab="overview" class="rp-tab active bg-orange-600 border-orange-600 text-white">
+            <i class="fa-solid fa-gauge-high"></i><span>Tổng Quan Đa Landing</span>
+        </button>
+        <button onclick="switchReportTab('meta')" data-rtab="meta" class="rp-tab border border-slate-700 text-slate-300 hover:text-white">
+            <i class="fa-solid fa-bullhorn text-sky-400"></i><span>Quảng Cáo &amp; Attribution</span>
+        </button>
+        <button onclick="switchReportTab('behavior')" data-rtab="behavior" class="rp-tab border border-slate-700 text-slate-300 hover:text-white">
+            <i class="fa-solid fa-mouse text-violet-400"></i><span>Hành Vi &amp; Nội Dung</span>
+        </button>
+        <button onclick="switchReportTab('form')" data-rtab="form" class="rp-tab border border-slate-700 text-slate-300 hover:text-white">
+            <i class="fa-solid fa-filter text-emerald-400"></i><span>Phễu Biểu Mẫu</span>
+        </button>
+        <button onclick="switchReportTab('devices')" data-rtab="devices" class="rp-tab border border-slate-700 text-slate-300 hover:text-white">
+            <i class="fa-solid fa-mobile-screen text-cyan-400"></i><span>Thiết Bị &amp; Hạ Tầng</span>
+        </button>
+        <button onclick="switchReportTab('security')" data-rtab="security" class="rp-tab border border-slate-700 text-slate-300 hover:text-white">
+            <i class="fa-solid fa-shield-halved text-rose-400"></i><span>Bảo Mật &amp; Chống Bot</span>
+        </button>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     NỘI DUNG CÁC TAB
+     ══════════════════════════════════════════════════════════════════ -->
+<main class="px-4 lg:px-8 py-5">
+    <div class="max-w-[1600px] mx-auto">
+
+        <!-- ═══ TAB 1: TỔNG QUAN ═══ -->
+        <section id="rpPanel-overview" class="rp-panel space-y-5">
+            <div id="rpKpiGrid" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3"></div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-orange-400"></i>Biểu đồ 1 — Xu hướng Traffic &amp; Lead theo thời gian
+                    </h3>
+                    <div class="flex items-center gap-1.5" id="rpGranularityGroup">
+                        <button onclick="setGranularity('hour')" data-gran="hour" class="rp-gran-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">Theo giờ</button>
+                        <button onclick="setGranularity('day')" data-gran="day" class="rp-gran-btn active bg-orange-600 border-orange-600 text-white transition">Theo ngày</button>
+                        <button onclick="setGranularity('week')" data-gran="week" class="rp-gran-btn px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:text-white transition">Theo tuần</button>
+                    </div>
+                </div>
+                <div class="h-[340px]"><canvas id="rpChartTimeseries"></canvas></div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-table-list text-emerald-400"></i>Bảng 1 — Ma trận so sánh hiệu suất từng Landing Page
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950/70 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                                <th class="py-2.5 px-3">Landing</th>
+                                <th class="py-2.5 px-3 text-right">Tổng Visit</th>
+                                <th class="py-2.5 px-3 text-right">Unique Visitor</th>
+                                <th class="py-2.5 px-3 text-right">Khách quay lại</th>
+                                <th class="py-2.5 px-3 text-right">Visible TB</th>
+                                <th class="py-2.5 px-3 text-right">Max Scroll TB</th>
+                                <th class="py-2.5 px-3 text-right">Click Zalo/Call</th>
+                                <th class="py-2.5 px-3 text-right">Form Submit</th>
+                                <th class="py-2.5 px-3 text-right">Lead</th>
+                                <th class="py-2.5 px-3 text-right">CR %</th>
+                                <th class="py-2.5 px-3 text-right">Bot %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rpLeaderboardBody" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB 2: META ADS & ATTRIBUTION ═══ -->
+        <section id="rpPanel-meta" class="rp-panel hidden space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-chart-pie text-sky-400"></i>Biểu đồ 2 — Phân bổ traffic &amp; chuyển đổi theo nền tảng Meta
+                    </h3>
+                    <div class="h-[300px]"><canvas id="rpChartPlatform"></canvas></div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-location-crosshairs text-indigo-400"></i>Vị trí hiển thị (Feed / Reels / Stories...)
+                    </h3>
+                    <div class="h-[300px]"><canvas id="rpChartPlacement"></canvas></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-mobile-screen-button text-cyan-400"></i>Biểu đồ 3 — Hiệu quả trình duyệt In-App vs trình duyệt ngoài
+                </h3>
+                <div class="h-[280px]"><canvas id="rpChartInApp"></canvas></div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-sitemap text-amber-400"></i>Bảng 2 — Phân cấp hiệu suất quảng cáo (Campaign → Adset → Ad)
+                </h3>
+                <p class="text-[11px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>Bấm vào 1 chiến dịch để mở rộng nhóm QC → mẫu QC.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950/70 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                                <th class="py-2.5 px-3">Chiến Dịch / Nhóm QC / Mẫu QC</th>
+                                <th class="py-2.5 px-3 text-right">Sessions</th>
+                                <th class="py-2.5 px-3 text-right">Unique</th>
+                                <th class="py-2.5 px-3 text-right">Thoát nhanh &lt;5s</th>
+                                <th class="py-2.5 px-3 text-right">Cuộn &gt;50%</th>
+                                <th class="py-2.5 px-3 text-right">Lead</th>
+                                <th class="py-2.5 px-3 text-right">CR %</th>
+                                <th class="py-2.5 px-3 text-right">Khớp CAPI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rpAdHierarchyBody" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                        <i class="fa-solid fa-table-cells text-rose-400"></i>Biểu đồ 4 — Khung giờ vàng quảng cáo (7 ngày × 24 giờ)
+                    </h3>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="setHeatmapMetric('leads')" data-hm="leads" class="rp-hm-btn active bg-rose-600 border-rose-600 text-white px-2.5 py-1 rounded-lg border transition">Số Lead</button>
+                        <button onclick="setHeatmapMetric('sessions')" data-hm="sessions" class="rp-hm-btn border border-slate-700 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition">Sessions</button>
+                        <button onclick="setHeatmapMetric('cr')" data-hm="cr" class="rp-hm-btn border border-slate-700 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition">CR %</button>
+                    </div>
+                </div>
+                <div id="rpHeatmap" class="overflow-x-auto"></div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB 3: HÀNH VI & NỘI DUNG ═══ -->
+        <section id="rpPanel-behavior" class="rp-panel hidden space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-filter-circle-dollar text-violet-400"></i>Biểu đồ 5 — Phễu cuộn trang (Scroll Depth Funnel)
+                    </h3>
+                    <div class="h-[300px]"><canvas id="rpChartScroll"></canvas></div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-hourglass-half text-amber-400"></i>Biểu đồ 6 — Phân phối thời gian xem thực (Visible vs Hidden)
+                    </h3>
+                    <div class="h-[300px]"><canvas id="rpChartVisibleDist"></canvas></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-play-circle text-emerald-400"></i>Biểu đồ 7 — Tương tác đa phương tiện &amp; kênh phụ
+                </h3>
+                <div class="h-[300px]"><canvas id="rpChartEngagement"></canvas></div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-hand-pointer text-orange-400"></i>Bảng 3 — Top điểm chạm (CTA được bấm nhiều nhất)
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950/70 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                                <th class="py-2.5 px-3">#</th>
+                                <th class="py-2.5 px-3">Target (ID / Class)</th>
+                                <th class="py-2.5 px-3">Nội dung nút</th>
+                                <th class="py-2.5 px-3 text-right">Lượt bấm</th>
+                                <th class="py-2.5 px-3 text-right">Số phiên</th>
+                                <th class="py-2.5 px-3 text-right">Số khách</th>
+                                <th class="py-2.5 px-3 text-right">Số landing</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rpTopClickedBody" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB 4: PHỄU BIỂU MẪU ═══ -->
+        <section id="rpPanel-form" class="rp-panel hidden space-y-5">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="rpFormKpiGrid"></div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 lg:col-span-2">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-funnel text-emerald-400"></i>Biểu đồ 8 — Phễu chuyển đổi form chi tiết
+                    </h3>
+                    <div class="h-[320px]"><canvas id="rpChartFormFunnel"></canvas></div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-wand-magic-sparkles text-violet-400"></i>Biểu đồ 9 — Tỷ trọng nguồn autofill
+                    </h3>
+                    <div class="h-[320px]"><canvas id="rpChartAutofill"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB 5: THIẾT BỊ & HẠ TẦNG ═══ -->
+        <section id="rpPanel-devices" class="rp-panel hidden space-y-5">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-mobile-screen text-cyan-400"></i>Biểu đồ 10 — Tỷ trọng thiết bị &amp; hệ điều hành
+                    </h3>
+                    <div class="h-[320px]"><canvas id="rpChartDevice"></canvas></div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                        <i class="fa-solid fa-wifi text-teal-400"></i>Biểu đồ 11 — Chất lượng mạng &amp; cấu hình phần cứng
+                    </h3>
+                    <div class="h-[320px]"><canvas id="rpChartHardware"></canvas></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-display text-indigo-400"></i>Bảng 4 — Top mã thiết bị &amp; kích thước màn hình
+                </h3>
+                <p class="text-[11px] text-slate-500 mb-2"><i class="fa-solid fa-lightbulb mr-1 text-amber-400"></i>Viewport có nhiều click nhưng <b>0</b> tương tác form ⇒ nghi vỡ giao diện / CTA bị che ở màn hình đó.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950/70 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                                <th class="py-2.5 px-3">Mã thiết bị</th>
+                                <th class="py-2.5 px-3">Tên thiết bị</th>
+                                <th class="py-2.5 px-3">Viewport</th>
+                                <th class="py-2.5 px-3">Màn hình</th>
+                                <th class="py-2.5 px-3 text-right">Sessions</th>
+                                <th class="py-2.5 px-3 text-right">Unique</th>
+                                <th class="py-2.5 px-3 text-right">Có click</th>
+                                <th class="py-2.5 px-3 text-right">Chạm form</th>
+                                <th class="py-2.5 px-3 text-right">Lead</th>
+                                <th class="py-2.5 px-3 text-right">CR %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rpDeviceModelsBody" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ TAB 6: BẢO MẬT & CHỐNG BOT ═══ -->
+        <section id="rpPanel-security" class="rp-panel hidden space-y-5">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3" id="rpSecurityKpiGrid"></div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-robot text-rose-400"></i>Biểu đồ 12 — Phân loại lý do chặn bot &amp; spam
+                </h3>
+                <div class="h-[300px]"><canvas id="rpChartBotReasons"></canvas></div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                        <i class="fa-solid fa-shield-virus text-amber-400"></i>Bảng 5 — Nhật ký vùng cách ly &amp; khôi phục lead
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <select id="rpQuarantineLanding" onchange="loadQuarantine()" class="rp-select"><option value="">Tất cả landing</option></select>
+                        <button onclick="loadQuarantine()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>Nút <b>Duyệt thủ công</b> đẩy lead bị chặn nhầm (khách treo tab / mạng lag bấm gửi 2 lần) thẳng về CRM.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950/70 text-slate-400 uppercase text-[10px]">
+                            <tr>
+                                <th class="py-2.5 px-3">Thời gian</th>
+                                <th class="py-2.5 px-3">Landing</th>
+                                <th class="py-2.5 px-3">Họ tên</th>
+                                <th class="py-2.5 px-3">SĐT</th>
+                                <th class="py-2.5 px-3">Lý do chặn</th>
+                                <th class="py-2.5 px-3 text-right">Fill (ms)</th>
+                                <th class="py-2.5 px-3 text-right">Visible (s)</th>
+                                <th class="py-2.5 px-3 text-right">Scroll</th>
+                                <th class="py-2.5 px-3 text-center">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rpQuarantineBody" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+                <div class="flex items-center justify-between mt-3 text-[11px] text-slate-400">
+                    <span id="rpQuarantineInfo">--</span>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="changeQuarantinePage(-1)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg border border-slate-700 transition">Trước</button>
+                        <button onclick="changeQuarantinePage(1)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg border border-slate-700 transition">Sau</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</main>
+
+<!-- Toast -->
+<div id="rpToast" class="fixed bottom-6 right-6 z-[150] hidden px-5 py-3.5 rounded-xl shadow-2xl text-white text-sm bg-slate-900/95 border border-emerald-500/60 backdrop-blur-md"></div>
+
+<script src="js/reports.js?v=20261113-01"></script>
+</body>
+</html>

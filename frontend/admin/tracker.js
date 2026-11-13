@@ -407,6 +407,33 @@
     let formSubmitAttempts = 0;
     let formValidationErrors = 0;
 
+    // ─── Phễu biểu mẫu ở mức PHIÊN (2026-11-13) ────────────────
+    //
+    // MỤC ĐÍCH: đo được "hành trình điền form" cho MỌI phiên, kể cả phiên
+    // khách BỎ FORM (không submit). Trước đây `is_autofill`/`fill_duration_ms`
+    // chỉ có trong payload `/api/leads` ⇒ không thống kê được tỷ lệ bỏ ngang.
+    //
+    // - `formValidationPassed`: đã từng vượt qua validate SĐT 10 số.
+    // - `formFocusAccumMs` + `formFocusSegmentStart`: tổng thời gian khách
+    //   đang focus vào ô nhập (đo "thời gian điền" thực tế, bỏ qua thời gian
+    //   để màn hình ở chạy nền).
+    let formValidationPassed = false;
+    let formFocusAccumMs = 0;
+    let formFocusSegmentStart = 0;
+
+    function currentFormFocusMs() {
+        let ms = formFocusAccumMs;
+        if (formFocusSegmentStart > 0) ms += (Date.now() - formFocusSegmentStart);
+        return Math.round(ms);
+    }
+
+    function currentFillDurationMs() {
+        if (formFirstInteractionTimestamp > 0) {
+            return Math.round(Date.now() - formFirstInteractionTimestamp);
+        }
+        return 0;
+    }
+
     // Cập nhật thời gian hiển thị/ẩn mỗi khi trạng thái tab đổi.
     (function trackVisibility() {
         document.addEventListener('visibilitychange', function () {
@@ -725,9 +752,21 @@
                 formFirstInteractionTimestamp = Date.now();
                 ensureChallengeReady();
             }
+            if (!formFocusSegmentStart) formFocusSegmentStart = Date.now();
             pushAction('form_focus', target.id || target.name || 'input', 'Nhấp vào ô nhập dữ liệu', {
                 field: target.id || target.name
             });
+        }
+    }, true);
+
+    // Đo tổng thời gian người dùng thực sự focus vào ô nhập (form_focus_ms).
+    // Dùng cho KPI "Thời gian điền form trung bình" ở Tab 4 — Phễu Biểu Mẫu.
+    document.addEventListener('focusout', function (e) {
+        const target = e.target;
+        if (target && formFocusSegmentStart > 0) {
+            const delta = Date.now() - formFocusSegmentStart;
+            if (delta > 0) formFocusAccumMs += delta;
+            formFocusSegmentStart = 0;
         }
     }, true);
 
@@ -1288,6 +1327,12 @@
             scroll_depth_75: !!scrollMilestones[75],
             scroll_depth_90: !!scrollMilestones[90],
             scroll_depth_100: !!scrollMilestones[100],
+            // ─── Phễu biểu mẫu & autofill (mức phiên) ───
+            is_autofill: isFormAutofilled,
+            autofill_source: autofillSource || (isFormAutofilled ? 'browser_autofill' : ''),
+            fill_duration_ms: currentFillDurationMs(),
+            validation_passed: formValidationPassed,
+            form_focus_ms: currentFormFocusMs(),
             is_bot: botEval.is_bot,
             bot_score: botEval.bot_score,
             bot_reasons: botEval.bot_reasons,
@@ -1542,11 +1587,11 @@
         sendAnalyticsPing();
 
         // Thu thập thông tin bảo mật & Honeypot chống bot (đồng bộ với ladi.html)
-        let fillDurationMs = 0;
-        if (formFirstInteractionTimestamp > 0) {
-            fillDurationMs = Date.now() - formFirstInteractionTimestamp;
-        } else {
-            fillDurationMs = Date.now() - pageLoadTimestamp;
+        let fillDurationMs = currentFillDurationMs();
+        // Đánh dấu "Validation Passed" cho phễu biểu mẫu (Tab 4 — Phễu & Tối ưu
+        // Chuyển đổi). Chỉ coi là đạt khi SĐT thực sự hợp lệ theo chuẩn VN.
+        if (!formValidationPassed && isValidVietnamPhone(cleanPhoneValue(phone))) {
+            formValidationPassed = true;
         }
 
         let honeypotFax = '';
@@ -1864,6 +1909,9 @@
                         phoneInput.focus();
                         return;
                     }
+                    // Đã vượt qua validate SĐT ⇒ đánh dấu để phễu form (Tab 4) biết
+                    // khách đã "Validation Passed" dù sau đó có gửi thành công hay không.
+                    formValidationPassed = true;
                 }
 
                 // 3. Ngăn submit mặc định để gửi AJAX

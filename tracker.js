@@ -407,6 +407,33 @@
     let formSubmitAttempts = 0;
     let formValidationErrors = 0;
 
+    // ─── Phễu biểu mẫu ở mức PHIÊN (2026-11-13) ────────────────
+    //
+    // MỤC ĐÍCH: đo được "hành trình điền form" cho MỌI phiên, kể cả phiên
+    // khách BỎ FORM (không submit). Trước đây `is_autofill`/`fill_duration_ms`
+    // chỉ có trong payload `/api/leads` ⇒ không thống kê được tỷ lệ bỏ ngang.
+    //
+    // - `formValidationPassed`: đã từng vượt qua validate SĐT 10 số.
+    // - `formFocusAccumMs` + `formFocusSegmentStart`: tổng thời gian khách
+    //   đang focus vào ô nhập (đo "thời gian điền" thực tế, bỏ qua thời gian
+    //   để màn hình ở chạy nền).
+    let formValidationPassed = false;
+    let formFocusAccumMs = 0;
+    let formFocusSegmentStart = 0;
+
+    function currentFormFocusMs() {
+        let ms = formFocusAccumMs;
+        if (formFocusSegmentStart > 0) ms += (Date.now() - formFocusSegmentStart);
+        return Math.round(ms);
+    }
+
+    function currentFillDurationMs() {
+        if (formFirstInteractionTimestamp > 0) {
+            return Math.round(Date.now() - formFirstInteractionTimestamp);
+        }
+        return 0;
+    }
+
     // Cập nhật thời gian hiển thị/ẩn mỗi khi trạng thái tab đổi.
     (function trackVisibility() {
         document.addEventListener('visibilitychange', function () {
@@ -725,9 +752,21 @@
                 formFirstInteractionTimestamp = Date.now();
                 ensureChallengeReady();
             }
+            if (!formFocusSegmentStart) formFocusSegmentStart = Date.now();
             pushAction('form_focus', target.id || target.name || 'input', 'Nhấp vào ô nhập dữ liệu', {
                 field: target.id || target.name
             });
+        }
+    }, true);
+
+    // Đo tổng thời gian người dùng thực sự focus vào ô nhập (form_focus_ms).
+    // Dùng cho KPI "Thời gian điền form trung bình" ở Tab 4 — Phễu Biểu Mẫu.
+    document.addEventListener('focusout', function (e) {
+        const target = e.target;
+        if (target && formFocusSegmentStart > 0) {
+            const delta = Date.now() - formFocusSegmentStart;
+            if (delta > 0) formFocusAccumMs += delta;
+            formFocusSegmentStart = 0;
         }
     }, true);
 
@@ -1288,6 +1327,12 @@
             scroll_depth_75: !!scrollMilestones[75],
             scroll_depth_90: !!scrollMilestones[90],
             scroll_depth_100: !!scrollMilestones[100],
+            // ─── Phễu biểu mẫu & autofill (mức phiên) ───
+            is_autofill: isFormAutofilled,
+            autofill_source: autofillSource || (isFormAutofilled ? 'browser_autofill' : ''),
+            fill_duration_ms: currentFillDurationMs(),
+            validation_passed: formValidationPassed,
+            form_focus_ms: currentFormFocusMs(),
             is_bot: botEval.is_bot,
             bot_score: botEval.bot_score,
             bot_reasons: botEval.bot_reasons,
@@ -1302,6 +1347,25 @@
     }
 
     // Gửi payload analytics lên backend (hỗ trợ fetch keepalive & sendBeacon)
+    //
+    // ⚠️ THROTTLE (fix 2026-11-13):
+    // `ApexTracker.send()` (do landing gọi khi có tương tác: click, input, modal_open…)
+    // đẩy 1 action + gọi `sendAnalyticsPing()` ngay. Landing `doanh_chung` gọi
+    // `trackEvent()` ở MỖI keystroke trong ô tên/SĐT ⇒ mỗi phím gõ = 1 POST
+    // `/api/analytics/track`. Trang dài + người dùng nhập nhanh ⇒ hàng chục
+    // request/giây ⇒ server bị nghiêng, log đầy lỗi 500, dữ liệu analytics bị
+    // ghi đè liên tục (mất event thật do `ON CONFLICT` chỉ giữ giá trị mới nhất).
+    //
+    // CÁCH SỬA: gom (coalesce) các ping gần nhau thành 1 request.
+    // - `sendAnalyticsPing()` từ code hệ thống (pageview, heartbeat, exit, converted)
+    //   vẫn gửi NGAY ⇒ không mất dữ liệu quan trọng.
+    // - `ApexTracker.send()` (event tương tác) dùng `sendAnalyticsPingThrottled()`
+    //   ⇒ gộp trong cửa sổ 3 giây, nhưng luôn flush khi page unload/visibility hidden.
+    const ANALYTICS_THROTTLE_MS = 3000;
+    let analyticsThrottleTimer = null;
+    let analyticsPendingEvents = [];
+
+    // Gửi ngay, không throttle (dùng cho pageview / heartbeat / exit / converted).
     function sendAnalyticsPing(extraEvents) {
         // Code Studio / Preview: KHÔNG gửi analytics để tránh làm nhiễu dữ liệu thật.
         if (isAnyPreview()) return;
@@ -1326,6 +1390,40 @@
                 keepalive: true
             }).catch(function () {});
         } catch (_) {}
+    }
+
+    // Gửi analytics có throttle — dùng cho event tương tác liên tục (keystroke...).
+    //
+    // Gom nhiều lời gọi trong `ANALYTICS_THROTTLE_MS` thành 1 request duy nhất.
+    // Events đang chờ được giữ lại (`analyticsPendingEvents`) và gửi kèm lần flush
+    // ⇒ không mất hành vi người dùng, chỉ giảm số lần gọi HTTP.
+    function sendAnalyticsPingThrottled(extraEvents) {
+        if (isAnyPreview()) return;
+
+        if (extraEvents && extraEvents.length) {
+            analyticsPendingEvents = analyticsPendingEvents.concat(extraEvents);
+        }
+
+        if (analyticsThrottleTimer) return; // đang chờ flush
+
+        analyticsThrottleTimer = setTimeout(function () {
+            analyticsThrottleTimer = null;
+            const pending = analyticsPendingEvents;
+            analyticsPendingEvents = [];
+            sendAnalyticsPing(pending);
+        }, ANALYTICS_THROTTLE_MS);
+    }
+
+    // Flush ngay các event đang chờ (dùng khi rời trang) — không để mất dữ liệu.
+    function flushAnalyticsPending() {
+        if (analyticsThrottleTimer) {
+            clearTimeout(analyticsThrottleTimer);
+            analyticsThrottleTimer = null;
+        }
+        if (!analyticsPendingEvents.length) return;
+        const pending = analyticsPendingEvents;
+        analyticsPendingEvents = [];
+        sendAnalyticsPing(pending);
     }
 
     // 1. Gửi Pageview Event ngay khi vào trang
@@ -1355,11 +1453,15 @@
     window.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'hidden') {
             pushAction('exit', 'tab_hidden', 'Người dùng chuyển tab hoặc ẩn trình duyệt');
+            // Flush các event tương tác đang chờ TRƯỚC khi gửi ping exit,
+            // để không mất dữ liệu keystroke/click đang chờ throttle.
+            flushAnalyticsPending();
             sendAnalyticsPing();
         }
     });
     window.addEventListener('beforeunload', function () {
         pushAction('exit', 'window_close', 'Người dùng đóng trang web');
+        flushAnalyticsPending();
         sendAnalyticsPing();
     });
 
@@ -1485,11 +1587,11 @@
         sendAnalyticsPing();
 
         // Thu thập thông tin bảo mật & Honeypot chống bot (đồng bộ với ladi.html)
-        let fillDurationMs = 0;
-        if (formFirstInteractionTimestamp > 0) {
-            fillDurationMs = Date.now() - formFirstInteractionTimestamp;
-        } else {
-            fillDurationMs = Date.now() - pageLoadTimestamp;
+        let fillDurationMs = currentFillDurationMs();
+        // Đánh dấu "Validation Passed" cho phễu biểu mẫu (Tab 4 — Phễu & Tối ưu
+        // Chuyển đổi). Chỉ coi là đạt khi SĐT thực sự hợp lệ theo chuẩn VN.
+        if (!formValidationPassed && isValidVietnamPhone(cleanPhoneValue(phone))) {
+            formValidationPassed = true;
         }
 
         let honeypotFax = '';
@@ -1807,6 +1909,9 @@
                         phoneInput.focus();
                         return;
                     }
+                    // Đã vượt qua validate SĐT ⇒ đánh dấu để phễu form (Tab 4) biết
+                    // khách đã "Validation Passed" dù sau đó có gửi thành công hay không.
+                    formValidationPassed = true;
                 }
 
                 // 3. Ngăn submit mặc định để gửi AJAX
@@ -1898,7 +2003,9 @@
         // landing gọi `window.ApexTracker.send(type, value)` ⇒ đẩy vào timeline.
         send: function (type, value) {
             pushAction(String(type || 'event'), 'custom', String(value || ''));
-            sendAnalyticsPing();
+            // ⚠️ Dùng bản THROTTLED — landing gọi `trackEvent()` ở mỗi keystroke
+            // ⇒ gửi ngay sẽ tạo hàng chục POST /api/analytics/track mỗi giây.
+            sendAnalyticsPingThrottled();
         },
         setRegistered: setRegistered,
         isRegistered: isRegistered,

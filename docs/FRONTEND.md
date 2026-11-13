@@ -12,6 +12,7 @@ frontend/
 │   ├── index.html          Master SPA — chứa TẤT CẢ panel
 │   ├── admin.html          Alias của index.html
 │   ├── studio.html         Ladi Studio — visual drag & drop builder
+│   ├── reports.html        Trung Tâm Báo Cáo — 6 tab, 12 biểu đồ, 5 bảng
 │   ├── config.js           API base URL, target server IP
 │   ├── ladihtml.sdk.min.js SDK LadiPage (runtime cho Studio)
 │   ├── css/
@@ -19,12 +20,14 @@ frontend/
 │   │   ├── base.css        Reset + biến CSS chung
 │   │   ├── crm.css         Bảng, Kanban, drawer
 │   │   ├── layout.css      Grid, sidebar, header
+│   │   ├── reports.css     Trung Tâm Báo Cáo (thêm 2026-11-13)
 │   │   └── studio.css      Canvas, gizmo, layers, inspector
 │   └── js/
 │       ├── app.js          Điều phối chính, tab switching
 │       ├── auth.js         Login, session, đổi mật khẩu
-│       ├── crm.js          Kanban 7 bước, Customer 360° drawer
+│       ├── crm.js          Kanban 7 bước, Customer 360° drawer, Journey timeline
 │       ├── analytics.js    Chart.js — heatmap, funnel, geo, ad placement
+│       ├── reports.js      Trung Tâm Báo Cáo (thêm 2026-11-13)
 │       ├── sheets.js       Google Sheets config + mapping matrix
 │       ├── domains.js      DNS, domain, deploy route
 │       ├── landings.js     CRUD landing, feature flags
@@ -134,6 +137,71 @@ Trong tab **Analytics** (`sectionTabAnalytics`) có panel **"BÁO CÁO RIÊNG T�
 
 > ⚠️ Filter "Buổi Đêm" (22h→06h) dùng `from_hour=22&to_hour=6` — backend hỗ trợ
 > **quay vòng qua nửa đêm** (`fromHour > toHour`).
+
+---
+
+## 2.1. Trung Tâm Báo Cáo — `frontend/admin/reports.html` (thiết kế lại 2026-11-13)
+
+Trang báo cáo **độc lập**, phục vụ tại `/ads/reports.html`. Link vào từ header CRM
+(`frontend/admin/index.html` → nút **"Trung Tâm Báo Cáo"**).
+
+```
+frontend/admin/
+├── reports.html          Trang báo cáo 6 tab + sticky filter bar
+├── css/reports.css       Style riêng: .rp-select, .rp-tab, .rp-btn, dropdown multi-landing
+└── js/reports.js         Toàn bộ logic: filter state, 12 biểu đồ, 5 bảng, quarantine
+```
+
+> 🚨 Cần copy sang `backend/static/`:
+> `reports.html` → `backend/static/reports.html`,
+> `js/reports.js` → `backend/static/js/reports.js`,
+> `css/reports.css` → `backend/static/css/reports.css`.
+
+### 6 tab
+
+| Tab | Nội dung | Biểu đồ | Bảng |
+|---|---|---|---|
+| 1. Tổng quan & Đa Landing | KPI + so sánh kỳ trước | 1 (combo bar+line) | 1 — leaderboard |
+| 2. Meta Ads & Attribution | Phân bổ nền tảng/placement, CR in-app, heatmap 7×24 | 2, 3, 4 | 2 — campaign→adset→ad |
+| 3. Hành Vi & Nội Dung | Phễu scroll depth, thời gian nhìn thấy, tương tác media | 5, 6, 7 | 3 — top điểm chạm |
+| 4. Form & Phễu Chuyển Đổi | Phễu form 5 bước, KPI bỏ ngang, nguồn autofill | 8, 9 | — |
+| 5. Thiết Bị & Chẩn Đoán | Phân bổ device/OS, chất lượng mạng | 10, 11 | 4 — model & viewport |
+| 6. Bảo Mật & Chống Bot | KPI bot, lý do chặn, nhật ký cách ly | 12 | 5 — quarantine log |
+
+### Sticky filter bar (dùng chung cho cả 6 tab)
+
+| Nhóm | Element | ID |
+|---|---|---|
+| Thời gian | 7 preset: Hôm nay · Hôm qua · 7 ngày · 30 ngày · Tháng này · 1 năm · Tuỳ chọn | `.rp-btn[data-preset]` |
+| Thời gian | Từ / Đến (date input) | `#rpFromDate` `#rpToDate` |
+| Thời gian | Từ giờ / Đến giờ (0–23) | `#rpFromHour` `#rpToHour` |
+| So sánh | Checkbox "So với kỳ trước" | `#rpCompare` |
+| Landing | Multi-select (checkbox list) | `#rpLandingMulti` |
+| Landing | Nguồn / Landing path | `#rpNguon` `#rpLandingPath` |
+| Meta Ads | Account / Campaign / Adset / Ad / Platform / Placement | `#rpAdAccount` `#rpCampaign` `#rpAdset` `#rpAdName` `#rpSiteSource` `#rpPlacement` |
+| Khách | Loại khách: Mới / Quay lại / Tất cả | `#rpVisitorType` |
+| Thiết bị | Loại thiết bị / OS / In-app | `#rpDeviceType` `#rpOS` `#rpInApp` `#rpInAppType` |
+| Chất lượng | human / all / bot | `#rpTrafficScope` |
+
+### Hành trình khách hàng (Customer Journey Timeline)
+
+Trong drawer **Customer 360°** của CRM (`frontend/admin/js/crm.js`):
+
+| Hàm | Việc |
+|---|---|
+| `loadCustomerJourney(phone)` | Gọi `GET /api/analytics/report/journey?phone=…` |
+| `renderJourneyTimeline(data)` | Vẽ hồ sơ + timeline từng giây |
+
+Container trong `frontend/admin/index.html`: `#customerJourneyPanel`.
+
+### Bắt buộc — an toàn render
+
+- Mọi giá trị từ server phải qua `escapeHTML()` trước khi chèn vào HTML.
+- **Không** dùng template literal động cho class Tailwind (vd `text-${tone}-400`) vì
+  Tailwind Play CDN không JIT được class sinh động → dùng bảng tra static
+  (`RP_ICON_TONE` trong `reports.js`).
+- `toggleAdsetRows()` dùng **key sinh từ index** (`c0`, `c1`…), không dùng tên
+  campaign ⇒ tránh lỗi escape trong `querySelector`.
 
 ---
 

@@ -406,6 +406,90 @@ Response (rút gọn):
 
 > `summary` là số liệu **thật** từ `analytics_sessions` (không còn suy ra từ `totalLeads * 8`).
 
+### 6.2. Trung Tâm Báo Cáo — `/api/analytics/report/*` (thiết kế lại 2026-11-13)
+
+Toàn bộ endpoint dưới đây dùng **CHUNG một bộ lọc toàn cục** (`db.ReportFilter`)
+⇒ mọi thẻ KPI, biểu đồ và bảng luôn thống nhất với nhau.
+Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_report.go`.
+
+| Endpoint | Mô tả | Dùng cho |
+|---|---|---|
+| `GET /api/analytics/report/summary` | Thẻ KPI + % so sánh kỳ trước | Tab 1 |
+| `GET /api/analytics/report/timeseries` | Biểu đồ 1 — combo bar + line (`granularity=hour\|day\|week`) | Tab 1 |
+| `GET /api/analytics/report/landings` | Bảng 1 — leaderboard đa landing | Tab 1 |
+| `GET /api/analytics/report/meta` | Biểu đồ 2 (nền tảng + placement) & 3 (in-app vs ngoài) | Tab 2 |
+| `GET /api/analytics/report/ad-hierarchy` | Bảng 2 — campaign → adset → ad | Tab 2 |
+| `GET /api/analytics/report/heatmap` | Biểu đồ 4 — 7 ngày × 24 giờ (`metric=leads\|sessions\|cr`) | Tab 2 |
+| `GET /api/analytics/report/behavior` | Biểu đồ 5, 6, 7 + Bảng 3 (top điểm chạm) | Tab 3 |
+| `GET /api/analytics/report/form` | Biểu đồ 8 (phễu form) & 9 (nguồn autofill) | Tab 4 |
+| `GET /api/analytics/report/devices` | Biểu đồ 10, 11 + Bảng 4 (mã thiết bị & viewport) | Tab 5 |
+| `GET /api/analytics/report/security` | Biểu đồ 12 — KPI bảo mật + lý do chặn bot | Tab 6 |
+| `GET /api/analytics/report/quarantine` | Bảng 5 — nhật ký vùng cách ly | Tab 6 |
+| `POST /api/analytics/report/quarantine/approve` | Duyệt thủ công lead bị chặn nhầm → CRM | Tab 6 |
+| `GET /api/analytics/report/journey` | Hành trình khách hàng (hồ sơ + timeline từng giây) | CRM |
+| `GET /api/analytics/report/filters` | Danh sách giá trị distinct cho dropdown bộ lọc | Bộ lọc |
+
+#### Bộ lọc toàn cục (dùng chung cho MỌI endpoint trên)
+
+| Tham số | Giá trị | Ý nghĩa |
+|---|---|---|
+| `from_date` / `to_date` | `YYYY-MM-DD` | Khoảng ngày (múi giờ `Asia/Ho_Chi_Minh`) |
+| `days` | int | Cửa sổ tương đối "N ngày gần nhất" (dùng khi không có from/to) |
+| `from_hour` / `to_hour` | 0–23 | Khung giờ — **hỗ trợ quay vòng qua nửa đêm** (22h→06h) |
+| `landing_ids` | CSV | Multi-select landing (`landing_id` đơn cũng OK) |
+| `nguon` / `landing_path` | string | Nhánh vận hành / đường dẫn |
+| `ad_account_id` | string | Tài khoản quảng cáo |
+| `campaign_name` / `adset_name` / `ad_name` | string | Attribution Meta Ads |
+| `site_source_name` | `fb`\|`ig`\|`msg`\|`an` | Nền tảng |
+| `utm_placement` | `Facebook_Reels`… | Vị trí hiển thị |
+| `visitor_type` | `all`\|`new`\|`returning` | Khách mới (`is_new_visitor`) vs quay lại (`session_count > 1`) |
+| `device_type` / `os` | string | Thiết bị & hệ điều hành |
+| `is_in_app_browser` | `0`\|`1` | Trình duyệt in-app vs ngoài |
+| `in_app_type` | string | Facebook In-App, Zalo In-App, TikTok… |
+| `traffic_scope` | `human`\|`all`\|`bot` | **Mặc định `human`** (chỉ người thật) |
+| `compare` | `1` | Bật % so sánh kỳ trước trên thẻ KPI |
+
+> ⚠️ `traffic_scope=human` là mặc định **cố ý**: tính CR trên toàn bộ traffic sẽ bị
+> lệch vì bot không bao giờ chuyển đổi. Bật `all` khi cần soi traffic thô.
+>
+> ⚠️ Bảng leaderboard (`/report/landings`) **bỏ qua** bộ lọc `landing_id` (vì cần
+> nhóm theo `landing_id`) nhưng **giữ nguyên** mọi bộ lọc còn lại.
+
+#### Ví dụ response
+
+```jsonc
+// GET /api/analytics/report/summary?compare=1&traffic_scope=human
+{
+  "success": true,
+  "data": {
+    "kpis": [
+      { "key": "sessions", "label": "Tổng lượt truy cập", "value": 1520,
+        "unit": "phiên", "previous": 1310, "change_percent": 16.03,
+        "direction": "up", "hint": "Số session hợp lệ" }
+    ],
+    "compare": true, "from_date": "2026-10-14", "to_date": "2026-11-12", "days": 0
+  }
+}
+```
+
+```jsonc
+// GET /api/analytics/report/journey?phone=0368123456
+{
+  "success": true,
+  "data": {
+    "profile": { "visitor_id": "v_...", "session_count": 2, "campaign_name": "...",
+                 "device_model_code": "SM-A525F", "visible_seconds": 52,
+                 "max_scroll_percent": 75 },
+    "sessions": [ /* ... */ ],
+    "timeline": [ { "time": 4, "type": "scroll", "target": "hero",
+                    "text": "Cuộn tới 25%", "at": "2026-11-12 21:04:11" } ]
+  }
+}
+```
+
+> `journey` nhận `session_id`, `visitor_id` **hoặc** `phone`. Với `phone`, backend tự
+> tra `visitor_id` gần nhất trong `analytics_sessions`.
+
 ### `POST /api/analytics/track` — payload
 ```json
 {
@@ -437,9 +521,16 @@ Response (rút gọn):
   "is_bot": false, "bot_score": 0, "bot_reasons": "",
   "duration_seconds": 66, "max_scroll_percent": 99, "total_clicks": 3,
   "has_interacted_form": true, "converted_lead": false,
+  "is_autofill": true, "autofill_source": "url_params",
+  "fill_duration_ms": 14000, "validation_passed": true, "form_focus_ms": 9500,
   "events": [ { "time": 12, "type": "scroll", "target": "hero", "text": "..." } ]
 }
 ```
+
+> **Phễu biểu mẫu ở mức PHIÊN** (2026-11-13): `is_autofill`, `autofill_source`,
+> `fill_duration_ms`, `validation_passed`, `form_focus_ms` được gửi KÈM trong payload
+> analytics (không chỉ trong payload `/api/leads`) ⇒ có thể đo tỷ lệ bỏ ngang form cho
+> cả khách KHÔNG submit. Xem `docs/DATABASE.md` mục "Phễu biểu mẫu".
 
 > **Meta CAPI stitching**: `_fbc` được dựng tự động từ `fbclid` theo chuẩn Meta
 > (`fb.1.0.<fbclid>`) nếu trình duyệt không gắn sẵn cookie. `utm_source` được chuẩn hoá

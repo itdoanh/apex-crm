@@ -11,7 +11,7 @@ PostgreSQL 16, driver `pgx/v5`, connection pool (MaxConns 25, MinConns 2).
 | Bảng | Mục đích | Số dòng (prod) |
 |---|---|---|
 | `leads` | Lead đã chuyển đổi | 2 |
-| `analytics_sessions` | Phiên truy cập + hành vi | 54 |
+| `analytics_sessions` | Phiên truy cập + hành vi | 59 |
 | `spam_quarantine` | Request bị chặn | 2 |
 | `landing_pages` | Cấu hình landing (PK: domain+page_id) | 4 |
 | `landing_files` | Cây file của landing | 32 |
@@ -377,6 +377,50 @@ FROM analytics_sessions <where>;
 ```
 
 > ⚠️ **Bug đã sửa 2026-11-12**: trước đó funnel **bịa** số liệu (`views = totalLeads * 8`) ⇒ không khớp với báo cáo riêng landing.
+
+### 5.4. Phễu biểu mẫu ở mức PHIÊN (2026-11-13)
+
+Bổ sung 5 cột vào `analytics_sessions` (migration tự động trong `initSchema`, `ADD COLUMN IF NOT EXISTS`):
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `is_autofill` | `BOOLEAN NOT NULL DEFAULT FALSE` | Form được điền tự động (trình duyệt) hay gõ tay |
+| `autofill_source` | `VARCHAR(40) NOT NULL DEFAULT ''` | Nguồn autofill: `url_params` \| `browser_suggest` \| `password_manager` \| `manual` |
+| `fill_duration_ms` | `INTEGER NOT NULL DEFAULT 0` | Thời gian từ focus đầu tiên → submit attempt |
+| `validation_passed` | `BOOLEAN NOT NULL DEFAULT FALSE` | Lần submit đầu đã vượt qua validate |
+| `form_focus_ms` | `INTEGER NOT NULL DEFAULT 0` | Tổng thời gian form nằm trong viewport (focus + nhìn) |
+
+> **Vì sao lưu ở mức session chứ không phải mức lead?** Vì phễu form cần đo cả
+> khách **bỏ ngang** (không submit) — nếu chỉ ghi khi có lead thì không thể tính
+> "tỷ lệ bỏ ngang form". `tracker.js` gửi 5 trường này **kèm trong payload
+> analytics** (`POST /api/analytics/track`) chứ không chỉ trong payload lead.
+
+> ⚠️ `UpsertAnalyticsSession` dùng **92 tham số**. Nếu thêm cột mới phải cập nhật
+> **cả** danh sách `$1..$n` **và** `ON CONFLICT ... DO UPDATE SET` — nếu quên,
+> Postgres sẽ báo lỗi "bind message supplies N parameters, but prepared statement requires M".
+
+### 5.5. Bộ lọc toàn cục của Trung Tâm Báo Cáo (2026-11-13)
+
+`db.ReportFilter` (`backend/db/analytics_report.go`) là bộ lọc **dùng chung** cho
+14 endpoint `/api/analytics/report/*`. SQL được sinh động bằng builder có tham số
+hoá (`add(...)` cho biến, `addConst(...)` cho hằng số) ⇒ không lệch chỉ số `$n`.
+
+| Nhóm | Tham số |
+|---|---|
+| Thời gian | `from_date`, `to_date`, `days`, `from_hour`, `to_hour` |
+| Landing | `landing_id`, `landing_ids` (CSV, multi-select), `nguon`, `landing_path` |
+| Meta Ads | `ad_account_id`, `campaign_name`, `adset_name`, `ad_name`, `site_source_name`, `utm_placement` |
+| Khách | `visitor_type` (`new` → `is_new_visitor`, `returning` → `session_count > 1`) |
+| Thiết bị | `device_type`, `os`, `is_in_app_browser`, `in_app_type` |
+| Chất lượng | `traffic_scope` (`human` mặc định \| `all` \| `bot`) |
+| So sánh | `compare=1` ⇒ `previousPeriod()` dựng from/to lùi về đúng số ngày |
+
+> ⚠️ `previousPeriod()` **phải** chuyển `Days` thành `FromDate`/`ToDate` tường minh.
+> Nếu chỉ giữ `Days = N` thì SQL vẫn là "N ngày gần nhất" ⇒ kỳ trước trùng kỳ
+> hiện tại ⇒ **% thay đổi luôn = 0%**. Đã sửa 2026-11-13.
+
+> ⚠️ `traffic_scope` mặc định là `human` (`is_bot = FALSE`) vì bot không bao giờ
+> chuyển đổi — tính CR trên toàn bộ traffic sẽ ra tỷ lệ sai lệch.
 
 ---
 

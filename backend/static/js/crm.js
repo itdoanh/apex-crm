@@ -529,6 +529,21 @@ let currentOpenLead = null;
 
             document.getElementById('drawerRawJSON').innerText = JSON.stringify(tr, null, 2);
 
+            // Reset khối Hành Trình Khách Hàng cho lead mới.
+            const jProfile = document.getElementById('drawerJourneyProfile');
+            const jTimeline = document.getElementById('drawerJourneyTimeline');
+            const jEmpty = document.getElementById('drawerJourneyEmpty');
+            const jList = document.getElementById('drawerJourneyList');
+            if (jProfile) jProfile.classList.add('hidden');
+            if (jTimeline) jTimeline.classList.add('hidden');
+            if (jList) jList.innerHTML = '';
+            if (jEmpty) {
+                jEmpty.classList.remove('hidden');
+                jEmpty.innerHTML = '<i class="fa-solid fa-circle-info mr-1"></i>Bấm <b>Dựng Timeline</b> để dựng hành trình khách hàng từ dữ liệu analytics.';
+            }
+            const jCount = document.getElementById('drawerJourneyCount');
+            if (jCount) jCount.textContent = '0 sự kiện';
+
             // Open Drawer
             const drawer = document.getElementById('leadDrawer');
             const backdrop = document.getElementById('drawerBackdrop');
@@ -599,6 +614,149 @@ let currentOpenLead = null;
             navigator.clipboard.writeText(JSON.stringify(currentOpenLead.tracking, null, 2))
                 .then(() => alert("Đã copy toàn bộ JSON Tracking vào clipboard!"))
                 .catch(() => {});
+        }
+
+        // ==============================================================
+        // 10.1 HÀNH TRÌNH KHÁCH HÀNG (CUSTOMER JOURNEY TIMELINE)
+        // ==============================================================
+        //
+        // Dựng timeline từng giây cho 1 khách, lấy từ endpoint
+        // `/api/analytics/report/journey` (tra theo SĐT ⇒ backend tự tìm
+        // visitor_id gần nhất trong analytics_sessions).
+        let rpJourneyCache = {};   // phone → { profile, timeline }
+
+        async function loadCustomerJourney() {
+            if (!currentOpenLead) return;
+            const phone = (currentOpenLead.so_dien_thoai || '').replace(/\s+/g, '');
+            const btn = document.getElementById('btnLoadJourney');
+            const listEl = document.getElementById('drawerJourneyList');
+            const profileEl = document.getElementById('drawerJourneyProfile');
+            const wrapEl = document.getElementById('drawerJourneyTimeline');
+            const emptyEl = document.getElementById('drawerJourneyEmpty');
+
+            if (!phone) {
+                if (emptyEl) {
+                    emptyEl.classList.remove('hidden');
+                    emptyEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-400 mr-1"></i>Lead này không có số điện thoại ⇒ không tra được hành trình.';
+                }
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i>Đang tải...';
+            }
+
+            try {
+                let data;
+                if (rpJourneyCache[phone]) {
+                    data = rpJourneyCache[phone];
+                } else {
+                    const res = await fetch('/api/analytics/report/journey?phone=' + encodeURIComponent(phone));
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok || !json.success) throw new Error(json.error || ('HTTP ' + res.status));
+                    data = json.data || {};
+                    rpJourneyCache[phone] = data;
+                }
+
+                renderJourneyProfile(data.profile || {});
+                renderJourneyTimeline(data.timeline || []);
+
+                if (emptyEl) emptyEl.classList.add('hidden');
+                if (profileEl) profileEl.classList.remove('hidden');
+                if (wrapEl) wrapEl.classList.remove('hidden');
+            } catch (err) {
+                if (emptyEl) {
+                    emptyEl.classList.remove('hidden');
+                    emptyEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-400 mr-1"></i>Không tải được hành trình: ' + escapeHTML(err.message);
+                }
+                if (profileEl) profileEl.classList.add('hidden');
+                if (wrapEl) wrapEl.classList.add('hidden');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-timeline text-[10px]"></i>Dựng Timeline';
+                }
+            }
+        }
+
+        // renderJourneyProfile hiển thị header hồ sơ hành vi.
+        function renderJourneyProfile(p) {
+            const box = document.getElementById('drawerJourneyProfile');
+            if (!box) return;
+
+            const adsPath = [p.campaign_name, p.adset_name, p.ad_name].filter(x => x && x !== 'none').join(' › ');
+            const devicePath = [p.device_model_code, p.browser, p.connection_type].filter(x => x && x !== 'unknown').join(' · ');
+
+            const items = [
+                { label: 'Visitor ID', value: p.visitor_id || '—', tone: 'text-violet-300 font-mono truncate' },
+                { label: 'Số lần quay lại', value: (p.session_count || 1) + ' phiên', tone: 'text-slate-100 font-mono' },
+                { label: 'Nguồn Ads', value: adsPath || (p.site_source_name || 'Trực tiếp'), tone: 'text-sky-300 font-mono truncate' },
+                { label: 'Thiết bị', value: devicePath || (p.device_type || '—'), tone: 'text-cyan-300 font-mono truncate' },
+                { label: 'Thời gian xem thực', value: (p.visible_seconds || 0) + ' giây', tone: 'text-emerald-300 font-mono' },
+                { label: 'Độ sâu cuộn', value: (p.max_scroll_percent || 0) + '%', tone: 'text-amber-300 font-mono' },
+                { label: 'Landing', value: p.landing_id || '—', tone: 'text-orange-300 font-mono truncate' },
+                { label: 'Bắt đầu lúc', value: p.first_seen || '—', tone: 'text-slate-300 font-mono' }
+            ];
+
+            box.innerHTML = items.map(i => `
+                <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 block mb-0.5 text-[10px]">${escapeHTML(i.label)}:</span>
+                    <strong class="${i.tone} block text-[11px] truncate" title="${escapeHTML(String(i.value))}">${escapeHTML(String(i.value))}</strong>
+                </div>`).join('');
+        }
+
+        // renderJourneyTimeline dựng dòng thời gian từng giây.
+        function renderJourneyTimeline(items) {
+            const list = document.getElementById('drawerJourneyList');
+            const countEl = document.getElementById('drawerJourneyCount');
+            if (!list) return;
+
+            if (countEl) countEl.textContent = items.length + ' sự kiện';
+
+            if (!items.length) {
+                list.innerHTML = '<div class="text-[11px] text-slate-500 bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-3">Phiên này không ghi nhận sự kiện hành vi nào.</div>';
+                return;
+            }
+
+            // Màu + icon theo loại sự kiện.
+            const style = (type) => {
+                switch (type) {
+                    case 'converted': return { dot: 'bg-emerald-500', text: 'text-emerald-300', icon: 'fa-circle-check' };
+                    case 'click': return { dot: 'bg-orange-500', text: 'text-orange-300', icon: 'fa-hand-pointer' };
+                    case 'form_focus': return { dot: 'bg-sky-500', text: 'text-sky-300', icon: 'fa-i-cursor' };
+                    case 'form_input': return { dot: 'bg-teal-500', text: 'text-teal-300', icon: 'fa-keyboard' };
+                    case 'scroll': return { dot: 'bg-violet-500', text: 'text-violet-300', icon: 'fa-arrows-down-to-line' };
+                    case 'video_play': return { dot: 'bg-pink-500', text: 'text-pink-300', icon: 'fa-play' };
+                    case 'pageview': return { dot: 'bg-slate-500', text: 'text-slate-300', icon: 'fa-eye' };
+                    case 'zalo_click': return { dot: 'bg-blue-500', text: 'text-blue-300', icon: 'fa-comment' };
+                    case 'tel_click': return { dot: 'bg-indigo-500', text: 'text-indigo-300', icon: 'fa-phone' };
+                    case 'autofill_prefilled': return { dot: 'bg-amber-500', text: 'text-amber-300', icon: 'fa-wand-magic-sparkles' };
+                    case 'browser_autofill': return { dot: 'bg-amber-500', text: 'text-amber-300', icon: 'fa-bolt' };
+                    default: return { dot: 'bg-slate-600', text: 'text-slate-300', icon: 'fa-circle' };
+                }
+            };
+
+            const fmtTime = (sec) => {
+                const s = Math.max(0, Math.round(Number(sec) || 0));
+                const m = Math.floor(s / 60);
+                return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+            };
+
+            list.innerHTML = items.map(it => {
+                const st = style(it.type);
+                const target = it.target ? ' <span class="text-slate-500 font-mono">[' + escapeHTML(it.target) + ']</span>' : '';
+                return `
+                <div class="flex items-start gap-2.5 p-2 rounded-xl bg-slate-900 border border-slate-800">
+                    <span class="font-mono text-[10px] text-slate-500 w-10 shrink-0 pt-0.5">${fmtTime(it.time)}</span>
+                    <span class="w-2 h-2 rounded-full ${st.dot} mt-1.5 shrink-0"></span>
+                    <i class="fa-solid ${st.icon} ${st.text} text-[10px] mt-0.5 shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-[11px] font-bold ${st.text}">${escapeHTML(it.type || 'event')}</span>${target}
+                        <div class="text-[11px] text-slate-400 truncate">${escapeHTML(it.text || '')}</div>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         // 11. Pagination Handlers
