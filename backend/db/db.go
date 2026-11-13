@@ -1755,13 +1755,13 @@ func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID ui
 			duration_seconds, actions, first_seen, last_seen
 		) VALUES (
 			$1, $2, $3, $4,
-			$5, $6, TRUE, TRUE,
+			$5, $6::bigint, TRUE, TRUE,
 			0, jsonb_build_array(jsonb_build_object(
 			    'time', 0,
 			    'type', 'converted',
 			    'target', 'registrationForm',
 			    'text', 'Hoàn tất đăng ký',
-			    'detail', jsonb_build_object('lead_id', $6, 'phone', $5)
+			    'detail', jsonb_build_object('lead_id', $6::bigint, 'phone', $5::varchar)
 			)), NOW(), NOW()
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
