@@ -304,6 +304,20 @@ CREATE TABLE domain_routes (
 
 **Cache invalidation:** sau khi deploy route → `domainCache.Reload()` bắt buộc.
 
+> ⚠️ **Route "dangling" không được nạp vào cache** (sửa 2026-11-13).
+>
+> `GetAllActiveDomainRoutes()` chỉ nạp route thỏa:
+> `(dr.redirect_url IS NOT NULL AND dr.redirect_url <> '') OR lp.is_active = true`.
+>
+> **Vì sao**: route `/` của `ads.giaodichhanghoatuonglai.com` trỏ tới
+> `landing_232` đã bị deactivate ⇒ landing không được phục vụ ⇒ request `/` không
+> tìm được landing ⇒ backend redirect về chính nó ⇒ **vòng lặp redirect 302**
+> (đã xác nhận trên production). Nay route tới landing đã tắt bị bỏ qua ⇒ domain
+> root trả 404 rõ ràng thay vì loop.
+>
+> Dữ liệu route **không bị xoá** — chỉ không nạp vào cache. Nếu muốn dọn hẳn thì
+> tắt `domain_routes.is_active = false` cho route đó.
+
 ---
 
 ## 5. `analytics_sessions`
@@ -421,6 +435,47 @@ hoá (`add(...)` cho biến, `addConst(...)` cho hằng số) ⇒ không lệch 
 
 > ⚠️ `traffic_scope` mặc định là `human` (`is_bot = FALSE`) vì bot không bao giờ
 > chuyển đổi — tính CR trên toàn bộ traffic sẽ ra tỷ lệ sai lệch.
+
+### 5.6. Đồng bộ attribution & cờ `converted_lead` (migration 2026-11-13)
+
+Migration chạy **tự động** trong `initSchema` (`backend/db/db.go`), theo đúng thứ tự
+B1 → B5 (idempotent, chạy lại nhiều lần vẫn an toàn):
+
+| Bước | Việc | Vì sao |
+|---|---|---|
+| **B1** | `INSERT` session tối thiểu cho lead có `tracking.session_id` nhưng chưa có dòng session | Lead đã ghi vào bảng `leads` nhưng biểu đồ không thấy (analytics ping bị throttle/mất). Đo production 13-11: 8 lead chỉ 2 khớp session |
+| **B2** | `UPDATE` gắn `lead_id` + `converted_lead = TRUE` cho session đã có nhưng `lead_id` NULL | Khớp qua `l.tracking->>'session_id'` |
+| **B3** | Gắn `lead_id` qua action `type = 'converted'` (khớp SĐT trong `detail->>'phone'`) | Session có dấu vết đăng ký nhưng chưa gắn lead. Chỉ gắn session có `first_seen` **nhỏ nhất** ⇒ 1 lead ↔ 1 session, không nhân bản |
+| **B4** | Khôi phục `landing_id` / `nguon` của session **theo landing của lead** | Session gốc bị ghi đè khi khách đi từ landing sang trang "chúc mừng" (dùng chung cookie phiên) |
+| **B5** | `converted_lead = FALSE` cho mọi session **không có lead thật** | Cờ do client gửi lên dựa trên cookie 180 ngày ⇒ tín sai. Chạy CUỐI CÙNG để backend là nguồn sự thật duy nhất |
+
+Kèm 2 câu chuẩn hoá nguồn:
+
+```sql
+UPDATE leads SET nguon = landing_id
+ WHERE (nguon = '' OR nguon = 'landing_chinh') AND COALESCE(landing_id,'') != '';
+UPDATE analytics_sessions SET nguon = landing_id
+ WHERE (nguon = '' OR nguon = 'landing_chinh') AND COALESCE(landing_id,'') != '';
+```
+
+**Quy tắc attribution "first-touch"** (sửa 2026-11-13) trong
+`UpsertAnalyticsSession`:
+
+```sql
+landing_id = CASE WHEN analytics_sessions.landing_id != '' THEN analytics_sessions.landing_id ELSE EXCLUDED.landing_id END
+```
+
+> **Vì sao**: cookie phiên dùng CHUNG giữa landing và trang "chúc mừng" ⇒ cùng
+> 1 `session_id` được gửi lên lần lượt với `landing_id` khác nhau. Trước đây
+> `EXCLUDED.landing_id` ghi đè ⇒ phiên gốc của `landing_cu` bị "chuyển" sang
+> `landing_lznoew` ⇒ `landing_lznoew` có 270 view + 270 lead (CR = 100%) trong khi
+> đó là trang CHỈ ĐỂ XEM, còn `landing_cu` mất lead. ⇒ **Landing đầu tiên khách
+> thấy là nguồn attribution đúng.**
+
+> ⚠️ `AssociateLeadToSession` đã đổi từ `UPDATE` sang
+> `INSERT ... ON CONFLICT (session_id) DO UPDATE` ⇒ luôn tạo dòng session nếu
+> chưa có ⇒ **mọi lead đều xuất hiện trong biểu đồ**.
+
 
 ---
 

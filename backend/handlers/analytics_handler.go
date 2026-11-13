@@ -178,10 +178,29 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 		p.LandingID = "default_landing"
 	}
 	if p.Nguon == "" {
-		p.Nguon = "direct"
+		// ⚠️ FIX 2026-11-13: nguồn mặc định = landing_id của landing đang phục vụ.
+		//
+		// VÌ SAO: trước đây client gửi `nguon` = `landing_chinh` cho MỌI landing
+		// (4 landing khác nhau cùng ghi 1 nguồn) ⇒ không lọc tách được, số liệu
+		// bị chồng chéo giữa các landing. Mỗi landing có 1 nguồn riêng thì mọi
+		// bộ lọc "Nguồn" trong CRM + Trung Tâm Báo Cáo hoạt động đúng.
+		p.Nguon = p.LandingID
 	}
 	if len(p.Events) == 0 && len(p.Actions) > 0 {
 		p.Events = p.Actions
+	}
+
+	// ⚠️ FIX 2026-11-13: `converted_lead` KHÔNG được tin từ client.
+	//
+	// VÌ SAO: client gửi `converted_lead` dựa trên cookie 180 NGÀY ⇒ một phiên
+	// MỚI của khách đã đăng ký trước đó cũng bị đánh dấu converted ⇒ biểu đồ
+	// báo 581 lead trong khi bảng `leads` chỉ có 285 ⇒ số liệu chồng chéo,
+	// CR sai (trang "Chúc mừng" hiện CR = 100%).
+	//
+	// ⇒ CHỈ backend được set TRUE, và chỉ khi `lead_id` thực sự tồn tại trong
+	//   bảng `leads` (xem `AssociateLeadToSession`).
+	if p.ConvertedLead && (p.LeadID == nil || *p.LeadID == 0) {
+		p.ConvertedLead = false
 	}
 
 	// Trích xuất IP thực và User-Agent

@@ -249,6 +249,160 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_sessions_campaign_name ON analytics_sessions (campaign_name);
 	CREATE INDEX IF NOT EXISTS idx_sessions_landing_first_seen ON analytics_sessions (landing_id, first_seen DESC);
 
+	-- ══════════════════════════════════════════════════════════════════════
+	-- ĐỒNG BỘ CỜ converted_lead VỚI BẢNG leads (fix 2026-11-13)
+	-- ══════════════════════════════════════════════════════════════════════
+	--
+	-- VẤN ĐỀ: cột analytics_sessions.converted_lead được set TRUE bởi 2 con đường:
+	--   1. AssociateLeadToSession() — đúng (khách vừa đăng ký).
+	--   2. Client gửi cờ converted_lead trong payload analytics — đây là trạng
+	--      thái COOKIE 180 NGÀY ⇒ một phiên MỚI của khách đã đăng ký trước đó
+	--      cũng bị đánh dấu converted.
+	--
+	-- HẬU QUẢ (đã đo trên production): 581 session converted_lead = TRUE
+	-- nhưng bảng leads chỉ có 285 lead ⇒ biểu đồ báo 581 lead, CRM báo 285 ⇒
+	-- SỐ LIỆU CHỒNG CHÉO, CR tính sai (trang "Chúc mừng" hiện CR = 100%).
+	--
+	-- CÁCH SỬA: để backend là nguồn sự thật duy nhất.
+	--   - Client KHÔNG được tự set cờ converted_lead trong payload analytics.
+	--   - Cờ chỉ TRUE khi lead_id thực sự liên kết tới bảng leads.
+	--
+	-- THỨ TỰ CÁC BƯỚC (quan trọng — chạy đúng thứ tự):
+	--   B1. Tạo dòng session tối thiểu cho lead chưa có session.
+	--   B2. Gắn lead_id cho session qua tracking.session_id.
+	--   B3. Gắn lead_id cho session qua action 'converted' (SĐT trong action).
+	--   B4. Khôi phục landing_id/nguon của session theo landing của lead.
+	--   B5. CUỐI CÙNG: gỡ converted_lead cho mọi session không có lead thật.
+
+	-- B1. BACKFILL SESSION THIẾU CHO LEAD ĐÃ GHI (fix 2026-11-13)
+	--
+	-- VẤN ĐỀ: nhiều lead có tracking.session_id nhưng KHÔNG có dòng tương ứng
+	-- trong analytics_sessions (analytics ping bị throttle / mất / server
+	-- restart giữa lúc ghi lead). Đo trên production ngày 13-11: 8 lead, chỉ
+	-- 2 có session ⇒ biểu đồ "lượt xem" và "lead" thấp hơn thực tế.
+	--
+	-- CÁCH SỬA: tự tạo dòng session tối thiểu cho các lead còn thiếu, gắn
+	-- converted_lead = TRUE + lead_id ⇒ số liệu lịch sử khớp với CRM.
+	INSERT INTO analytics_sessions (
+	    session_id, visitor_id, landing_id, nguon,
+	    so_dien_thoai, lead_id, converted_lead, has_interacted_form,
+	    duration_seconds, actions, first_seen, last_seen
+	)
+	SELECT
+	    l.tracking->>'session_id',
+	    COALESCE(NULLIF(l.tracking->>'visitor_id', ''), l.tracking->>'session_id'),
+	    COALESCE(NULLIF(l.landing_id, ''), 'default_landing'),
+	    COALESCE(NULLIF(l.nguon, ''), l.landing_id),
+	    l.so_dien_thoai,
+	    l.id,
+	    TRUE, TRUE,
+	    0,
+	    jsonb_build_array(jsonb_build_object(
+	        'time', 0,
+	        'type', 'converted',
+	        'target', 'registrationForm',
+	        'text', 'Hoàn tất đăng ký',
+	        'detail', jsonb_build_object('lead_id', l.id, 'phone', l.so_dien_thoai)
+	    )),
+	    l.thoi_gian, l.thoi_gian
+	FROM leads l
+	WHERE COALESCE(l.tracking->>'session_id', '') != ''
+	  AND NOT EXISTS (
+	    SELECT 1 FROM analytics_sessions s WHERE s.session_id = l.tracking->>'session_id'
+	  )
+	ON CONFLICT (session_id) DO NOTHING;
+
+	-- B2. Gắn lead_id cho các session đã có nhưng chưa trỏ tới lead nào
+	-- (trường hợp UPDATE cũ khớp session nhưng lead_id bị NULL).
+	UPDATE analytics_sessions s
+	SET converted_lead = TRUE,
+	    lead_id = l.id,
+	    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
+	FROM leads l
+	WHERE s.session_id = l.tracking->>'session_id'
+	  AND (s.lead_id IS NULL OR s.lead_id <> l.id);
+
+	-- ══════════════════════════════════════════════════════════════════════
+	-- SỬA ATTRIBUTION LANDING BỊ GHI ĐÈ (fix 2026-11-13)
+	-- ══════════════════════════════════════════════════════════════════════
+	--
+	-- VẤN ĐỀ: cookie phiên dùng CHUNG giữa landing và trang "chúc mừng"
+	-- ⇒ cùng 1 session_id được gửi lên lần lượt với landing_id = landing_cu
+	-- rồi landing_lznoew. Vì ON CONFLICT DO UPDATE ghi đè landing_id
+	-- ⇒ phiên gốc của landing_cu bị "chuyển" sang lznoew.
+	--
+	-- HẬU QUẢ (đo trên production): landing_lznoew có 270 view + 270 converted
+	-- (CR = 100%) trong khi đó là trang CHỈ ĐỂ XEM; landing_cu mất lead.
+	--
+	-- CÁCH SỬA:
+	--   B3. Gắn session ↔ lead bằng SĐT trong action 'converted' (trường hợp
+	--      session chưa có lead_id nhưng khách ĐÃ đăng ký thật).
+	--   B4. Khôi phục landing_id/nguon của session theo landing của lead.
+	--
+	-- ⚠️ Chỉ gắn MỘT session cho MỘT lead (dùng session có first_seen nhỏ
+	--    nhất) để tránh 1 lead bị "nhân bản" sang nhiều session.
+	UPDATE analytics_sessions s
+	SET lead_id = l.id,
+	    converted_lead = TRUE,
+	    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
+	FROM leads l
+	WHERE s.lead_id IS NULL
+	  AND EXISTS (
+	    SELECT 1 FROM jsonb_array_elements(COALESCE(s.actions, '[]'::jsonb)) e
+	    WHERE e->>'type' = 'converted'
+	      AND COALESCE(e->'detail'->>'phone', '') = l.so_dien_thoai
+	  )
+	  AND s.first_seen = (
+	    SELECT MIN(s3.first_seen) FROM analytics_sessions s3
+	    WHERE s3.lead_id IS NULL
+	      AND EXISTS (
+	        SELECT 1 FROM jsonb_array_elements(COALESCE(s3.actions, '[]'::jsonb)) e
+	        WHERE e->>'type' = 'converted'
+	          AND COALESCE(e->'detail'->>'phone', '') = l.so_dien_thoai
+	      )
+	  );
+
+	-- B4. Khôi phục landing_id/nguon của session theo landing CỦA LEAD.
+	UPDATE analytics_sessions s
+	SET landing_id = l.landing_id,
+	    nguon = COALESCE(NULLIF(l.nguon, ''), l.landing_id)
+	FROM leads l
+	WHERE s.lead_id = l.id
+	  AND COALESCE(l.landing_id, '') != ''
+	  AND s.landing_id <> l.landing_id;
+
+	-- B5. GỠ cờ converted cho mọi session KHÔNG có lead thật.
+	--
+	-- ⚠️ Chạy SAU CÙNG để backend là nguồn sự thật duy nhất: cờ converted
+	--    chỉ TRUE khi session liên kết được tới 1 lead thật trong bảng leads.
+	-- (Dữ liệu lịch sử của các phiên này vẫn giữ nguyên, chỉ cờ chuyển đổi bị gỡ.)
+	UPDATE analytics_sessions s
+	SET converted_lead = FALSE
+	WHERE s.converted_lead = TRUE
+	  AND (
+	    s.lead_id IS NULL
+	    OR NOT EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id)
+	  );
+
+	-- ══════════════════════════════════════════════════════════════════════
+	-- CHUẨN HOÁ NGUỒN THEO TỪNG LANDING (fix 2026-11-13)
+	-- ══════════════════════════════════════════════════════════════════════
+	--
+	-- VẤN ĐỀ: nguồn mặc định cũ là landing_chinh cho MỌI landing
+	-- (landing_cu, landing_lznoew, landing_232, mxv_080_online đều ghi chung
+	-- 1 nguồn) ⇒ bộ lọc "Nguồn" không tách được, số liệu chồng chéo.
+	--
+	-- CÁCH SỬA: mỗi landing có nguồn riêng = chính landing_id của nó.
+	UPDATE leads
+	SET nguon = landing_id
+	WHERE (nguon = '' OR nguon = 'landing_chinh')
+	  AND COALESCE(landing_id, '') != '';
+
+	UPDATE analytics_sessions
+	SET nguon = landing_id
+	WHERE (nguon = '' OR nguon = 'landing_chinh')
+	  AND COALESCE(landing_id, '') != '';
+
 	-- Bảng cách ly các request rác, spam bot và payload bất thường (Spam Quarantine)
 	CREATE TABLE IF NOT EXISTS spam_quarantine (
 		id BIGSERIAL PRIMARY KEY,
@@ -1193,7 +1347,7 @@ func (s *Store) GetCRMStats(search string, landingID string, nguon string, statu
 	// ⚠️ TRƯỚC ĐÂY frontend tự ước lượng `totalLeads * 8` ⇒ phễu hiển thị sai
 	// hoàn toàn so với dữ liệu thật. Nay lấy số liệu thật từ
 	// `analytics_sessions` (lượt xem / cuộn / tương tác form / chuyển đổi).
-	funnelWhere, funnelArgs := buildAnalyticsWhereClauseFull(landingID, nguon, fromDate, toDate, 0)
+	funnelWhere, funnelArgs := buildAnalyticsWhereClauseFullRange(landingID, nguon, fromDate, toDate, 0, fromHour, toHour)
 	funnelQuery := fmt.Sprintf(`
 		SELECT
 			COUNT(*) FILTER (WHERE NOT is_bot)::int AS views,
@@ -1364,8 +1518,20 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
 			last_seen = NOW(),
-			landing_id = CASE WHEN EXCLUDED.landing_id != '' THEN EXCLUDED.landing_id ELSE analytics_sessions.landing_id END,
-			nguon = CASE WHEN EXCLUDED.nguon != '' THEN EXCLUDED.nguon ELSE analytics_sessions.nguon END,
+			-- ⚠️ FIX 2026-11-13: GIỮ NGUYÊN landing_id/nguon CŨ (landing đầu tiên
+			-- khách thấy), KHÔNG ghi đè bằng landing của request sau.
+			--
+			-- VÌ SAO: cookie phiên dùng CHUNG giữa landing và trang "chúc mừng"
+			-- ⇒ cùng 1 session_id sẽ được gửi lên lần lượt với landing_id =
+			-- landing_cu rồi landing_lznoew. Trước đây EXCLUDED.landing_id
+			-- ghi đè ⇒ phiên gốc của landing_cu bị "chuyển" sang lznoew ⇒
+			-- landing_cu mất lead, lznoew có 270 view + 270 lead (CR = 100%) ⇒
+			-- THÔNG SỐ CHỒNG CHÉO giữa các landing.
+			--
+			-- ⇒ Landing đầu tiên là nguồn attribution đúng. Chỉ ghi landing mới
+			--   khi bản cũ rỗng (trường hợp lần ping đầu tiên thiếu landing_id).
+			landing_id = CASE WHEN analytics_sessions.landing_id != '' THEN analytics_sessions.landing_id ELSE EXCLUDED.landing_id END,
+			nguon = CASE WHEN analytics_sessions.nguon != '' THEN analytics_sessions.nguon ELSE EXCLUDED.nguon END,
 			city = CASE WHEN EXCLUDED.city != '' THEN EXCLUDED.city ELSE analytics_sessions.city END,
 			region = CASE WHEN EXCLUDED.region != '' THEN EXCLUDED.region ELSE analytics_sessions.region END,
 			country = CASE WHEN EXCLUDED.country != '' THEN EXCLUDED.country ELSE analytics_sessions.country END,
@@ -1481,7 +1647,17 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 	return err
 }
 
-// AssociateLeadToSession liên kết thông tin Lead (SĐT, LeadID) vào Session tương ứng
+// AssociateLeadToSession liên kết thông tin Lead (SĐT, LeadID) vào Session tương ứng.
+//
+// ⚠️ FIX 2026-11-13 — "Hôm nay có nhiều lead nhưng biểu đồ hiện rất ít":
+//
+// VẤN ĐỀ: hàm này UPDATE theo `session_id`. Nếu phiên chưa tồn tại trong
+// `analytics_sessions` (khách đăng ký rất nhanh, analytics ping bị throttle
+// hoặc bị mất) ⇒ UPDATE khớp 0 dòng ⇒ lead có trong bảng `leads` nhưng
+// BIỂU ĐỒ KHÔNG THẤY. Trên production: 8 lead hôm nay chỉ 2 khớp session.
+//
+// CÁCH SỬA: dùng `INSERT ... ON CONFLICT (session_id) DO UPDATE` ⇒ luôn tạo
+// dòng session nếu chưa có ⇒ mọi lead đều xuất hiện trong biểu đồ.
 func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID uint64) error {
 	if sessionID == "" {
 		return nil
@@ -1489,22 +1665,57 @@ func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID ui
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Lấy landing_id/nguon của session (nếu có) để dựng dòng mới cho đúng.
+	var landingID, nguon, visitorID string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT landing_id, nguon, visitor_id FROM analytics_sessions WHERE session_id = $1`,
+		sessionID).Scan(&landingID, &nguon, &visitorID)
+
+	if visitorID == "" {
+		visitorID = sessionID
+	}
+	if landingID == "" {
+		landingID = "default_landing"
+	}
+	if nguon == "" {
+		// ⚠️ Nguồn mặc định = landing_id (fix 2026-11-13) để mỗi landing có
+		// nguồn riêng, không bị gộp chung thành "landing_chinh".
+		nguon = landingID
+	}
+
 	query := `
-		UPDATE analytics_sessions
-		SET converted_lead = TRUE,
-		    so_dien_thoai = $1::varchar,
-		    lead_id = $2::bigint,
-		    actions = COALESCE(actions, '[]'::jsonb) || jsonb_build_array(jsonb_build_object(
-		        'time', duration_seconds,
-		        'type', 'converted',
-		        'target', 'registrationForm',
-		        'text', 'Hoàn tất đăng ký',
-		        'detail', jsonb_build_object('lead_id', $2::bigint, 'phone', $1::varchar)
-		    )),
-		    last_seen = NOW()
-		WHERE session_id = $3::varchar;
+		INSERT INTO analytics_sessions (
+			session_id, visitor_id, landing_id, nguon,
+			so_dien_thoai, lead_id, converted_lead, has_interacted_form,
+			duration_seconds, actions, first_seen, last_seen
+		) VALUES (
+			$1, $2, $3, $4,
+			$5, $6, TRUE, TRUE,
+			0, jsonb_build_array(jsonb_build_object(
+			    'time', 0,
+			    'type', 'converted',
+			    'target', 'registrationForm',
+			    'text', 'Hoàn tất đăng ký',
+			    'detail', jsonb_build_object('lead_id', $6, 'phone', $5)
+			)), NOW(), NOW()
+		)
+		ON CONFLICT (session_id) DO UPDATE SET
+			converted_lead = TRUE,
+			so_dien_thoai = EXCLUDED.so_dien_thoai,
+			lead_id = EXCLUDED.lead_id,
+			has_interacted_form = TRUE,
+			landing_id = CASE WHEN EXCLUDED.landing_id != '' THEN EXCLUDED.landing_id ELSE analytics_sessions.landing_id END,
+			nguon = CASE WHEN EXCLUDED.nguon != '' THEN EXCLUDED.nguon ELSE analytics_sessions.nguon END,
+			actions = COALESCE(analytics_sessions.actions, '[]'::jsonb) || jsonb_build_array(jsonb_build_object(
+			    'time', analytics_sessions.duration_seconds,
+			    'type', 'converted',
+			    'target', 'registrationForm',
+			    'text', 'Hoàn tất đăng ký',
+			    'detail', jsonb_build_object('lead_id', EXCLUDED.lead_id, 'phone', EXCLUDED.so_dien_thoai)
+			)),
+			last_seen = NOW()
 	`
-	_, err := s.pool.Exec(ctx, query, phone, int64(leadID), sessionID)
+	_, err := s.pool.Exec(ctx, query, sessionID, visitorID, landingID, nguon, phone, int64(leadID))
 	return err
 }
 
@@ -1657,7 +1868,7 @@ func (s *Store) GetLandingPerformance(landingID string, nguon string, fromDate s
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	whereClause, args := buildAnalyticsWhereClauseFull("", nguon, fromDate, toDate, 0)
+	whereClause, args := buildAnalyticsWhereClauseFullRange("", nguon, fromDate, toDate, 0, fromHour, toHour)
 
 	query := fmt.Sprintf(`
 		SELECT

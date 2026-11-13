@@ -182,6 +182,40 @@ frontend/admin/
 | Khách | Loại khách: Mới / Quay lại / Tất cả | `#rpVisitorType` |
 | Thiết bị | Loại thiết bị / OS / In-app | `#rpDeviceType` `#rpOS` `#rpInApp` `#rpInAppType` |
 | Chất lượng | human / all / bot | `#rpTrafficScope` |
+| Live | **Tự động tải lại**: Tắt / 10s / 30s / 1' / 5' / 10' | `#rpAutoRefresh` `#rpAutoRefreshStatus` |
+
+### Tự động tải lại dữ liệu mới nhất (Live) — thêm 2026-11-13
+
+Dropdown `#rpAutoRefresh` cho phép admin chọn chu kỳ tự động nạp lại dữ liệu mới
+nhất trong Trung Tâm Báo Cáo.
+
+| Giá trị | Chu kỳ |
+|---|---|
+| `0` | Tắt (mặc định) |
+| `10000` | 10 giây |
+| `30000` | 30 giây |
+| `60000` | 1 phút |
+| `300000` | 5 phút |
+| `600000` | 10 phút |
+
+| Hàm | Việc |
+|---|---|
+| `setAutoRefresh(value)` | Đọc lựa chọn, lưu `localStorage` (`apex_rp_auto_refresh`), khởi động timer, nạp lại ngay |
+| `rpAutoRefreshStart()` | Tạo `setInterval` theo chu kỳ (KHÔNG dùng `setTimeout` lặp để tránh tràn timer) |
+| `rpAutoRefreshPause(paused)` | Tạm dừng / tiếp tục timer |
+| `initAutoRefresh()` | Khôi phục lựa chọn đã lưu, gắn sự kiện tạm dừng |
+| `refreshActiveTab(silent)` | Nạp lại tab đang active; `silent=true` ⇒ không nháy toast lỗi, không cuộn trang |
+
+**Hành vi thông minh (tránh làm phiền admin):**
+
+- Tab trình duyệt bị ẩn ⇒ timer bị **dừng hẳn** (`visibilitychange`) ⇒ không hót
+  băng server khi admin rời bàn phím.
+- Admin đang chọn bộ lọc ngày/giờ ⇒ timer tạm dừng, `blur`/`change` thì chạy lại.
+- Lần gọi tự động dùng `silent=true` ⇒ không nháy toast lỗi đỏ, không reset scroll.
+- Lựa chọn được lưu `localStorage` ⇒ giữ nguyên sau F5.
+- Giá trị lưu được kiểm tra lại (`allowed = [0,10000,30000,60000,300000,600000]`)
+  ⇒ `localStorage` bị sửa tay không gây lỗi.
+
 
 ### Hành trình khách hàng (Customer Journey Timeline)
 

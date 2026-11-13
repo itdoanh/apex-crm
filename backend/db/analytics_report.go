@@ -2143,10 +2143,19 @@ func (s *Store) GetReportFilterOptions() (map[string]interface{}, error) {
 		return out
 	}
 
-	// Landing: lấy từ cả bảng landing_pages (để landing mới chưa có traffic
+	// Landing: lấy từ bảng landing_pages (để landing mới chưa có traffic
 	// vẫn xuất hiện trong dropdown) lẫn analytics_sessions.
+	//
+	// ⚠️ Chỉ lấy landing ĐANG HOẠT ĐỘNG. Landing đã bị deactivate (vd
+	// `landing_232` trỏ route `/` của ads.giaodichhanghoatuonglai.com) không
+	// còn phục vụ ⇒ không được xuất hiện trong dropdown bộ lọc để tránh
+	// "thông số chồng chéo" giữa các landing.
 	landingRows, err := s.pool.Query(ctx, `
-		SELECT page_id FROM landing_pages GROUP BY page_id ORDER BY page_id ASC
+		SELECT page_id
+		FROM landing_pages
+		GROUP BY page_id
+		HAVING BOOL_OR(is_active = true)
+		ORDER BY page_id ASC
 	`)
 	landings := make([]string, 0)
 	if err == nil {
@@ -2158,8 +2167,30 @@ func (s *Store) GetReportFilterOptions() (map[string]interface{}, error) {
 			}
 		}
 	}
+
+	// Landing đã bị deactivate ở landing_pages ⇒ loại khỏi dropdown.
+	deactivated := map[string]bool{}
+	offRows, errOff := s.pool.Query(ctx, `
+		SELECT page_id
+		FROM landing_pages
+		GROUP BY page_id
+		HAVING BOOL_OR(is_active = true) = false
+	`)
+	if errOff == nil {
+		defer offRows.Close()
+		for offRows.Next() {
+			var v string
+			if err := offRows.Scan(&v); err == nil && strings.TrimSpace(v) != "" {
+				deactivated[v] = true
+			}
+		}
+	}
+
 	// Bổ sung landing chỉ có trong analytics (landing đã xoá khỏi bảng landing_pages).
 	for _, v := range distinct("landing_id", 100) {
+		if deactivated[v] {
+			continue
+		}
 		found := false
 		for _, existing := range landings {
 			if existing == v {

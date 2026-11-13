@@ -131,6 +131,25 @@
                     </select>
                 </div>
 
+                <!-- ═══ TỰ ĐỘNG TẢI LẠI (LIVE) ═══
+                     Yêu cầu 2026-11-13: cho phép chọn chu kỳ tự động load dữ liệu
+                     mới nhất trong Trung Tâm Báo Cáo: 10s / 30s / 1' / 5' / 10' / Tắt.
+                     Giá trị lưu trong localStorage để giữ nguyên khi F5. -->
+                <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                    <span class="text-[11px] text-slate-400"><i class="fa-solid fa-rotate text-emerald-400 mr-1"></i>Live:</span>
+                    <select id="rpAutoRefresh" onchange="setAutoRefresh(this.value)"
+                            class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer"
+                            title="Tự động tải lại dữ liệu mới nhất">
+                        <option value="0">Tắt</option>
+                        <option value="10000">10 giây</option>
+                        <option value="30000">30 giây</option>
+                        <option value="60000">1 phút</option>
+                        <option value="300000">5 phút</option>
+                        <option value="600000">10 phút</option>
+                    </select>
+                    <span id="rpAutoRefreshStatus" class="hidden text-[10px] font-mono text-emerald-400"></span>
+                </div>
+
                 <button onclick="toggleAdvancedFilters()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition flex items-center gap-1.5">
                     <i class="fa-solid fa-sliders"></i><span>Bộ lọc nâng cao</span>
                     <span id="rpAdvancedCount" class="hidden bg-orange-600 text-white text-[10px] px-1.5 rounded-full font-mono">0</span>

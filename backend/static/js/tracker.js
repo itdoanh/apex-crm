@@ -1234,11 +1234,27 @@
             (window.LadiPageScript && window.LadiPageScript.runtime && window.LadiPageScript.runtime.ladipage_id) ||
             'default_landing';
 
-        const nguon = globalConfig.nguon || globalConfig.source || window.APEX_NGUON || scriptNguon ||
-            urlParams.utm_source || urlParams.source || urlParams.nguon || 'direct';
+        const finalLandingId = String(landingId).trim();
+
+        // ⚠️ NGUON TÁCH THEO LANDING (fix 2026-11-13).
+        //
+        // VÌ SAO: trước đây `nguon` lấy từ `globalConfig.nguon` (mặc định
+        // `landing_chinh`) ⇒ 4 landing khác nhau (landing_cu, landing_232,
+        // landing_lznoew, mxv_080_online) đều ghi CÙNG một nguồn ⇒ không lọc
+        // tách được, thống kê bị chồng chéo giữa các landing.
+        //
+        // CÁCH SỬA: `nguon` mặc định = chính `landing_id` của landing đang
+        // phục vụ ⇒ mỗi landing có 1 nguồn riêng, lọc được độc lập.
+        // Nếu landing cố ý khai báo `data-nguon` (VD landing doanh_chung) thì
+        // vẫn tôn trọng giá trị đó.
+        const explicitNguon = scriptNguon || globalConfig.nguon || globalConfig.source ||
+            window.APEX_NGUON || urlParams.nguon || urlParams.source;
+        const nguon = (explicitNguon && explicitNguon !== 'landing_chinh')
+            ? explicitNguon
+            : finalLandingId;
 
         return {
-            landing_id: String(landingId).trim(),
+            landing_id: finalLandingId,
             nguon: String(nguon).trim()
         };
     }
@@ -1340,7 +1356,18 @@
             max_scroll_percent: maxScrollDepth,
             clicks_count: totalClicksCount,
             has_interacted_form: hasInteractedWithForm,
-            converted_lead: isRegistered(),
+            // ⚠️ KHÔNG gửi `converted_lead` từ client (fix 2026-11-13).
+            //
+            // VÌ SAO: `isRegistered()` đọc cookie 180 NGÀY ⇒ một phiên MỚI của
+            // khách ĐÃ đăng ký trước đó cũng bị đánh dấu converted ⇒ biểu đồ
+            // đếm 581 "lead" trong khi bảng `leads` chỉ có 285 ⇒ số liệu chồng
+            // chéo, CR sai (trang "Chúc mừng" hiện CR = 100%).
+            //
+            // ⇒ CHỈ BACKEND được phép set `converted_lead`, và chỉ khi lead thật
+            //   được ghi vào bảng `leads` (`AssociateLeadToSession`).
+            //
+            // `so_dien_thoai` vẫn gửi (backend dùng để đối soát) nhưng KHÔNG
+            // tự suy ra converted từ nó.
             so_dien_thoai: currentPhone,
             events: eventsToSend
         };

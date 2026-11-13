@@ -475,7 +475,13 @@ func (s *Store) GetLandingReport(landingID string, nguon string, days int) (map[
 func (s *Store) GetLandingReportRange(landingID string, nguon string, fromDate string, toDate string, days int, fromHour int, toHour int) (map[string]interface{}, error) {
 	f := parseAnalyticsFilter(landingID, nguon, fromDate, toDate, days).WithHourRange(fromHour, toHour)
 
-	overview, err := s.GetAnalyticsOverview(f.landingID, f.nguon)
+	// ⚠️ FIX 2026-11-13: phải dùng bản MỞ RỘNG + đầy đủ bộ lọc ngày/giờ.
+	//
+	// VÌ SAO: `GetAnalyticsOverview(landingID, nguon)` bỏ qua fromDate/toDate và
+	// from_hour/to_hour ⇒ số liệu KPI trong báo cáo landing KHÔNG BAO GIỜ khớp
+	// với biểu đồ (biểu đồ có lọc, KPI thì không) ⇒ "lượt xem hôm nay có nhiều
+	// nhưng hiện rất ít".
+	overview, err := s.GetOverviewExtended(f.landingID, f.nguon, f.fromDate, f.toDate, f.fromHour, f.toHour)
 	if err != nil {
 		return nil, err
 	}

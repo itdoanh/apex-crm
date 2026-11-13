@@ -347,8 +347,13 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 		landingID = "default_landing"
 	}
 	nguon := sanitizeInput(extractFirstString(rawData, "nguon", "source", "traffic_source", "utm_source"), 100)
-	if nguon == "" {
-		nguon = "direct"
+	if nguon == "" || nguon == "landing_chinh" {
+		// ⚠️ FIX 2026-11-13: nguồn mặc định = landing_id.
+		//
+		// VÌ SAO: client cũ gửi `nguon` = `landing_chinh` cho MỌI landing ⇒ 4
+		// landing khác nhau cùng ghi 1 nguồn ⇒ không lọc tách được, số liệu chồng
+		// chéo. Mỗi landing có nguồn riêng (tên landing) ⇒ lọc đúng & khớp CRM.
+		nguon = landingID
 	}
 	phoneRaw := sanitizeInput(extractFirstString(rawData, "so_dien_thoai", "phone", "phoneNumber", "sdt", "tel", "mobile"), 25)
 	if fn, ok := rawData["fullName"]; ok && fn != nil {

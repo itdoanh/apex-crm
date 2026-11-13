@@ -67,6 +67,85 @@ const RP_QUARANTINE_LIMIT = 25;
 
 const rpCharts = {};
 
+// ══════════════════════════════════════════════════════════════════════
+// TỰ ĐỘNG TẢI LẠI DỮ LIỆU (LIVE) — yêu cầu 2026-11-13
+// ══════════════════════════════════════════════════════════════════════
+//
+// Cho phép chọn chu kỳ tự động load dữ liệu mới nhất: 10s / 30s / 1' / 5' /
+// 10' / Tắt.
+//
+// THIẾT KẾ:
+// - Dùng `setInterval` (KHÔNG dùng `setTimeout` lặp) để tránh tràn timer khi
+//   tab bị ẩn/hiện liên tục.
+// - Timer tạm dừng khi admin đang tương tác bộ lọc, và tự bỏ qua lần gọi khi
+//   tab đang ẩn ⇒ không hót băng server khi admin rời bàn phím.
+// - Lựa chọn được lưu `localStorage` ⇒ giữ nguyên sau F5.
+// - `silent=true` khi auto-refresh ⇒ không nháy toast lỗi, không cuộn trang.
+let rpAutoRefreshMs = 0;
+let rpAutoRefreshTimer = null;
+let rpAutoRefreshPaused = false;
+const RP_AUTO_REFRESH_KEY = 'apex_rp_auto_refresh';
+
+function rpAutoRefreshLabel(ms) {
+    if (!ms) return 'Tắt';
+    if (ms < 60000) return (ms / 1000) + 's';
+    return (ms / 60000) + ' phút';
+}
+
+// Dừng timer khi admin đang chọn bộ lọc hoặc tab bị ẩn.
+function rpAutoRefreshPause(paused) {
+    rpAutoRefreshPaused = paused;
+    if (rpAutoRefreshTimer) {
+        clearInterval(rpAutoRefreshTimer);
+        rpAutoRefreshTimer = null;
+    }
+    if (!paused) rpAutoRefreshStart();
+}
+
+// Bắt đầu timer auto-refresh theo chu kỳ đã chọn.
+function rpAutoRefreshStart() {
+    if (rpAutoRefreshTimer) {
+        clearInterval(rpAutoRefreshTimer);
+        rpAutoRefreshTimer = null;
+    }
+    if (!rpAutoRefreshMs || rpAutoRefreshPaused) {
+        rpAutoRefreshUpdateStatus();
+        return;
+    }
+    rpAutoRefreshTimer = setInterval(() => {
+        // Bỏ qua nếu tab đang ẩn (admin rời bàn phím) hoặc đang tương tác bộ lọc.
+        if (document.hidden || rpAutoRefreshPaused) return;
+        rpAutoRefreshUpdateStatus();
+        refreshActiveTab(true);
+    }, rpAutoRefreshMs);
+    rpAutoRefreshUpdateStatus();
+}
+
+// Hiển thị trạng thái live đang chạy.
+function rpAutoRefreshUpdateStatus() {
+    const el = document.getElementById('rpAutoRefreshStatus');
+    if (!el) return;
+    if (!rpAutoRefreshMs) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+    }
+    el.classList.remove('hidden');
+    el.textContent = '● ' + rpAutoRefreshLabel(rpAutoRefreshMs);
+}
+
+// setAutoRefresh được gọi khi admin đổi lựa chọn trong dropdown.
+function setAutoRefresh(value) {
+    const ms = parseInt(value, 10);
+    rpAutoRefreshMs = (isNaN(ms) || ms <= 0) ? 0 : ms;
+    try {
+        localStorage.setItem(RP_AUTO_REFRESH_KEY, String(rpAutoRefreshMs));
+    } catch (_) {}
+    rpAutoRefreshStart();
+    // Nếu đang bật live ⇒ nạp lại ngay để thấy dữ liệu mới nhất.
+    if (rpAutoRefreshMs > 0) refreshActiveTab(true);
+}
+
 // ──────────────────────────────────────────────────────────────
 // 3. TIỆN ÍCH
 // ──────────────────────────────────────────────────────────────
@@ -108,7 +187,15 @@ function rpDateStr(d) {
     return `${y}-${m}-${day}`;
 }
 
+// rpToast hiển thị thông báo nhỏ góc phải.
+//
+// ⚠️ Khi auto-refresh đang chạy (`rpAutoRefreshSilent = true`) thì bỏ qua
+// toast LỖI ⇒ tránh việc admin bị "popup đỏ" liên tục mỗi 10-30 giây khi
+// server chậm hoặc mạng chập chờn.
+let rpAutoRefreshSilent = false;
+
 function rpToast(msg, type) {
+    if (rpAutoRefreshSilent && type === 'error') return;
     const el = document.getElementById('rpToast');
     if (!el) return;
     el.className = 'fixed bottom-6 right-6 z-[150] px-5 py-3.5 rounded-xl shadow-2xl text-white text-sm backdrop-blur-md ' +
@@ -573,7 +660,7 @@ function rpEmptyState(canvasId) {
 // ══════════════════════════════════════════════════════════════════
 // TAB 1 — TỔNG QUAN & HIỆU SUẤT ĐA LANDING
 // ══════════════════════════════════════════════════════════════════
-async function loadOverview() {
+async function loadOverview(silent) {
     try {
         const [summary, ts, board] = await Promise.all([
             rpFetch('/api/analytics/report/summary'),
@@ -687,7 +774,7 @@ function renderLeaderboard(items) {
 // ══════════════════════════════════════════════════════════════════
 // TAB 2 — QUẢNG CÁO & ATTRIBUTION
 // ══════════════════════════════════════════════════════════════════
-async function loadMeta() {
+async function loadMeta(silent) {
     try {
         const [meta, hierarchy, heatmap] = await Promise.all([
             rpFetch('/api/analytics/report/meta'),
@@ -902,7 +989,7 @@ function renderHeatmap(data) {
 // ══════════════════════════════════════════════════════════════════
 // TAB 3 — HÀNH VI & NỘI DUNG
 // ══════════════════════════════════════════════════════════════════
-async function loadBehavior() {
+async function loadBehavior(silent) {
     try {
         const data = (await rpFetch('/api/analytics/report/behavior')).data || {};
         renderScrollFunnel(data.scroll_funnel || []);
@@ -1010,7 +1097,7 @@ function renderTopClicked(items) {
 // ══════════════════════════════════════════════════════════════════
 // TAB 4 — PHỄU BIỂU MẪU
 // ══════════════════════════════════════════════════════════════════
-async function loadForm() {
+async function loadForm(silent) {
     try {
         const data = (await rpFetch('/api/analytics/report/form')).data || {};
         const funnel = data.form_funnel || {};
@@ -1080,7 +1167,7 @@ async function loadForm() {
 // ══════════════════════════════════════════════════════════════════
 // TAB 5 — THIẾT BỊ & HẠ TẦNG
 // ══════════════════════════════════════════════════════════════════
-async function loadDevices() {
+async function loadDevices(silent) {
     try {
         const data = (await rpFetch('/api/analytics/report/devices')).data || {};
         renderDeviceChart(data.breakdown || []);
@@ -1186,7 +1273,7 @@ function renderDeviceModels(items) {
 // ══════════════════════════════════════════════════════════════════
 // TAB 6 — BẢO MẬT & CHỐNG BOT
 // ══════════════════════════════════════════════════════════════════
-async function loadSecurity() {
+async function loadSecurity(silent) {
     try {
         const data = (await rpFetch('/api/analytics/report/security')).data || {};
         const grid = document.getElementById('rpSecurityKpiGrid');
@@ -1306,16 +1393,25 @@ async function approveQuarantine(id, phone) {
 // ──────────────────────────────────────────────────────────────
 // 9. ĐIỀU KHIỂN TAB CHÍNH
 // ──────────────────────────────────────────────────────────────
-function refreshActiveTab() {
+//
+// `silent` = true khi gọi tự động (auto-refresh) ⇒ không nháy toast lỗi và
+// không cuộn trang, tránh giật màn hình khi admin đang đọc báo cáo.
+function refreshActiveTab(silent) {
     updateAdvancedCount();
+    rpAutoRefreshSilent = !!silent;
+    let p;
     switch (rpActiveTab) {
-        case 'overview': loadOverview(); break;
-        case 'meta': loadMeta(); break;
-        case 'behavior': loadBehavior(); break;
-        case 'form': loadForm(); break;
-        case 'devices': loadDevices(); break;
-        case 'security': loadSecurity(); break;
+        case 'overview': p = loadOverview(silent); break;
+        case 'meta': p = loadMeta(silent); break;
+        case 'behavior': p = loadBehavior(silent); break;
+        case 'form': p = loadForm(silent); break;
+        case 'devices': p = loadDevices(silent); break;
+        case 'security': p = loadSecurity(silent); break;
+        default: p = Promise.resolve();
     }
+    // ⚠️ Reset cờ silent SAU khi lần tải hiện tại hoàn tất ⇒ các lỗi do thao tác
+    // tay của admin (bấm nút, đổi tab) vẫn hiện toast bình thường.
+    return Promise.resolve(p).finally(() => { rpAutoRefreshSilent = false; });
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -1383,6 +1479,47 @@ function initReportCenter() {
     initHourSelectors();
     setTimePreset('30days');
     loadFilterOptions().then(() => refreshActiveTab());
+    initAutoRefresh();
+}
+
+// initAutoRefresh khôi phục chu kỳ live đã lưu & gắn sự kiện tạm dừng khi
+// admin đang tương tác bộ lọc.
+function initAutoRefresh() {
+    const sel = document.getElementById('rpAutoRefresh');
+    if (sel) {
+        let saved = 0;
+        try { saved = parseInt(localStorage.getItem(RP_AUTO_REFRESH_KEY) || '0', 10) || 0; } catch (_) {}
+        // Chỉ chấp nhận các giá trị hợp lệ (10s/30s/1'/5'/10').
+        const allowed = [0, 10000, 30000, 60000, 300000, 600000];
+        if (allowed.indexOf(saved) === -1) saved = 0;
+        sel.value = String(saved);
+        rpAutoRefreshMs = saved;
+    }
+
+    // Tạm dừng live khi admin đang chọn ngày / bộ lọc để không "giật" dữ liệu.
+    const pauseOnFocus = () => rpAutoRefreshPause(true);
+    const resumeOnBlur = () => rpAutoRefreshPause(false);
+    ['rpFromDate', 'rpToDate', 'rpFromHour', 'rpToHour'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('focus', pauseOnFocus);
+        el.addEventListener('change', resumeOnBlur);
+        el.addEventListener('blur', resumeOnBlur);
+    });
+
+    // Dừng hẳn timer khi tab bị ẩn (admin rời bàn phím).
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (rpAutoRefreshTimer) {
+                clearInterval(rpAutoRefreshTimer);
+                rpAutoRefreshTimer = null;
+            }
+        } else {
+            rpAutoRefreshStart();
+        }
+    });
+
+    rpAutoRefreshStart();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

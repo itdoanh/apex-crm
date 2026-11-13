@@ -539,6 +539,22 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 > **Tách landing**: `landing_id` + `nguon` là bắt buộc; `tracker.js` namespace hoá
 > cookie/localStorage theo `landing_id` ⇒ không bao giờ lẫn thông số giữa các landing.
 
+> ⚠️ **`converted_lead` KHÔNG được tin từ client** (sửa 2026-11-13).
+>
+> Client **không** được gửi `converted_lead: true` trong payload (tracker.js đã bỏ
+> trường này). Cờ chỉ được backend set `TRUE` khi `lead_id` thực sự tồn tại trong
+> bảng `leads` (xem `AssociateLeadToSession`).
+>
+> **Vì sao**: `isRegistered()` đọc cookie 180 ngày ⇒ một phiên MỚI của khách đã
+> đăng ký trước đó cũng bị đánh dấu converted ⇒ đo trên production có 581 session
+> converted nhưng bảng `leads` chỉ có 285 lead ⇒ số liệu chồng chéo, CR sai
+> (trang "Chúc mừng" hiện CR = 100%).
+>
+> ⚠️ **`nguon` mặc định = `landing_id`** (sửa 2026-11-13). Trước đây mọi landing
+> ghi chung `nguon = "landing_chinh"` ⇒ 4 landing dùng chung 1 nguồn, không lọc
+> tách được. Nay mỗi landing có nguồn riêng (tên landing). Giá trị `landing_chinh`
+> được backend coi như "rỗng" và tự động thay bằng `landing_id`.
+
 ---
 
 ## 7. Google Sheets — Admin

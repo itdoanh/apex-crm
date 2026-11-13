@@ -388,6 +388,17 @@ func (s *Store) DeleteDomainRoute(routeID int) error {
 }
 
 // GetAllActiveDomainRoutes lấy tất cả các routes đang hoạt động trên toàn hệ thống để nạp vào RAM cache
+//
+// ⚠️ FIX 2026-11-13 — LOẠI ROUTE "DANGLING" (route trỏ tới landing đã bị vô hiệu hoá):
+//
+// VẤN ĐỀ: route `/` của domain `ads.giaodichhanghoatuonglai.com` trỏ tới
+// `landing_232`, nhưng `landing_232.is_active = false` ⇒ landing KHÔNG được
+// phục vụ ⇒ request `/` không tìm được landing ⇒ backend redirect về chính
+// nó ⇒ VÒNG LẶP REDIRECT 302 (đã xác nhận trên production).
+//
+// CÁCH SỬA: chỉ nạp route mà landing tương ứng còn `is_active = true`.
+// Route tới landing đã tắt sẽ bị bỏ qua ⇒ domain root trả 404 rõ ràng thay
+// vì redirect loop. (Dữ liệu route KHÔNG bị xoá — chỉ không nạp vào cache.)
 func (s *Store) GetAllActiveDomainRoutes() ([]models.DomainRoute, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -402,6 +413,10 @@ func (s *Store) GetAllActiveDomainRoutes() ([]models.DomainRoute, error) {
 		JOIN domains d ON d.id = dr.domain_id
 		LEFT JOIN landing_pages lp ON lp.page_id = dr.landing_id
 		WHERE dr.is_active = true
+		  AND (
+		    dr.redirect_url IS NOT NULL AND dr.redirect_url <> ''
+		    OR lp.is_active = true
+		  )
 		ORDER BY LENGTH(dr.path_prefix) DESC;
 	`
 	rows, err := s.pool.Query(ctx, query)

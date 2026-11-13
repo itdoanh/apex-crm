@@ -18,7 +18,7 @@ FROM landing_pages ORDER BY updated_at DESC;
 | `page_id` | Slug định danh landing (vd: `mxv_080_online`, `landing_cu`) |
 | `domain` | Domain phục vụ landing (rỗng = domain mặc định) |
 | `is_active` | Feature flag / kill-switch — tắt thì redirect hoặc báo bảo trì |
-| `nguon_default` | Nguồn traffic ghi vào lead (`landing_chinh`, ...) |
+| `nguon_default` | Nguồn traffic ghi vào lead. **Mặc định = `page_id`** (mỗi landing 1 nguồn riêng). Giá trị `landing_chinh` bị coi như rỗng → backend tự thay bằng `landing_id` |
 | `redirect_url` | Đích redirect khi `is_active = false` |
 | `settings` | JSONB: branding, pixel IDs, custom scripts |
 | `code_html` | HTML đầy đủ của landing |
@@ -189,7 +189,7 @@ mới bắt được lỗi phân giải `<base>`.
 ```json
 {
   "landing_id": "mxv_080_online",
-  "nguon": "landing_chinh",
+  "nguon": "mxv_080_online",
   "thoi_gian_chia_se": {
     "target_date": "2026-11-03T20:00:00",
     "ngay": "03/11/2026",
@@ -590,6 +590,22 @@ Landing mới **bắt buộc** khai báo:
         data-nguon="doanh_chung"></script>
 ```
 và `config.json` phải có `landing_id` + `nguon` **khớp chính xác**.
+
+> ⚠️ **Quy tắc nguồn theo từng landing** (sửa 2026-11-13):
+> `nguon` mặc định = `landing_id`. Giá trị `landing_chinh` được backend coi như
+> "rỗng" và tự thay bằng `landing_id` (`lead_handler.go`, `analytics_handler.go`,
+> `tracker.js`). Nếu landing cố ý khai báo `data-nguon` riêng thì vẫn được tôn trọng.
+>
+> **Vì sao**: trước đây mọi landing ghi chung `nguon = "landing_chinh"` ⇒ 4 landing
+> dùng chung 1 nguồn ⇒ không lọc tách được, thống kê bị chồng chéo giữa các landing.
+>
+> ⚠️ **Landing "chỉ xem" (view-only)** — vd `landing_lznoew` là trang "chúc mừng"
+> được điều hướng từ landing, không có form gửi lead. Trang này:
+> - **KHÔNG** được set `converted_lead` (client không gửi cờ này nữa — chỉ backend
+>   set khi có lead thật trong bảng `leads`).
+> - Vẫn ghi view/analytics như bình thường.
+> - Session attribution là **first-touch** ⇒ phiên tính cho landing gốc (landing có
+>   form), không bị "chuyển" sang landing chúc mừng.
 
 ### URL lead (`url`)
 
