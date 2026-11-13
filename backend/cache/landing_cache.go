@@ -52,7 +52,19 @@ func (c *LandingCache) Warmup(ctx context.Context) error {
 		p := landings[i]
 		key := makeKey(p.Domain, p.PageID)
 		c.byDomainPage[key] = &p
-		c.byPageID[strings.ToLower(p.PageID)] = &p
+
+		// ⚠️ `byPageID` là index phục vụ fallback "tìm landing theo page_id".
+		//   `GetAllLandingsWithCode` sắp xếp `updated_at DESC` ⇒ phần tử ĐẦU là
+		//   bản MỚI NHẤT. Nếu gán đè vô điều kiện, phần tử CUỐI (bản CŨ) sẽ
+		//   thắng ⇒ server phục vụ code cũ, mất chỉnh sửa trong Code Studio.
+		//
+		//   ⇒ Chỉ gán khi CHƯA có ⇒ giữ bản mới nhất.
+		//   (Lỗi này chỉ lộ ra khi 1 landing có nhiều row trong `landing_pages` —
+		//   tức đúng trường hợp bị duplicate landing.)
+		pageKey := strings.ToLower(p.PageID)
+		if _, exists := c.byPageID[pageKey]; !exists {
+			c.byPageID[pageKey] = &p
+		}
 	}
 
 	log.Printf("[INFO] [CACHE WARMUP] Đã nạp %d cấu hình Landing Page vào bộ nhớ đệm RAM siêu tốc", len(landings))

@@ -96,6 +96,13 @@ func main() {
 		log.Printf("[WARN] Không thể chuẩn hoá landing_id trong config.json: %v", err)
 	}
 
+	// Sửa typo Meta Pixel `f._bq=n` → `f._fbq=n` trong HTML của các landing.
+	// Typos này làm Meta báo "Multiple pixels with conflicting versions"
+	// ⇒ PageView bị đếm sai/lặp, ảnh hưởng tối ưu ngân sách Meta Ads.
+	if err := store.RepairMetaPixelSnippet(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể sửa typo Meta Pixel trong HTML landing: %v", err)
+	}
+
 	// Tự động seed tên miền mặc định (hanghoaphaisinh.net, dautuhanghoa.vn)
 	if err := store.SeedDefaultDomains(context.Background()); err != nil {
 		log.Printf("[WARN] Không thể seed tên miền mặc định: %v", err)

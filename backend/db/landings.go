@@ -254,6 +254,17 @@ func (s *Store) GetLandingPageByID(pageID string) (*models.LandingPage, error) {
 }
 
 // ListLandingPages trả về danh sách tất cả các landing page kèm số lượng lead và lượt truy cập
+//
+// ⚠️ DEDUPE THEO `page_id` (fix 2026-11-13):
+//   Bảng `landing_pages` có PK composite `(domain, page_id)`. Một landing có thể
+//   tồn tại 2 row: bản GỐC (`domain = ''`) + bản theo domain đích
+//   (vd: `('doanh_chung','')` và `('doanh_chung','lophoc.hanghoaphaisinh.net')`).
+//
+//   Query cũ trả về CẢ 2 row ⇒ CRM hiển thị landing bị "nhân đôi" sau mỗi lần
+//   thêm domain / deploy landing ⇒ người dùng tưởng hệ thống tự duplicate.
+//
+//   ⇒ Gom theo `page_id`, ưu tiên row có domain khớp chính xác với route đang
+//     hoạt động; nếu không có thì lấy row mới cập nhật nhất.
 func (s *Store) ListLandingPages() ([]models.LandingPage, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -309,7 +320,107 @@ func (s *Store) ListLandingPages() ([]models.LandingPage, error) {
 		result = append(result, p)
 	}
 
-	return result, nil
+	return dedupeLandingPagesByPageID(result), nil
+}
+
+// dedupeLandingPagesByPageID gom nhiều row cùng `page_id` (bản gốc `domain=''`
+// + bản theo domain) thành MỘT entry duy nhất.
+//
+// Quy tắc chọn dòng thắng:
+//  1. Dòng có `domain` khác rỗng (bản đã gán domain) — ưu tiên vì đó là trạng
+//     thái đang chạy thật trên domain đích.
+//  2. Trong cùng nhóm, lấy dòng `updated_at` mới nhất.
+//
+// `settings` của các dòng bị gộp được TRỘN lại (giá trị khác rỗng ưu tiên)
+// vì bản gốc và bản domain có thể đang lưu 2 nhóm cấu hình khác nhau
+// (vd: bản gốc có `title`/`meta_description`, bản domain có `google_sheet_ids`).
+// Gộp giữ nguyên mọi cấu hình ⇒ không mất gì.
+//
+// Dòng bị bỏ qua KHÔNG bị xoá khỏi DB — chỉ ẩn khỏi danh sách để tránh
+// hiển thị trùng. Việc xoá dữ liệu production cần anh itdoanh xác nhận.
+func dedupeLandingPagesByPageID(list []models.LandingPage) []models.LandingPage {
+	if len(list) <= 1 {
+		return list
+	}
+
+	type entry struct {
+		winner  models.LandingPage
+		merged  map[string]interface{}
+		hasMeta bool
+	}
+	best := make(map[string]*entry, len(list))
+	order := make([]string, 0, len(list))
+
+	for i := range list {
+		p := list[i]
+		key := strings.ToLower(strings.TrimSpace(p.PageID))
+		if key == "" {
+			continue
+		}
+		cur, exists := best[key]
+		if !exists {
+			cp := p
+			best[key] = &entry{winner: cp, merged: mergeSettingsMaps(nil, p.Settings), hasMeta: true}
+			order = append(order, key)
+			continue
+		}
+
+		// Gộp settings (giá trị khác rỗng ưu tiên) — KHÔNG để mất cấu hình.
+		cur.merged = mergeSettingsMaps(cur.merged, p.Settings)
+
+		// Ưu tiên bản có domain khác rỗng; nếu cả hai cùng trạng thái thì lấy
+		// bản cập nhật mới hơn.
+		curHasDomain := strings.TrimSpace(cur.winner.Domain) != ""
+		newHasDomain := strings.TrimSpace(p.Domain) != ""
+		if newHasDomain && !curHasDomain {
+			cur.winner = p
+			continue
+		}
+		if curHasDomain == newHasDomain && p.UpdatedAt > cur.winner.UpdatedAt {
+			cur.winner = p
+		}
+	}
+
+	out := make([]models.LandingPage, 0, len(order))
+	for _, key := range order {
+		if e, ok := best[key]; ok {
+			p := e.winner
+			p.Settings = e.merged
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// mergeSettingsMaps trộn 2 map settings, giá trị khác rỗng của map sau ghi đè
+// map trước. Các key lồng (map) được trộn đệ quy 1 cấp cho `form_config`.
+func mergeSettingsMaps(base, incoming map[string]interface{}) map[string]interface{} {
+	if len(incoming) == 0 {
+		return base
+	}
+	out := make(map[string]interface{}, len(base)+len(incoming))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range incoming {
+		if v == nil {
+			continue
+		}
+		if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
+			// Giá trị rỗng không ghi đè giá trị đang có.
+			if _, exists := out[k]; exists {
+				continue
+			}
+		}
+		if nested, ok := v.(map[string]interface{}); ok {
+			if existing, ok2 := out[k].(map[string]interface{}); ok2 {
+				out[k] = mergeSettingsMaps(existing, nested)
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // GetAllLandingsWithCode tải toàn bộ landing pages kèm code_html phục vụ nạp in-memory cache
@@ -355,7 +466,24 @@ func (s *Store) GetAllLandingsWithCode(ctx context.Context) ([]models.LandingPag
 	return result, nil
 }
 
-// SaveLandingPage tạo mới hoặc cập nhật thông tin cấu hình Landing Page
+// SaveLandingPage tạo mới hoặc cập nhật thông tin cấu hình Landing Page.
+//
+// ⚠️ CHỐNG TẠO LANDING TRÙNG (fix 2026-11-13):
+//   `landing_pages` có PK composite `(domain, page_id)` ⇒ cùng 1 `page_id` có thể
+//   tồn tại nhiều row: bản GỐC (`domain = ''`) + bản theo domain đích.
+//
+//   Trước đây mỗi lần bấm "Lưu cài đặt" trong CRM với 1 domain được chọn sẽ
+//   INSERT thêm 1 row `(page_id, domain)` ⇒ CRM hiển thị landing bị NHÂN ĐÔI
+//   sau mỗi lần thêm miền / deploy landing.
+//
+//   CÁCH SỬA:
+//   - Nếu landing đã có bản GỐC (`domain = ''`) ⇒ CẬP NHẬT bản gốc đó, KHÔNG
+//     tạo row domain mới. Việc gắn landing với domain đã do `domain_routes`
+//     đảm nhiệm (PK `(domain_id, path_prefix)`) ⇒ không cần row riêng.
+//   - Nếu landing chỉ có bản theo domain (không có bản gốc) ⇒ cập nhật bản đó
+//     (giữ nguyên hành vi cũ, KHÔNG tạo thêm row).
+//   - Nếu bản domain đích đã tồn tại ⇒ cập nhật ĐỒNG THỜI bản gốc và bản domain
+//     để 2 bản luôn có cùng nội dung ⇒ không mất cấu hình nào.
 func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -378,8 +506,33 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 	if p.NguonDefault == "" {
 		p.NguonDefault = "landing_chinh"
 	}
+	p.Domain = strings.ToLower(strings.TrimSpace(p.Domain))
 
-	query := `
+	// Xác định các row (`domain`) cần cập nhật.
+	targetDomains := []string{""}
+	if p.Domain != "" {
+		templateExists := s.landingPageRowExists(ctx, "", p.PageID)
+		if templateExists {
+			// Bản gốc đã tồn tại ⇒ KHÔNG tạo row domain mới.
+			// Nếu bản domain đích đã có (do lần deploy trước tạo ra) thì cập
+			// nhật luôn để 2 bản đồng bộ, tránh lệch nội dung.
+			if s.landingPageRowExists(ctx, p.Domain, p.PageID) {
+				targetDomains = append(targetDomains, p.Domain)
+			}
+		} else {
+			// Chưa có bản gốc ⇒ dùng bản theo domain làm bản chính.
+			targetDomains = []string{p.Domain}
+		}
+	} else if !s.landingPageRowExists(ctx, "", p.PageID) {
+		// Không có bản gốc VÀ không chỉ định domain ⇒ landing này đang tồn tại
+		// dưới dạng domain-specific (vd `landing_232`). Cập nhật bản đó thay vì
+		// tạo thêm bản gốc ⇒ tránh nhân đôi landing.
+		if dom, ok := s.findExistingLandingDomain(ctx, p.PageID); ok {
+			targetDomains = []string{dom}
+		}
+	}
+
+	upsertSQL := `
 		INSERT INTO landing_pages (page_id, domain, name, is_active, status, redirect_url, nguon_default, settings, code_html, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 		ON CONFLICT (domain, page_id) DO UPDATE SET
@@ -393,11 +546,12 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 			updated_at = NOW()
 	`
 
-	_, err = s.pool.Exec(ctx, query,
-		p.PageID, p.Domain, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, settingsJSON, p.CodeHTML,
-	)
-	if err != nil {
-		return err
+	for _, dom := range targetDomains {
+		if _, err := s.pool.Exec(ctx, upsertSQL,
+			p.PageID, dom, p.Name, p.IsActive, p.Status, p.RedirectURL, p.NguonDefault, settingsJSON, p.CodeHTML,
+		); err != nil {
+			return err
+		}
 	}
 
 	// Nếu gán domain cụ thể, tự động đồng bộ tệp tin từ domain rỗng
@@ -412,6 +566,32 @@ func (s *Store) SaveLandingPage(p *models.LandingPage) error {
 	}
 
 	return nil
+}
+
+// landingPageRowExists kiểm tra đã có row `(domain, page_id)` trong landing_pages chưa
+func (s *Store) landingPageRowExists(ctx context.Context, domain, pageID string) bool {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM landing_pages WHERE domain = $1 AND page_id = $2)",
+		domain, pageID,
+	).Scan(&exists)
+	return err == nil && exists
+}
+
+// findExistingLandingDomain tìm domain của row landing đang tồn tại (bản domain-specific).
+// Trả về domain mới cập nhật nhất.
+func (s *Store) findExistingLandingDomain(ctx context.Context, pageID string) (string, bool) {
+	var domain string
+	err := s.pool.QueryRow(ctx, `
+		SELECT domain FROM landing_pages
+		WHERE page_id = $1 AND domain <> ''
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, pageID).Scan(&domain)
+	if err != nil {
+		return "", false
+	}
+	return domain, true
 }
 
 // UpdateLandingCode cập nhật mã code HTML hoặc deploy của landing page

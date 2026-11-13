@@ -172,6 +172,40 @@ CREATE TABLE landing_pages (
 
 > ⚠️ **Lưu ý vận hành:** production hiện có **2 row cùng `page_id = 'mxv_080_online'`** (một row `domain=''`, một row `domain='ads.giaodichhanghoatuonglai.com'`). Đây là hợp lệ với PK composite nhưng gây rối khi `LandingCache.GetByPageID()` tra theo `page_id` đơn lẻ — hàm này có thể trả về row không mong muốn.
 
+### ⚠️ Chống landing trùng (fix 2026-11-13)
+
+Vì PK là `(domain, page_id)`, cùng 1 `page_id` có thể tồn tại **nhiều row**: bản GỐC
+(`domain = ''`) + bản theo domain đích. Trước đây mỗi lần bấm "Lưu cài đặt" trong
+CRM (hoặc deploy landing) sẽ `INSERT` thêm 1 row `(page_id, domain)` ⇒ **CRM hiển
+thị landing bị nhân đôi** sau mỗi lần thêm miền / deploy landing.
+
+| Hàm store | Quy tắc bắt buộc |
+|---|---|
+| `SaveLandingPage()` | Nếu đã có bản GỐC (`domain=''`) ⇒ **cập nhật bản gốc, KHÔNG tạo row domain mới**. Nếu bản domain đích đã tồn tại ⇒ cập nhật **cả hai** để 2 bản đồng bộ. Nếu chỉ có bản domain-specific ⇒ cập nhật bản đó (không tạo bản gốc). |
+| `ListLandingPages()` | Gọi `dedupeLandingPagesByPageID()` ⇒ gom theo `page_id`, ưu tiên dòng có `domain` khác rỗng, `settings` được **trộn** (giá trị khác rỗng ưu tiên) để không mất cấu hình. Dòng bị gộp **không xoá khỏi DB** — chỉ ẩn khỏi danh sách. |
+| `LandingCache.Warmup()` | `byPageID` chỉ gán khi **chưa có** ⇒ giữ bản `updated_at` mới nhất. Gán đè vô điều kiện khiến bản CŨ thắng (query sort `updated_at DESC` ⇒ phần tử cuối là bản cũ) ⇒ server phục vụ code cũ, mất chỉnh sửa trong Code Studio. |
+
+> Việc gắn landing ↔ domain đã do `domain_routes` đảm nhiệm (PK `(domain_id, path_prefix)`)
+> ⇒ **không cần** row riêng trong `landing_pages` cho mỗi domain.
+
+### ⚠️ Sửa typo Meta Pixel (fix 2026-11-13)
+
+Một số landing có block Meta Pixel hardcode viết sai: `if(!f._fbq) f._bq = n;` — **thiếu chữ `f`**.
+
+Meta Pixel chính thức yêu cầu `if(!f._fbq) f._fbq = n;`. Gán sai ⇒ `window._fbq` không
+bao giờ được tạo ⇒ `fbevents.js` tự tạo instance thứ hai ⇒ phát hiện
+`window.fbq !== window._fbq` ⇒ Meta báo:
+
+```
+[Meta Pixel] - Multiple pixels with conflicting versions were detected on this page.
+```
+
+⇒ PageView bị đếm sai/lặp, ảnh hưởng tối ưu ngân sách Meta Ads.
+
+| Hàm store | Quy tắc |
+|---|---|
+| `RepairMetaPixelSnippet()` | Chạy lúc khởi động server. Thay literal `f._bq=n` → `f._fbq=n` trong `landing_pages.code_html` + `landing_files.content`. Dùng `strpos()` (KHÔNG dùng `LIKE` vì `_` là wildcard) và `replace()` (literal, không phải regex). |
+
 ### `settings` JSONB — feature flags & branding
 
 ```json

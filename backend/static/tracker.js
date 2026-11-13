@@ -1302,6 +1302,25 @@
     }
 
     // Gửi payload analytics lên backend (hỗ trợ fetch keepalive & sendBeacon)
+    //
+    // ⚠️ THROTTLE (fix 2026-11-13):
+    // `ApexTracker.send()` (do landing gọi khi có tương tác: click, input, modal_open…)
+    // đẩy 1 action + gọi `sendAnalyticsPing()` ngay. Landing `doanh_chung` gọi
+    // `trackEvent()` ở MỖI keystroke trong ô tên/SĐT ⇒ mỗi phím gõ = 1 POST
+    // `/api/analytics/track`. Trang dài + người dùng nhập nhanh ⇒ hàng chục
+    // request/giây ⇒ server bị nghiêng, log đầy lỗi 500, dữ liệu analytics bị
+    // ghi đè liên tục (mất event thật do `ON CONFLICT` chỉ giữ giá trị mới nhất).
+    //
+    // CÁCH SỬA: gom (coalesce) các ping gần nhau thành 1 request.
+    // - `sendAnalyticsPing()` từ code hệ thống (pageview, heartbeat, exit, converted)
+    //   vẫn gửi NGAY ⇒ không mất dữ liệu quan trọng.
+    // - `ApexTracker.send()` (event tương tác) dùng `sendAnalyticsPingThrottled()`
+    //   ⇒ gộp trong cửa sổ 3 giây, nhưng luôn flush khi page unload/visibility hidden.
+    const ANALYTICS_THROTTLE_MS = 3000;
+    let analyticsThrottleTimer = null;
+    let analyticsPendingEvents = [];
+
+    // Gửi ngay, không throttle (dùng cho pageview / heartbeat / exit / converted).
     function sendAnalyticsPing(extraEvents) {
         // Code Studio / Preview: KHÔNG gửi analytics để tránh làm nhiễu dữ liệu thật.
         if (isAnyPreview()) return;
@@ -1326,6 +1345,40 @@
                 keepalive: true
             }).catch(function () {});
         } catch (_) {}
+    }
+
+    // Gửi analytics có throttle — dùng cho event tương tác liên tục (keystroke...).
+    //
+    // Gom nhiều lời gọi trong `ANALYTICS_THROTTLE_MS` thành 1 request duy nhất.
+    // Events đang chờ được giữ lại (`analyticsPendingEvents`) và gửi kèm lần flush
+    // ⇒ không mất hành vi người dùng, chỉ giảm số lần gọi HTTP.
+    function sendAnalyticsPingThrottled(extraEvents) {
+        if (isAnyPreview()) return;
+
+        if (extraEvents && extraEvents.length) {
+            analyticsPendingEvents = analyticsPendingEvents.concat(extraEvents);
+        }
+
+        if (analyticsThrottleTimer) return; // đang chờ flush
+
+        analyticsThrottleTimer = setTimeout(function () {
+            analyticsThrottleTimer = null;
+            const pending = analyticsPendingEvents;
+            analyticsPendingEvents = [];
+            sendAnalyticsPing(pending);
+        }, ANALYTICS_THROTTLE_MS);
+    }
+
+    // Flush ngay các event đang chờ (dùng khi rời trang) — không để mất dữ liệu.
+    function flushAnalyticsPending() {
+        if (analyticsThrottleTimer) {
+            clearTimeout(analyticsThrottleTimer);
+            analyticsThrottleTimer = null;
+        }
+        if (!analyticsPendingEvents.length) return;
+        const pending = analyticsPendingEvents;
+        analyticsPendingEvents = [];
+        sendAnalyticsPing(pending);
     }
 
     // 1. Gửi Pageview Event ngay khi vào trang
@@ -1355,11 +1408,15 @@
     window.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'hidden') {
             pushAction('exit', 'tab_hidden', 'Người dùng chuyển tab hoặc ẩn trình duyệt');
+            // Flush các event tương tác đang chờ TRƯỚC khi gửi ping exit,
+            // để không mất dữ liệu keystroke/click đang chờ throttle.
+            flushAnalyticsPending();
             sendAnalyticsPing();
         }
     });
     window.addEventListener('beforeunload', function () {
         pushAction('exit', 'window_close', 'Người dùng đóng trang web');
+        flushAnalyticsPending();
         sendAnalyticsPing();
     });
 
@@ -1898,7 +1955,9 @@
         // landing gọi `window.ApexTracker.send(type, value)` ⇒ đẩy vào timeline.
         send: function (type, value) {
             pushAction(String(type || 'event'), 'custom', String(value || ''));
-            sendAnalyticsPing();
+            // ⚠️ Dùng bản THROTTLED — landing gọi `trackEvent()` ở mỗi keystroke
+            // ⇒ gửi ngay sẽ tạo hàng chục POST /api/analytics/track mỗi giây.
+            sendAnalyticsPingThrottled();
         },
         setRegistered: setRegistered,
         isRegistered: isRegistered,

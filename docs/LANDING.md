@@ -274,6 +274,34 @@ DOM không còn script chứa `fbevents.js` / `fbq('init'…)` ⇒ không bao gi
 > Nếu muốn landing **không** chạy Meta Pixel: để trống `settings.facebook_pixel_id`
 > **và** xoá block pixel hardcode trong HTML (Code Studio).
 
+#### ⚠️ Meta Pixel: phải dùng `f._fbq` (fix 2026-11-13)
+
+Snippet Meta Pixel **chính thức** phải là:
+
+```js
+if (!f._fbq) f._fbq = n;   // ✅ ĐÚNG
+```
+
+**KHÔNG** được viết `if (!f._fbq) f._bq = n;` (thiếu chữ `f`).
+
+Meta Pixel chính thức yêu cầu `if(!f._fbq) f._fbq = n;`. Gán sai ⇒ `window._fbq` không
+bao giờ được tạo ⇒ `fbevents.js` sau khi nạp sẽ tự tạo **instance thứ hai** ⇒
+phát hiện `window.fbq !== window._fbq` ⇒ Meta báo trong console:
+
+```
+[Meta Pixel] - Multiple pixels with conflicting versions were detected on this page.
+```
+
+⇒ PageView bị đếm sai/lặp, ảnh hưởng trực tiếp tới tối ưu ngân sách Meta Ads.
+
+| Nơi | Cách sửa |
+|---|---|
+| HTML viết tay (Code Studio) | Sửa trực tiếp trong editor. |
+| HTML đã lưu trong DB | `RepairMetaPixelSnippet()` chạy lúc khởi động server ⇒ tự sửa `landing_pages.code_html` + `landing_files.content`. |
+
+> ⚠️ Đừng dùng `LIKE '%_bq%'` để tìm lỗi này — `_` là wildcard trong `LIKE` nên sẽ
+> match nhầm. Dùng `strpos()` + `replace()` (literal, không phải regex).
+
 ### ⚠️ `success_redirect` không được chứa domain (fix 2026-11-06)
 
 `form_config.success_redirect` trong CSDL của `landing_cu` từng được cấu hình là:
@@ -635,6 +663,27 @@ Nếu thêm bất kỳ module DOM-mutating nào mới vào `tracker.js`, **phả
 ```javascript
 if (isAnyPreview()) return;
 ```
+
+### ⚡ Throttle analytics ping (fix 2026-11-13)
+
+`ApexTracker.send(type, value)` (được landing gọi cho mọi tương tác: `click`,
+`input`, `modal_open`, `phone_input`…) gọi `sendAnalyticsPing()` **ngay lập tức**.
+
+Landing `doanh_chung` gọi `trackEvent()` ở **mỗi keystroke** trong ô tên/SĐT ⇒
+mỗi phím gõ = 1 POST `/api/analytics/track`. Người dùng gõ nhanh trên trang dài
+⇒ **hàng chục request/giây** ⇒ server bị nghiêng, log đầy lỗi 500, và dữ liệu
+analytics bị ghi đè liên tục (`ON CONFLICT` chỉ giữ giá trị mới nhất) ⇒ **mất event thật**.
+
+**Cơ chế throttle (3 giây):**
+
+| Hàm | Khi nào dùng | Hành vi |
+|---|---|---|
+| `sendAnalyticsPing(extraEvents)` | pageview · heartbeat · `exit` (tab hidden / window close) · `converted` | Gửi **NGAY**, không throttle |
+| `sendAnalyticsPingThrottled(extraEvents)` | `ApexTracker.send()` — event tương tác | Gom các lời gọi trong cửa sổ 3s thành **1 request**; events đang chờ được giữ lại (`analyticsPendingEvents`) và gửi kèm lần flush |
+| `flushAnalyticsPending()` | Gọi trước `sendAnalyticsPing()` trong handler `visibilitychange` / `beforeunload` | Flush ngay ⇒ **không mất** keystroke/click đang chờ |
+
+> ⚠️ Đừng đổi `ApexTracker.send()` lại về `sendAnalyticsPing()` — sẽ quay lại lỗi spam request.
+> Thêm 1 kiểu event mới thì dùng `sendAnalyticsPing()` (gửi ngay) nếu event đó quan trọng.
 
 ---
 
