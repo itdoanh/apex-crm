@@ -998,6 +998,11 @@
                 // Xóa inline styles tạm thời khỏi DOM iframe ngay lập tức để CSS responsive media query làm chủ 100%
                 iframe.contentWindow.postMessage({ type: 'APEX_CMD_CLEAR_TEMP_STYLES', nodeId: nodeId, props: Object.keys(styleObj) }, '*');
             }
+            // Cập nhật luôn CSS "ép PC styles" trong preview (để PC scope vẫn áp
+            // dụng khi zoom làm viewport nội bộ < 769px).
+            if (!isMobile && typeof syncPreviewDeviceToIframe === 'function') {
+                syncPreviewDeviceToIframe();
+            }
             requestNodeRect(nodeId);
         }
 

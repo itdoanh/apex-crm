@@ -4,6 +4,74 @@
    ============================================================== */
 
         // ============================================================
+        // findRealTagInsertIndex(html, tagName)
+        // Tìm vị trí CHÈN an toàn: ngay SAU dấu `>` đóng thẻ mở
+        // `<tagName ...>` thật trong HTML.
+        //
+        // BỎ QUA hoàn toàn nội dung nằm trong HTML comment (`<!-- ... -->`),
+        // vì comment có thể chứa text `<head>` (vd landing `doanh_chung`:
+        // "(inject style vào cuối <head>)") ⇒ nếu tìm bằng `indexOf('<head>')`
+        // thì sẽ khớp nhầm text trong comment ⇒ mọi thứ được inject vào
+        // trong comment ⇒ thẻ `<base>` / script helper bị vô hiệu hoá ⇒
+        // preview Code Studio không load CSS/JS (404).
+        //
+        // Trả về -1 nếu không tìm thấy thẻ.
+        // ============================================================
+        function findRealTagInsertIndex(html, tagName) {
+            if (!html || !tagName) return -1;
+            const lowerHtml = html.toLowerCase();
+            const lowerTag = tagName.toLowerCase();
+            let pos = 0;
+            let guard = 0;
+            const MAX_GUARD = 20000;
+
+            while (pos < html.length && guard++ < MAX_GUARD) {
+                // 1) Bỏ qua comment `<!-- ... -->`
+                const commentIdx = lowerHtml.indexOf('<!--', pos);
+                const tagIdx = lowerHtml.indexOf('<' + lowerTag, pos);
+
+                if (tagIdx === -1) return -1;
+
+                if (commentIdx !== -1 && commentIdx < tagIdx) {
+                    const commentEnd = lowerHtml.indexOf('-->', commentIdx + 4);
+                    if (commentEnd === -1) {
+                        // Comment chưa đóng ⇒ phần còn lại đều là comment ⇒ dừng.
+                        return -1;
+                    }
+                    pos = commentEnd + 3;
+                    continue;
+                }
+
+                // 2) Thẻ thật — nhưng phải chắc chắn đây là TÊN THẺ, không phải
+                //    tiền tố của thẻ khác (vd `<header>` không phải `<head>`).
+                const nameEnd = tagIdx + 1 + lowerTag.length;
+                const nextChar = lowerHtml.charAt(nameEnd);
+                if (!/[>\s/>]/.test(nextChar)) {
+                    pos = nameEnd;
+                    continue;
+                }
+
+                // 3) Tìm dấu `>` đóng thẻ mở (bỏ qua `>` nằm trong thuộc tính).
+                let i = nameEnd;
+                let quote = '';
+                while (i < html.length) {
+                    const ch = html.charAt(i);
+                    if (quote) {
+                        if (ch === quote) quote = '';
+                    } else if (ch === '"' || ch === "'") {
+                        quote = ch;
+                    } else if (ch === '>') {
+                        return i + 1;
+                    }
+                    i++;
+                }
+                return -1;
+            }
+
+            return -1;
+        }
+
+        // ============================================================
         class ApexASTSourceMapper {
             constructor() {
                 this.rawHTML = '';
@@ -255,18 +323,94 @@
                 result = result.replace(/window\.redirectToChucMung\s*\([^;\r\n]*;?/gi, "/* [STUDIO_NO_REDIRECT] */ console.log('[Studio] Blocked redirectToChucMung call');");
 
                 const helperScript = this.getHelperScript();
-                const headLower = result.toLowerCase().indexOf('<head>');
-                if (headLower !== -1) {
-                    result = result.substring(0, headLower + 6) + helperScript + result.substring(headLower + 6);
+                // Tìm thẻ <head> THẬT trong HTML (bỏ qua comment).
+                //
+                // BUG (fix 2026-11-15 — preview Code Studio không load giao diện & assets):
+                //   Code cũ dùng `result.toLowerCase().indexOf('<head>')` ⇒ chỉ khớp
+                //   đúng chuỗi `<head>` (KHÔNG có thuộc tính) và có thể khớp nhầm
+                //   với TEXT `<head>` nằm trong HTML comment.
+                //   - Thẻ `<head>` thật sau khi instrument có dạng `<head data-ve-id="node-2">`
+                //     ⇒ indexOf('<head>') = -1 ⇒ helper script bị chèn bừa vào đầu tài liệu.
+                //   - Landing `doanh_chung` có comment "(inject style vào cuối <head>)"
+                //     ⇒ indexOf('<head>') khớp ĐÚNG text trong comment ⇒ `<base>` và
+                //     helper script bị chèn bên trong comment (HTML comment chưa đóng)
+                //     ⇒ trình duyệt coi như không tồn tại ⇒ `document.querySelector('base')` = null
+                //     ⇒ URL tương đối (`assets/css/style.css`) phân giải theo
+                //     `/admin/studio.html` ⇒ `/admin/assets/...` ⇒ 404 ⇒ preview trắng.
+                //
+                // CÁCH SỬA: quét HTML bỏ qua comment, tìm thẻ `<head ...>` thật.
+                const headInsertIdx = findRealTagInsertIndex(result, 'head');
+                if (headInsertIdx !== -1) {
+                    result = result.substring(0, headInsertIdx) + helperScript + result.substring(headInsertIdx);
                 } else {
-                    result = helperScript + result;
+                    // Không có thẻ <head> ⇒ chèn trước thẻ <html> hoặc đầu tài liệu.
+                    const htmlInsertIdx = findRealTagInsertIndex(result, 'html');
+                    if (htmlInsertIdx !== -1) {
+                        result = result.substring(0, htmlInsertIdx) + helperScript + result.substring(htmlInsertIdx);
+                    } else {
+                        result = helperScript + result;
+                    }
                 }
 
                 return result;
             }
 
+            // Sinh CSS "ép PC styles" cho PREVIEW (KHÔNG ghi vào file/DB).
+            //
+            // BỐI CẢNH (fix 2026-11-15):
+            //   Sau khi bỏ clamp 780px, viewport nội bộ iframe của PC mode =
+            //   `boxW / zoom` (mô phỏng zoom thật của trình duyệt).
+            //   Khi user zoom VÀO (zoom > 1) mà khung preview hẹp, viewport có thể
+            //   nhỏ hơn 769px ⇒ media query `@media (min-width: 769px)` KHÔNG kích
+            //   hoạt ⇒ các style user đã chỉnh trong Inspector (PC scope) biến mất
+            //   ⇒ user không chỉnh được chi tiết.
+            //
+            // CÁCH SỬA: trong PREVIEW, sinh thêm 1 style block chứa PC rules KHÔNG bọc
+            // media query, gắn selector `html[data-apex-preview-device="pc"]`.
+            // Khi user chuyển sang Mobile mode ⇒ đổi attribute ⇒ PC rules tắt,
+            // Mobile rules (@media max-width 768px) lại tự bật.
+            //
+            // ⚠️ Style block này CHỈ tồn tại trong preview iframe, KHÔNG bao giờ
+            // được ghi vào `code_html`/`landing_files` ⇒ production vẫn dùng media
+            // query thật ⇒ không ảnh hưởng trang live.
+            buildPreviewPCForceCSS() {
+                const rules = [];
+                for (const nId in this.pcStylesMap) {
+                    const s = this.pcStylesMap[nId];
+                    const decls = Object.keys(s).map(p => `        ${p}: ${s[p]} !important;`).join('\n');
+                    if (decls) {
+                        rules.push(`    html[data-apex-preview-device="pc"] [data-ve-id="${nId}"] {\n${decls}\n    }`);
+                    }
+                }
+                return rules.join('\n');
+            }
+
+            // Base href dùng cho preview iframe.
+            //
+            // BẮT BUỘC phải trỏ tới `/p/<page_id>/` (route phục vụ landing của
+            // `ServePublicLanding`) chứ KHÔNG phải `/`:
+            //   - `/` ⇒ tài nguyên tương đối (`assets/css/style.css`) gọi tới CRM host
+            //     (`https://crm.hanghoaphaisinh.net/assets/...`) ⇒ 404 vì assets của
+            //     landing nằm trong bảng `landing_files` theo page_id.
+            //   - `/p/<page_id>/` ⇒ gọi đúng `ServePublicLanding` ⇒ đọc `landing_files`
+            //     theo page_id ⇒ tải được CSS/JS/ảnh/video của đúng landing.
+            getPreviewBaseHref() {
+                const landingId = (this.studioLandingId || '').trim();
+                if (!landingId) return '/';
+                return '/p/' + encodeURIComponent(landingId) + '/';
+            }
+
             getHelperScript() {
-                return `\n<base href="/">\n<script id="__APEX_BUILDER_HELPER_SCRIPT__">\n` +
+                // `<base href>` PHẢI trỏ tới `/p/<page_id>/` để tài nguyên tương đối
+                // trong HTML (assets/css/style.css, tracker.js, assets/img/...) được
+                // phục vụ đúng từ `landing_files` của landing đang mở.
+                // Xem `getPreviewBaseHref()` để hiểu lý do.
+                const baseHref = this.getPreviewBaseHref();
+                const pcForceCSS = this.buildPreviewPCForceCSS();
+                const pcForceStyleBlock = pcForceCSS
+                    ? `\n<style id="__apex_preview_pc_force_styles__">\n${pcForceCSS}\n</style>\n`
+                    : '';
+                return `\n<base href="${baseHref}">${pcForceStyleBlock}<script id="__APEX_BUILDER_HELPER_SCRIPT__">\n` +
                     `(function() {\n` +
                     `    window.__APEX_BUILDER_ACTIVE__ = true;\n` +
                     `    window.__APEX_STUDIO__ = true;\n` +
@@ -622,6 +766,13 @@
                     `                document.head.appendChild(rst);\n` +
                     `            }\n` +
                     `            rst.textContent = m.cssText || '';\n` +
+                    `        }\n` +
+                    // Đồng bộ thiết bị đang preview (pc/mobile) + cập nhật CSS ép PC.
+                    `        if (m.type === 'APEX_CMD_SET_PREVIEW_DEVICE') {\n` +
+                    `            var dev = (m.device === 'mobile') ? 'mobile' : 'pc';\n` +
+                    `            document.documentElement.setAttribute('data-apex-preview-device', dev);\n` +
+                    `            var pf = document.getElementById('__apex_preview_pc_force_styles__');\n` +
+                    `            if (pf && typeof m.pcForceCss === 'string') { pf.textContent = m.pcForceCss; }\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_STYLE_TEMP') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +

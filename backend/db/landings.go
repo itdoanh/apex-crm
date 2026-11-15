@@ -916,33 +916,95 @@ func (s *Store) DeleteLandingPage(domain string, pageID string) error {
 	return err
 }
 
-// DuplicateLandingPage nhân bản 1 landing page sang pageID mới
-func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, newPageID string, newName string) error {
+// DuplicateLandingPage nhân bản 1 landing page sang pageID mới.
+//
+// BẮT BUỘC (fix 2026-11-15): phải sao chép TOÀN BỘ file của landing nguồn
+// (CSS, JS, ảnh, video, font, vendor...) — không chỉ `index.html`.
+//
+// BỐI CẢNH (bug doanh nghiệp — anh itdoanh báo 2026-11-15):
+//   Khi nhân bản landing, bản sao chỉ có HTML ⇒ mở Code Studio bản sao thì
+//   preview trắng, không có CSS/JS/ảnh. Nguyên nhân gốc:
+//     1) `ListLandingFiles(sourceDomain, sourcePageID)` trả về file của CẢ 2 row
+//        (`domain = ''` bản gốc và `domain = <domain>` bản domain) — chọn
+//        DISTINCT ON ⇒ ưu tiên bản domain khớp chính xác.
+//     2) Nhưng code cũ lưu kết quả vào `newPage.Domain` (domain cụ thể của
+//        landing NGUỒN) ⇒ bản sao KHÔNG có row `domain = ''`.
+//     3) `SaveLandingPage` với `p.Domain != ""` ⇒ tạo row domain-specific,
+//        KHÔNG tạo row gốc `domain = ''`.
+//     4) Khi user bấm "Deploy" cho bản sao, `HandleDeployLanding` ghi file vào
+//        row `domain = ''` + row domain đích ⇒ vẫn OK.
+//        NHƯNG nếu user mở Code Studio ngay sau khi nhân bản (chưa Deploy),
+//        `HandleGetLanding` gọi `ListLandingFiles(p.Domain, p.PageID)` — p.Domain
+//        lúc này là domain cụ thể của landing NGUỒN ⇒ không có row nào khớp
+//        ⇒ file list RỖNG ⇒ preview chỉ có HTML ⇒ mất giao diện.
+//
+// CÁCH SỬA:
+//   - Sao chép file vào CẢ row gốc (`domain = ''`) VÀ row domain (nếu có).
+//   - Dùng `sourceDomain` đã resolve chính xác, và copy `domain = ''` luôn.
+//   - Trả về số lượng file đã copy để handler báo cáo.
+func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, newPageID string, newName string) (int, error) {
 	src, err := s.GetLandingPage(sourceDomain, sourcePageID)
 	if err != nil || src == nil {
-		return fmt.Errorf("không tìm thấy landing page nguồn để nhân bản: %v", err)
+		return 0, fmt.Errorf("không tìm thấy landing page nguồn để nhân bản: %v", err)
 	}
+
+	// Resolve domain thực tế của landing nguồn (row `domain = ''` hoặc row domain cụ thể).
+	// `GetLandingPage` trả về row khớp CHÍNH XÁC trước, fallback `domain = ''`.
+	resolvedSourceDomain := src.Domain
 
 	newPage := *src
 	newPage.PageID = newPageID
 	newPage.Name = newName
 	newPage.Status = "draft"
 	newPage.IsActive = true
+	// Bản sao KHÔNG được gán domain của landing nguồn (tránh tranh chấp route).
+	// Domain đích sẽ được set khi user Deploy lên tên miền.
+	newPage.Domain = ""
+	newPage.PathPrefix = ""
+	// Xoá cấu hình riêng của domain nguồn khỏi bản sao (google_sheet_ids,
+	// path_prefix, ...). Giữ lại cấu hình chung (title, meta_description...).
+	if srcSettings := src.Settings; srcSettings != nil {
+		newSettings := make(map[string]interface{}, len(srcSettings))
+		for k, v := range srcSettings {
+			switch k {
+			case "path_prefix", "google_sheet_ids", "google_sheet_sync_mode", "domain", "landing_id":
+				continue
+			default:
+				newSettings[k] = v
+			}
+		}
+		newPage.Settings = newSettings
+	}
 
 	if err := s.SaveLandingPage(&newPage); err != nil {
-		return err
+		return 0, err
 	}
 	if src.CodeHTML != "" {
-		_ = s.UpdateLandingCode(newPage.Domain, newPage.PageID, src.CodeHTML, "draft")
+		_ = s.UpdateLandingCode("", newPageID, src.CodeHTML, "draft")
 	}
 
-	// Sao chép các tệp tin phụ
-	files, _ := s.ListLandingFiles(sourceDomain, sourcePageID)
+	// Sao chép TOÀN BỘ file (không chỉ index.html) sang bản sao.
+	//
+	// GHI vào row gốc `domain = ''` ⇒ bản sao luôn có đủ file để Code Studio
+	// hiển thị preview ngay, kể cả khi user chưa Deploy lên domain nào.
+	//
+	// KHÔNG copy vào row domain của landing NGUỒN: bản sao là landing RIÊNG,
+	// chưa có route/domain riêng. Khi user Deploy, `HandleDeployLanding` gọi
+	// `SyncLandingFilesToDomain("", targetDomain, pageID)` để đồng bộ sang
+	// domain đích ⇒ không mất file.
+	files, listErr := s.ListLandingFiles(resolvedSourceDomain, sourcePageID)
+	if listErr != nil {
+		return 0, fmt.Errorf("không đọc được danh sách file của landing nguồn: %v", listErr)
+	}
+	copied := 0
 	for _, f := range files {
-		_ = s.SaveLandingFile(newPage.Domain, newPage.PageID, f.FilePath, f.FileType, f.Content)
+		if err := s.SaveLandingFile("", newPageID, f.FilePath, f.FileType, f.Content); err != nil {
+			continue
+		}
+		copied++
 	}
 
-	return nil
+	return copied, nil
 }
 
 // ============================================================

@@ -228,7 +228,7 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 | `/api/landings/save-code` | POST | Alias của `/code` |
 | `/api/landings/deploy` | POST | Deploy landing lên domain/path |
 | `/api/landings/toggle` | POST | Bật/tắt feature flag |
-| `/api/landings/duplicate` | POST | Nhân bản landing |
+| `/api/landings/duplicate` | POST | Nhân bản landing (**copy đủ cây file** — xem bên dưới) |
 | `/api/landings/delete` | POST | Xoá landing |
 | `/api/landings/files` | GET | Cây file (File Manager) |
 | `/api/landings/file/save` | POST | Lưu 1 file |
@@ -241,6 +241,37 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 | `/api/landings/folder/rename` | POST | Đổi tên thư mục |
 | `/api/landings/folder/delete` | POST | Xoá thư mục |
 | `/api/landings/preview` | GET | Xem trước |
+
+### `POST /api/landings/duplicate` — Admin (nhân bản landing)
+
+```json
+{
+  "source_domain": "lophoc.hanghoaphaisinh.net",
+  "source_page_id": "doanh_chung",
+  "new_page_id": "doanh_chung_copy",
+  "new_name": "Bản sao của doanh_chung"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Đã nhân bản thành công sang 'doanh_chung_copy' (54 tệp tin)",
+  "copied_files": 54
+}
+```
+
+**Hành vi (fix 2026-11-15):**
+
+| Hành vi | Mô tả |
+|---|---|
+| Copy **toàn bộ** cây file | CSS, JS, ảnh, video, font, vendor… — không chỉ `index.html` |
+| Ghi vào row gốc `domain = ''` | Bản sao có đủ file ngay ⇒ Code Studio hiển thị preview đúng, kể cả khi chưa Deploy |
+| **Không** gán domain của landing nguồn | Bản sao là landing riêng; khi Deploy sẽ `SyncLandingFilesToDomain()` sang domain đích |
+| Xoá cấu hình riêng của domain nguồn | `settings.path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode` không bị copy sang |
+| `status = 'draft'` | Bản sao mặc định chưa publish |
 
 ### `POST /api/landings/files/save` — Admin (batch save)
 

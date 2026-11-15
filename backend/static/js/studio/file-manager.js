@@ -1124,8 +1124,10 @@
                 } else {
                     // Fallback khi gizmo.js chưa nạp
                     if (studioDeviceMode === 'pc') {
+                        // PC fluid — KHÔNG ép min-width 780px (sẽ tràn khung khi
+                        // panel split hẹp). Xem `applyStudioCanvasWidth()` trong gizmo.js.
                         wrapper.style.width = '100%';
-                        wrapper.style.minWidth = '780px';
+                        wrapper.style.minWidth = '0px';
                     } else {
                         wrapper.style.width = '390px';
                         wrapper.style.minWidth = '0px';
@@ -1141,6 +1143,30 @@
                 } else if (typeof applyCanvasTransform === 'function') {
                     applyCanvasTransform();
                 }
+
+                // Đồng bộ thiết bị preview sang iframe (để PC/Mobile style scope
+                // đúng theo nút đang chọn, kể cả khi zoom làm viewport < 769px).
+                syncPreviewDeviceToIframe();
+            }
+
+            // Gửi trạng thái thiết bị preview (pc/mobile) + CSS ép PC styles
+            // xuống iframe preview.
+            function syncPreviewDeviceToIframe() {
+                const iframe = document.getElementById('csPreviewIframe');
+                if (!iframe || !iframe.contentWindow) return;
+                let pcForceCss = '';
+                try {
+                    if (typeof astMapper !== 'undefined' && astMapper && typeof astMapper.buildPreviewPCForceCSS === 'function') {
+                        pcForceCss = astMapper.buildPreviewPCForceCSS();
+                    }
+                } catch (e) {}
+                try {
+                    iframe.contentWindow.postMessage({
+                        type: 'APEX_CMD_SET_PREVIEW_DEVICE',
+                        device: studioDeviceMode,
+                        pcForceCss: pcForceCss
+                    }, '*');
+                } catch (e) {}
             }
 
             // Đồng bộ cập nhật lại Inspector theo đúng giao diện được chọn
@@ -1194,6 +1220,12 @@
 
                 const instrumented = astMapper.generateInstrumentedHTML();
                 iframe.srcdoc = instrumented;
+
+                // Đồng bộ thiết bị preview + CSS ép PC styles xuống iframe
+                // (chạy sau khi iframe load để <html> đã có attribute).
+                iframe.addEventListener('load', () => {
+                    try { syncPreviewDeviceToIframe(); } catch (e) {}
+                }, { once: true });
 
                 if (preserveScroll && (savedScrollTop > 0 || savedScrollLeft > 0)) {
                     const restoreScroll = () => {

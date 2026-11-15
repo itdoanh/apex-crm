@@ -279,18 +279,24 @@ studio.html
 
 | Thành phần | Hành vi mới |
 |---|---|
-| `csIframeWrapper` (PC) | `width: 100%` + `min-width: 780px` ⇒ co/nở theo khung nhìn |
-| `min-width: 780px` | Đảm bảo iframe viewport ≥ 769px ⇒ media query `@media (min-width: 769px)` (PC styles) luôn bật |
+| `csIframeWrapper` (PC) | `width: 100%` + `min-width: 0px` ⇒ co/nở theo khung nhìn |
+| `min-width: 0px` | Không ép khung rộng tối thiểu ⇒ **không tràn khung** khi panel split hẹp (fix 2026-11-15) |
 | Mobile mode | Giữ nguyên khung cố định `390 × 844` (iPhone 14/15/16 Pro) |
 | Readout toolbar | `#csCanvasWidthLive` hiển thị chiều rộng thực tế của khung preview |
 | Nút "Tự động" | `#btnCanvasAutoWidth` — chỉ hiện khi đã ghim width thủ công; bấm để trở về fluid |
 | Kéo 2 chốt mép | Vẫn dùng được → **ghim** width cố định (`studioCanvasManualWidth`), PC mode ngừng fluid |
+
+> ⚠️ **Đã đổi (fix 2026-11-15)**: trước đây PC dùng `min-width: 780px` để giữ
+> media query `@media (min-width: 769px)` luôn bật. Hậu quả: khung preview **tràn**
+> khi panel split hẹp (~566px) ⇒ "khung hình không chuẩn". Nay bỏ clamp, PC styles
+> được giữ bật bằng cơ chế **ép PC trong preview** (xem mục zoom bên dưới).
 
 Hàm quản lý (trong `js/studio/gizmo.js`):
 
 | Hàm | Vai trò |
 |---|---|
 | `applyStudioCanvasWidth()` | Áp dụng width theo device mode (PC fluid / Mobile cố định) |
+| `computeCanvasViewportWidth(boxW, zoom, isMobile)` | Tính viewport **nội bộ** của iframe (PC = `boxW / zoom`, Mobile = 390px) |
 | `updateStudioCanvasWidthReadout()` | Cập nhật readout + hiện/ẩn nút "Tự động" |
 | `resetStudioCanvasAutoWidth()` | Bỏ ghim width → PC mode trở lại fluid |
 
@@ -319,12 +325,37 @@ iframe.style.transform = scale(scale)   (transform-origin: top left)
 
 | Device mode | `viewportW` (nội bộ) | `scale` | Ý nghĩa |
 |---|---|---|---|
-| PC | `max(boxW / zoom, 780)` | `boxW / viewportW` | Zoom nhỏ ⇒ viewport nội bộ **RỘNG RA** ⇒ layout co giãn thật |
+| PC | `clamp(boxW / zoom, 320, 3840)` | `boxW / viewportW` | Zoom nhỏ ⇒ viewport nội bộ **RỘNG RA** ⇒ layout co giãn thật |
 | Mobile | `390` (cố định) | `zoom` | Giữ đúng viewport thiết bị; zoom chỉ thu phóng hình ảnh |
 
-- `min-width 780px` giữ cho PC ⇒ media query `@media (min-width: 769px)` không bao giờ bị tắt.
 - Lệnh mới `APEX_CMD_RESET_CONTENT_ZOOM` (trong `js/studio/ast-mapper.js`) xoá
   `body.zoom` cũ để không nhân đôi tỉ lệ.
+
+> ⚠️ **Đã đổi (fix 2026-11-15)**: trước đây PC dùng
+> `viewportW = Math.max(boxW / zoom, 780)`. Hậu quả:
+> - Panel split hẹp (~566px) ⇒ wrapper ép `min-width: 780px` ⇒ **khung tràn**, bị cắt cụt.
+> - `Math.max(…, 780)` **clamp** viewport ⇒ đổi zoom **không** làm viewport đổi ⇒
+>   media query không đổi ⇒ **bố cục web không co giãn** ⇒ zoom "vô hiệu".
+>
+> Nay: `computeCanvasViewportWidth()` trong `gizmo.js` — PC = `boxW / zoom`
+> (clamp 320–3840), Mobile = 390px cố định.
+
+#### Ép PC styles trong preview (fix 2026-11-15)
+
+Vì viewport nội bộ có thể **< 769px** khi zoom vào, media query
+`@media (min-width: 769px)` (PC styles của Studio) sẽ tắt ⇒ các style user đã chỉnh
+trong Inspector (PC scope) biến mất.
+
+| Thành phần | Vai trò |
+|---|---|
+| `ast-mapper.buildPreviewPCForceCSS()` | Sinh CSS chứa PC rules **không bọc** media query, selector `html[data-apex-preview-device="pc"] [data-ve-id="…"]` |
+| `ast-mapper.getHelperScript()` | Inject style block `#__apex_preview_pc_force_styles__` vào preview |
+| `syncPreviewDeviceToIframe()` (`file-manager.js`) | Gửi `APEX_CMD_SET_PREVIEW_DEVICE` (device + pcForceCss) xuống iframe |
+| Handler `APEX_CMD_SET_PREVIEW_DEVICE` (`ast-mapper.js`) | Set `data-apex-preview-device` trên `<html>` + cập nhật style block |
+
+> 🚨 **Ràng buộc quan trọng**: style block ép PC này **CHỈ tồn tại trong preview
+> iframe**, **không bao giờ** được ghi vào `code_html` / `landing_files` ⇒ production
+> vẫn dùng media query thật ⇒ không ảnh hưởng trang live.
 
 **Quy đổi tọa độ** (vì iframe nay bị `transform: scale()` ⇒ tọa độ trong iframe là CSS px
 **nội bộ**, chưa scale):
@@ -338,7 +369,7 @@ iframe.style.transform = scale(scale)   (transform-origin: top left)
 | Gizmo drag / resize (`gizmo.js`) | `screenDx / scale` ⇒ CSS px nội bộ |
 
 Biến `window.canvasRenderScale` được export từ `gizmo.js` (tỉ lệ scale **thực tế**,
-khác `canvasZoom` khi bị chặn bởi `min-width 780px`).
+khác `canvasZoom` khi bị clamp bởi giới hạn 320–3840px).
 
 Readout `#csCanvasWidthLive` hiển thị **viewport nội bộ** (nơi media query áp dụng),
 nên khi zoom 50% sẽ hiện `1556px` — khớp chính xác bề rộng mà landing thật sự nhận.
@@ -499,6 +530,26 @@ dùng để ghi đè `window.APEX_LANDING_CONFIG` của template gốc.
 > với setter mỗi lần HTML gán lại config thì tự ép lại `landing_id` / `domain` / `name`
 > của landing đang mở trong Studio. **Không được** quay lại cách gán thẳng
 > `window.APEX_LANDING_CONFIG = Object.assign(...)` vì sẽ tái diễn lỗi trên.
+
+### 🔎 `<base href>` của preview iframe (fix 2026-11-15)
+
+Helper script của Studio chứa thẻ `<base href="…">` quyết định cách trình duyệt
+phân giải **URL tương đối** trong HTML landing (`assets/css/style.css`, `tracker.js`,
+`assets/img/…`).
+
+| Giá trị | Kết quả |
+|---|---|
+| `/` | `assets/css/style.css` ⇒ `https://crm.hanghoaphaisinh.net/assets/...` ⇒ **404** (assets nằm trong `landing_files` theo `page_id`) |
+| `/p/<page_id>/` | ⇒ route `ServePublicLanding` (`backend/main.go`) ⇒ đọc `landing_files` theo `page_id` ⇒ **200 OK** ✅ |
+
+| Hàm | Vai trò |
+|---|---|
+| `ast-mapper.getPreviewBaseHref()` | Trả `/p/<page_id>/` (encodeURIComponent), fallback `/` nếu chưa có page_id |
+
+> 🚨 **BẮT BUỘC**: khi chèn `<base>` + helper script vào `<head>`, **phải** tìm thẻ
+> `<head>` thật (bỏ qua HTML comment) — dùng `findRealTagInsertIndex(html, 'head')`.
+> Tìm bằng `indexOf('<head>')` sẽ khớp nhầm text `<head>` trong comment ⇒ `<base>`
+> bị chèn trong comment ⇒ **vô hiệu** ⇒ mất giao diện. Chi tiết: `docs/LANDING.md`.
 
 ### Upload file trong File Manager
 

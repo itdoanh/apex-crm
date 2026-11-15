@@ -680,6 +680,86 @@ Nếu thêm bất kỳ module DOM-mutating nào mới vào `tracker.js`, **phả
 if (isAnyPreview()) return;
 ```
 
+### 🐛 Preview Code Studio — không load giao diện & assets (fix 2026-11-15)
+
+**Triệu chứng:** mở Code Studio với landing `doanh_chung` ⇒ preview trắng, không
+có CSS/JS/ảnh. Network tab đầy lỗi 404:
+`/admin/assets/css/style.css`, `/admin/assets/vendor/tailwind/tailwind.css`…
+
+**Nguyên nhân gốc (2 lỗi riêng biệt):**
+
+**1) `<base>` + helper script bị chèn NHẦM vào trong HTML comment.**
+
+`ast-mapper.js` dùng `result.toLowerCase().indexOf('<head>')` để tìm thẻ `<head>`:
+
+- Chỉ khớp đúng chuỗi `<head>` **không có thuộc tính** ⇒ thẻ `<head>` sau khi
+  instrument (`<head data-ve-id="node-2">`) **không** khớp.
+- Khớp nhầm **text `<head>` nằm trong HTML comment** — landing `doanh_chung` có
+  comment `(inject style vào cuối <head>)` ở `frontend/landing/doanh_chung/chung.html:39`.
+
+⇒ `<base href="…">` + helper script bị chèn **bên trong comment** ⇒ trình duyệt coi
+như không tồn tại ⇒ `document.querySelector('base')` = `null` ⇒ URL tương đối
+(`assets/css/style.css`) phân giải theo `/admin/studio.html` ⇒ `/admin/assets/…` ⇒ **404**.
+
+> ✅ **Cách sửa:** hàm `findRealTagInsertIndex(html, tagName)` trong `ast-mapper.js`
+> quét HTML **bỏ qua comment `<!-- … -->`**, khớp đúng **tên thẻ** (không nhầm
+> `<head>` với `<header>`), bỏ qua dấu `>` nằm trong thuộc tính có quote, và trả về
+> index **ngay sau** thẻ mở ⇒ chèn đúng chỗ, vào `<head>` thật.
+
+**2) `<base href>` trỏ sai ⇒ tài nguyên tương đối gọi nhầm host.**
+
+`<base href="/">` ⇒ `assets/css/style.css` phân giải thành
+`https://crm.hanghoaphaisinh.net/assets/css/style.css` — nhưng assets của landing
+nằm trong bảng `landing_files` **theo `page_id`**, không nằm ở root của CRM host.
+
+> ✅ **Cách sửa:** `getPreviewBaseHref()` trong `ast-mapper.js` trả
+> `/p/<page_id>/` — đúng route `ServePublicLanding` (`backend/main.go`), vốn đọc
+> `landing_files` theo `page_id` ⇒ tải được CSS/JS/ảnh/video của **đúng landing**.
+
+| Trước | Sau |
+|---|---|
+| `indexOf('<head>')` (khớp nhầm comment) | `findRealTagInsertIndex(html, 'head')` (bỏ qua comment) |
+| `<base href="/">` | `<base href="/p/<page_id>/">` |
+
+### 🖥️ Preview PC — khung hình & zoom (fix 2026-11-15)
+
+**Triệu chứng:** ở chế độ PC/Laptop, khung preview bị tràn (nhìn thấy khung bị cắt
+cụt) và **zoom in/out không làm thay đổi khung hình web**.
+
+**Nguyên nhân:** `gizmo.js` ép `min-width: 780px` cho wrapper và
+`viewportW = Math.max(boxW / zoom, 780)`:
+
+- Panel split hẹp chỉ ~566px ⇒ wrapper ≥ 780px ⇒ **tràn khung**.
+- `Math.max(…, 780)` **clamp** viewport nội bộ ⇒ đổi zoom **không** làm viewport
+  đổi ⇒ media query không đổi ⇒ bố cục web **không co giãn** ⇒ zoom "vô hiệu".
+
+> ✅ **Cách sửa:**
+> - `STUDIO_PC_MIN_WIDTH` = `320` (bỏ clamp 780), wrapper `min-width: 0`.
+> - `computeCanvasViewportWidth(boxW, zoom, isMobile)`: PC ⇒ `boxW / zoom`
+>   (mô phỏng đúng zoom trình duyệt), Mobile ⇒ cố định 390px.
+> - Vì viewport có thể < 769px khi zoom vào ⇒ PC styles (`@media (min-width:769px)`)
+>   sẽ tắt. `ast-mapper.js` sinh thêm style **ép PC** (chỉ trong preview, selector
+>   `html[data-apex-preview-device="pc"]`) + `syncPreviewDeviceToIframe()` gửi
+>   `APEX_CMD_SET_PREVIEW_DEVICE` xuống iframe. **Style này không bao giờ được ghi
+>   vào `code_html`/`landing_files`** ⇒ production vẫn dùng media query thật.
+
+### 📋 Nhân bản landing phải copy đủ file (fix 2026-11-15)
+
+**Triệu chứng:** nhân bản landing ⇒ bản sao chỉ có HTML, không có CSS/JS/ảnh.
+
+**Nguyên nhân:** `DuplicateLandingPage()` lưu file vào `newPage.Domain` (domain
+của landing **nguồn**) thay vì bản gốc `domain = ''` ⇒ bản sao không có row file
+hợp lệ ⇒ `ListLandingFiles()` trả về rỗng ⇒ preview bản sao trắng.
+
+> ✅ **Cách sửa:** `DuplicateLandingPage()` giờ:
+> - Trả về **số file đã copy** (`copied_files` trong response API).
+> - Copy **toàn bộ** file của landing nguồn vào row gốc `domain = ''`.
+> - Bản sao **không** gán domain của landing nguồn (tránh tranh chấp route).
+> - Xoá cấu hình riêng của domain nguồn khỏi `settings` (`path_prefix`,
+>   `google_sheet_ids`, `google_sheet_sync_mode`).
+> - Khi user Deploy, `HandleDeployLanding` gọi `SyncLandingFilesToDomain()` để
+>   đồng bộ cây file sang domain đích ⇒ không mất file.
+
 ### ⚡ Throttle analytics ping (fix 2026-11-13)
 
 `ApexTracker.send(type, value)` (được landing gọi cho mọi tương tác: `click`,

@@ -505,10 +505,26 @@
         // `studioCanvasManualWidth = <px>` → người dùng tự kéo 2 chốt bên để ghim width
         var studioCanvasManualWidth = null;
 
-        // Ngưỡng tối thiểu của PC mode: giữ > 768px để media query
-        // `@media (min-width: 769px)` (PC styles của Studio) luôn kích hoạt.
-        // 780px = 778px content width (trừ 2px border) ⇒ iframe viewport ≥ 769px.
-        var STUDIO_PC_MIN_WIDTH = 780;
+        // Ngưỡng tối thiểu của PC mode: viewport nội bộ iframe không được nhỏ hơn
+        // 320px (bề rộng tối thiểu mà 1 trang web chấp nhận được).
+        //
+        // ⚠️ TRƯỚC ĐÂY ngưỡng này là 780px ⇒ gây ra 2 lỗi anh itdoanh báo
+        // (2026-11-15): "preview laptop lỗi khung hình không chuẩn, không phóng
+        // to/thu nhỏ thay đổi khung hình preview web được":
+        //   1) Khung preview luôn ≥ 780px ⇒ trong panel split hẹp (chỉ ~566px)
+        //      khung bị TRÀN ra ngoài ⇒ nhìn thấy khung bị cắt cụt ⇒ "khung hình
+        //      không chuẩn".
+        //   2) `viewportW = Math.max(boxW / zoom, 780)` ⇒ khi boxW < 780 thì zoom
+        //      bị CLAMP ⇒ đổi zoom không làm viewport nội bộ đổi ⇒ media query
+        //      không đổi ⇒ bố cục web KHÔNG co giãn ⇒ zoom "vô hiệu".
+        //
+        // CÁCH SỬA: bỏ clamp 780px. Viewport nội bộ = boxW / zoom (mô phỏng đúng
+        // zoom trình duyệt). Để PC styles của Studio (`@media (min-width:769px)`)
+        // không bị tắt khi viewport < 769px, `ast-mapper.js` tiêm thêm một style
+        // override "luôn bật" cho PC mode trong preview (chỉ trong preview, KHÔNG
+        // ghi vào file/DB).
+        var STUDIO_PC_MIN_WIDTH = 320;
+        var STUDIO_PC_MAX_WIDTH = 3840;
 
         function applyStudioCanvasWidth() {
             const wrapper = document.getElementById('csIframeWrapper');
@@ -527,7 +543,7 @@
                     wrapper.style.minWidth = '0px';
                 } else {
                     wrapper.style.width = '100%';
-                    wrapper.style.minWidth = STUDIO_PC_MIN_WIDTH + 'px';
+                    wrapper.style.minWidth = '0px';
                 }
                 wrapper.style.maxWidth = 'none';
                 wrapper.style.flexShrink = '0';
@@ -536,9 +552,19 @@
             updateStudioCanvasWidthReadout();
         }
 
+        // Tính VIEWPORT NỘI BỘ của iframe (nơi media query thực sự áp dụng).
+        //
+        // - PC: viewport = boxW / zoom (mô phỏng zoom thật của trình duyệt)
+        //   ⇒ zoom nhỏ ⇒ viewport RỘNG RA ⇒ media query co giãn ⇒ bố cục web
+        //     thực sự thay đổi theo bề rộng, y hệt trình duyệt.
+        // - Mobile: viewport cố định 390px (đúng thiết bị) ⇒ zoom chỉ là thu phóng hình ảnh.
+        function computeCanvasViewportWidth(boxW, zoom, isMobile) {
+            if (isMobile) return 390;
+            const raw = Math.round(boxW / zoom);
+            return Math.max(STUDIO_PC_MIN_WIDTH, Math.min(STUDIO_PC_MAX_WIDTH, raw));
+        }
+
         // Hiển thị chiều rộng THỰC TẾ của viewport nội bộ iframe (nơi media query áp dụng)
-        // - PC: viewport = max(wrapperWidth / zoom, 780px)  (mô phỏng zoom thật của trình duyệt)
-        // - Mobile: viewport cố định 390px (đúng thiết bị)
         function updateStudioCanvasWidthReadout() {
             const wrapper = document.getElementById('csIframeWrapper');
             if (!wrapper) return;
@@ -546,12 +572,7 @@
             if (!boxW) return;
 
             const zoom = (typeof canvasZoom === 'number' && canvasZoom > 0) ? canvasZoom : 1.0;
-            let viewportW;
-            if (studioDeviceMode === 'mobile') {
-                viewportW = 390;
-            } else {
-                viewportW = Math.max(Math.round(boxW / zoom), STUDIO_PC_MIN_WIDTH);
-            }
+            const viewportW = computeCanvasViewportWidth(boxW, zoom, studioDeviceMode === 'mobile');
 
             const live = document.getElementById('csCanvasWidthLive');
             if (live) live.innerText = viewportW + 'px';
@@ -658,15 +679,14 @@
 
             // 1) Tính VIEWPORT NỘI BỘ của iframe (nơi media query thực sự áp dụng)
             //    - PC: viewport = boxW / zoom (mô phỏng zoom trình duyệt)
-            //      nhưng LUÔN ≥ 780px để PC styles (@media min-width:769px) không bị tắt.
+            //      KHÔNG còn clamp ở 780px ⇒ zoom nhỏ ⇒ viewport rộng ra ⇒ bố cục
+            //      web thực sự co giãn (giống zoom thật của trình duyệt).
             //    - Mobile: viewport cố định 390px (đúng thiết bị) ⇒ zoom chỉ là thu phóng hình ảnh.
-            let viewportW;
+            const viewportW = computeCanvasViewportWidth(boxW, zoom, isMobile);
             let scale;
             if (isMobile) {
-                viewportW = 390;
                 scale = zoom;
             } else {
-                viewportW = Math.max(Math.round(boxW / zoom), STUDIO_PC_MIN_WIDTH);
                 scale = boxW / viewportW;
             }
             if (!isFinite(scale) || scale <= 0) scale = 1;

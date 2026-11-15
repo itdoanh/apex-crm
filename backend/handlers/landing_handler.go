@@ -651,15 +651,25 @@ func (h *LandingHandler) HandleDuplicateLanding(w http.ResponseWriter, r *http.R
 		payload.NewName = payload.NewPageID + " (Bản sao)"
 	}
 
-	if err := h.store.DuplicateLandingPage(payload.SourceDomain, payload.SourcePageID, payload.NewPageID, payload.NewName); err != nil {
+	copiedFiles, err := h.store.DuplicateLandingPage(payload.SourceDomain, payload.SourcePageID, payload.NewPageID, payload.NewName)
+	if err != nil {
 		http.Error(w, fmt.Sprintf("Lỗi nhân bản: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Làm mới cache RAM để bản sao hiện ngay trong danh sách landing.
+	if h.cache != nil {
+		h.cache.Invalidate("", payload.NewPageID)
+	}
+	if h.domainCache != nil {
+		_ = h.domainCache.Reload(r.Context())
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Đã nhân bản thành công sang '%s'", payload.NewPageID),
+		"message": fmt.Sprintf("Đã nhân bản thành công sang '%s' (%d tệp tin)", payload.NewPageID, copiedFiles),
+		"copied_files": copiedFiles,
 	})
 }
 
