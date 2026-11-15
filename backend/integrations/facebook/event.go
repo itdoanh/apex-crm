@@ -18,6 +18,8 @@ const (
 	EventPurchase   = "Purchase"
 	EventSubscribe  = "Subscribe"
 	EventStartTrial = "StartTrial"
+	// EventContact — khách đã được sales tiếp xúc (đã gọi điện).
+	EventContact = "Contact"
 )
 
 // GenerateEventID tạo event_id duy nhất (UUID v4 rút gọn).
@@ -43,6 +45,13 @@ func GenerateEventID() string {
 //
 // Meta yêu cầu PII băm SHA-256 (ngoại trừ `client_ip_address` và
 // `client_user_agent` — hai trường này PHẢI giữ nguyên bản rõ).
+//
+// ⚠️ CHUẨN HOÁ TRƯỚC KHI BĂM (quyết định trực tiếp điểm EMQ):
+//   - `country` : ISO-2 ("việt nam" → "vn")      — dùng BuildCountryISO
+//   - `ct`      : tên tỉnh/thành bỏ dấu          — dùng BuildCity
+//   - `st`      : tỉnh/bang bỏ dấu; BỎ QUA vùng miền — dùng BuildState
+//   - `ph`      : E.164 (+84912345678)           — dùng NormalizePhone
+//   - `fn`/`ln` : lowercase + gộp khoảng trắng    — dùng NormalizeText
 func BuildUserData(cfg *models.FacebookCAPIConfig, input UserDataInput) *UserData {
 	if !cfg.SendUserData {
 		return nil
@@ -67,13 +76,16 @@ func BuildUserData(cfg *models.FacebookCAPIConfig, input UserDataInput) *UserDat
 			ud.Ln = []string{h}
 		}
 	}
-	if cfg.HashAddress {
-		if h := HashText(input.City); h != "" {
+	// `ct` — thành phố: bỏ dấu + lowercase (chuẩn Meta).
+	if cfg.HashCity || cfg.HashAddress {
+		if h := HashText(BuildCity(input.City)); h != "" {
 			ud.CT = []string{h}
 		}
 	}
+	// `st` — tỉnh/bang: BỎ QUA nếu là vùng kinh tế ("Miền Bắc") vì Meta
+	// không có khái niệm vùng ⇒ hash không bao giờ khớp.
 	if cfg.HashState {
-		if h := HashText(input.State); h != "" {
+		if h := HashText(BuildState(input.State)); h != "" {
 			ud.ST = []string{h}
 		}
 	}
@@ -82,8 +94,9 @@ func BuildUserData(cfg *models.FacebookCAPIConfig, input UserDataInput) *UserDat
 			ud.Zp = []string{h}
 		}
 	}
+	// `country` — ISO-2 (chuẩn Meta).
 	if cfg.HashCountry {
-		if h := HashCountry(input.Country); h != "" {
+		if h := HashCountry(BuildCountryISO(input.Country)); h != "" {
 			ud.Country = []string{h}
 		}
 	}

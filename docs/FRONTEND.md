@@ -615,8 +615,10 @@ git diff --stat frontend/admin backend/static
 ```
 
 - `stage`: `new` · `contacted` · `free` · `paid` · `won` · `lost` — dùng để gom báo cáo.
-- `has_value` + `capi_event`: trạng thái sinh sự kiện Meta có giá trị
-  (`da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`).
+- `has_value` + `capi_event`: trạng thái sinh sự kiện Meta (kèm giá trị nếu `has_value`)
+  (`da_goi` → `Contact`, `da_hoc_buoi_chia_se` → `StartTrial`,
+  `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`).
+  `capi_has_value` = sự kiện có cần gửi `custom_data.value`.
 - `renderStatusOptions()` → đổ option của mọi `<select>` trạng thái trong bảng & drawer.
 - `applyStatusCatalogToUI()` → dựng Kanban **10 cột** động từ catalog (thêm/bớt cột tự động).
 - Fallback: nếu API lỗi, dùng catalog mặc định hardcode trong `lead-status.js` ⇒ UI không trắng.
@@ -665,6 +667,21 @@ Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (
 - Nút **Bật/Tắt** trên bảng cấu hình **KHÔNG** hiển thị cho dòng "Mặc định" —
   tắt nhầm cấu hình mặc định sẽ ảnh hưởng toàn hệ thống.
 - Khi render lại dropdown, lựa chọn đang dùng của Admin được giữ nguyên.
+
+### Checkbox "Chỉ gửi khi lead đến từ Facebook / Meta"
+
+| Thành phần | Mô tả |
+|---|---|
+| `fbAdsFormOnlyFB` (index.html) | Checkbox trong form cấu hình CAPI, mặc định **checked** |
+| `fbAdsPopulateConfig` | Nạp `cfg.only_facebook_traffic` (thiếu ⇒ coi như `true`) |
+| `fbAdsResetForm` | Reset về `true` |
+| `fbAdsSaveConfig` | Gửi `only_facebook_traffic` trong payload |
+
+- `true` ⇒ backend chỉ bắn CAPI cho lead có bằng chứng đến từ Meta
+  (`fbc` / `fbclid` / `site_source_name` / `utm_source` Meta / referrer Meta / `fbp`).
+  Lead organic, Google Ads, TikTok, truy cập thẳng ⇒ bị skip.
+- `false` ⇒ gửi cho mọi lead (dùng khi muốn đo đạc rộng, không quan tâm so khớp).
+- Backend giữ **giá trị cũ trong DB** nếu admin không gửi field này.
 
 ### Dataset Quality — render theo format Meta v27.0
 

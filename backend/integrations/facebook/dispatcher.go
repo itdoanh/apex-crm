@@ -105,6 +105,9 @@ type DispatchResult struct {
 // SendLeadEvent gửi sự kiện `Lead` khi khách vừa đăng ký (submit form).
 //
 // Trigger: lead_submit.
+//
+// ⚠️ CHỈ GỬI KHI LEAD ĐẾN TỪ FACEBOOK (yêu cầu anh itdoanh 2026-11-15).
+// Lead từ organic / Google Ads / TikTok ⇒ bỏ qua.
 func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
 	cfg, err := d.resolveConfig(lc.LandingID)
 	if err != nil {
@@ -116,6 +119,12 @@ func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
 	if !cfg.SendLead {
 		return d.logSkip(lc, EventLead, "lead_submit", "sự kiện Lead đang tắt trong cấu hình")
 	}
+
+	// ─── GATE: chỉ gửi cho lead đến từ Facebook ───────────────────────
+	if res := d.checkFacebookAttribution(lc, EventLead, "lead_submit", cfg); res != nil {
+		return res
+	}
+
 	return d.send(cfg, lc, EventLead, nil, "lead_submit", "")
 }
 
@@ -151,6 +160,11 @@ func (d *Dispatcher) SendPageViewEvent(lc *LeadContext) *DispatchResult {
 		}
 	}
 
+	// ─── GATE: chỉ gửi PageView cho traffic từ Facebook ───────────────
+	if res := d.checkFacebookAttribution(lc, EventPageView, "page_view", cfg); res != nil {
+		return res
+	}
+
 	return d.send(cfg, lc, EventPageView, nil, "page_view", "")
 }
 
@@ -158,19 +172,24 @@ func (d *Dispatcher) SendPageViewEvent(lc *LeadContext) *DispatchResult {
 //
 // Trigger: crm_status_change.
 //
-// ⚠️ Chỉ các trạng thái có giá trị tiền thật mới sinh sự kiện:
-//   - `da_hoc_chuyen_sau` → Subscribe  (đã học chuyên sâu, ≈6.000.000đ)
-//   - `da_mua_hang`       → Purchase   (khách đã mua hàng — chuyển đổi cuối)
+// 📌 ÁNH XẠ (yêu cầu anh itdoanh 2026-11-15):
 //
-// Các trạng thái còn lại (mới, đã gọi, spam…) KHÔNG sinh sự kiện Meta,
-// vì gửi hàng loạt sự kiện không có giá trị làm nhiễu chỉ số EMQ.
+//	moi                 → Lead
+//	da_goi              → Contact
+//	da_hoc_buoi_chia_se → StartTrial
+//	da_hoc_chuyen_sau   → Subscribe  (≈6.000.000đ)
+//	da_mua_hang         → Purchase
+//
+// ⚠️ CHỈ GỬI KHI LEAD ĐẾN TỪ FACEBOOK: lead từ organic / Google Ads /
+// TikTok / truy cập thẳng ⇒ KHÔNG gửi (không có lượt nhấp Meta để khớp,
+// gửi sẽ làm nhiễu chỉ số quảng cáo và hạ EMQ).
 func (d *Dispatcher) SendCRMSyncEvent(lc *LeadContext, trangThai string) *DispatchResult {
-	hasValue, eventName := models.LeadStatusValue(trangThai)
-	if !hasValue {
+	eventName, hasValue, ok := models.LeadStatusCAPIEvent(trangThai)
+	if !ok {
 		return &DispatchResult{
 			Skipped: true,
 			Event:   "",
-			Message: "trạng thái '" + trangThai + "' không gắn giá trị → không gửi sự kiện Meta",
+			Message: "trạng thái '" + trangThai + "' không sinh sự kiện Meta",
 		}
 	}
 
@@ -184,12 +203,73 @@ func (d *Dispatcher) SendCRMSyncEvent(lc *LeadContext, trangThai string) *Dispat
 	if !cfg.SendCRMSync {
 		return d.logSkip(lc, eventName, "crm_status_change", "đồng bộ CRM đang tắt trong cấu hình")
 	}
-	if !cfg.SendPurchase {
+	if hasValue && !cfg.SendPurchase {
 		return d.logSkip(lc, eventName, "crm_status_change", "sự kiện có giá trị đang tắt trong cấu hình")
 	}
 
-	customData := BuildValueCustomData(cfg.CourseValue, cfg.Currency, eventName, "course")
-	return d.send(cfg, lc, eventName, customData, "crm_status_change", trangThai)
+	// ─── GATE: chỉ gửi cho lead đến từ Facebook ───────────────────────
+	if res := d.checkFacebookAttribution(lc, eventName, "crm_status_change", cfg); res != nil {
+		return res
+	}
+
+	var customData *CustomData
+	if hasValue {
+		customData = BuildValueCustomData(cfg.CourseValue, cfg.Currency, eventName, "course")
+	}
+
+	// ─── EVENT ID: chống đếm trùng ───────────────────────────────────
+	//
+	// `Lead` (từ trạng thái `moi`): dùng LẠI event_id gốc của lead (client
+	// đã gửi lên lúc submit form và dùng chung với `fbq`) ⇒ Meta gộp với
+	// sự kiện browser/server lúc submit ⇒ KHÔNG thổi phồng số Lead.
+	//
+	// Các event khác (Contact / StartTrial / Subscribe / Purchase): sinh
+	// event_id MỚI. Nếu dùng lại event_id gốc thì Meta sẽ gộp nhầm với
+	// sự kiện Lead ⇒ MẤT sự kiện chuyển đổi.
+	lcForEvent := lc
+	if eventName != EventLead {
+		clone := *lc
+		clone.EventID = ""
+		lcForEvent = &clone
+	}
+
+	return d.send(cfg, lcForEvent, eventName, customData, "crm_status_change", trangThai)
+}
+
+// CheckFacebookAttribution chặn sự kiện nếu lead/session KHÔNG đến từ
+// Facebook.
+//
+// Trả về non-nil DispatchResult khi cần BỎ QUA (đã ghi log skip).
+// Trả về nil khi được phép gửi.
+//
+// Export để handler khác (analytics) dùng chung 1 quy tắc.
+func (d *Dispatcher) CheckFacebookAttribution(lc *LeadContext, eventName, triggeredBy string) *DispatchResult {
+	return d.checkFacebookAttribution(lc, eventName, triggeredBy, nil)
+}
+
+// checkFacebookAttribution chặn sự kiện nếu lead KHÔNG đến từ Facebook.
+//
+// Trả về non-nil DispatchResult khi cần BỎ QUA (đã ghi log skip).
+// Trả về nil khi lead ĐẾN TỪ Facebook ⇒ được phép gửi.
+//
+// 📌 YÊU CẦU: "CAPI chỉ gửi khi lead đó đến từ FB chứ không gửi các lead
+// ngoài" — áp dụng cho MỌI sự kiện server-side (Lead / CRM sync / PageView).
+//
+// ⚠️ Nếu cấu hình `only_facebook_traffic = FALSE` ⇒ KHÔNG gate (gửi cho mọi
+// lead). Mặc định TRUE.
+func (d *Dispatcher) checkFacebookAttribution(lc *LeadContext, eventName, triggeredBy string, cfg *models.FacebookCAPIConfig) *DispatchResult {
+	if lc == nil {
+		return d.logSkip(nil, eventName, triggeredBy, "thiếu ngữ cảnh lead")
+	}
+	if cfg != nil && !cfg.OnlyFacebookTraffic {
+		return nil
+	}
+	traffic := DetectFacebookTraffic(lc.Tracking)
+	if !traffic.IsFacebook {
+		return d.logSkip(lc, eventName, triggeredBy,
+			"lead không đến từ Facebook ("+traffic.Source+") → không gửi CAPI")
+	}
+	return nil
 }
 
 // SendTestEvent gửi 1 sự kiện thử nghiệm từ Admin UI (test_event_code).
@@ -333,6 +413,8 @@ func DefaultConfigFromEnv() *models.FacebookCAPIConfig {
 		SendLead:         true,
 		SendPurchase:     true,
 		SendCRMSync:      true,
+		// Mặc định CHỈ gửi cho lead từ Facebook (yêu cầu anh itdoanh).
+		OnlyFacebookTraffic: true,
 		CourseValue:      value,
 		Currency:         currency,
 		HashEmail:        true,

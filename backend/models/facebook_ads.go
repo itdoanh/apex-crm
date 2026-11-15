@@ -38,6 +38,13 @@ type FacebookCAPIConfig struct {
 	SendPurchase bool `json:"send_purchase"`
 	// Gửi sự kiện dựa trên thay đổi trạng thái CRM trong CRM (khoá học chuyên sâu, mua hàng).
 	SendCRMSync bool `json:"send_crm_sync"`
+	// OnlyFacebookTraffic = true ⇒ CHỈ gửi CAPI cho lead đến từ Facebook /
+	// Instagram (có `fbc` / `fbclid` / `utm_source=fb`…).
+	//
+	// Lead từ organic, Google Ads, TikTok, truy cập thẳng ⇒ BỎ QUA vì không
+	// có lượt nhấp Meta để so khớp ⇒ gửi lên chỉ làm nhiễu chỉ số quảng
+	// cáo và hạ điểm Event Match Quality.
+	OnlyFacebookTraffic bool `json:"only_facebook_traffic"`
 
 	// ─── Giá trị chuyển đổi ───────────────────────────────────────────
 	// Đơn giá khoá học chuyên sâu (VND). Meta yêu cầu value là số thực,
@@ -115,7 +122,11 @@ type FacebookCAPIConfigInput struct {
 	SendLead     bool `json:"send_lead"`
 	SendPurchase bool `json:"send_purchase"`
 	SendCRMSync  bool `json:"send_crm_sync"`
-
+	// OnlyFacebookTraffic = true ⇒ chỉ gửi CAPI cho lead từ Facebook.
+	//
+	// Dùng con trỏ để phân biệt "admin gửi false" với "admin không gửi field"
+	// (trường hợp sau phải giữ giá trị cũ trong DB, không ghi đè).
+	OnlyFacebookTraffic *bool `json:"only_facebook_traffic"`
 	CourseValue float64 `json:"course_value"`
 	Currency    string  `json:"currency"`
 
