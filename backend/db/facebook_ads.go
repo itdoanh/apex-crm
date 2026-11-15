@@ -373,7 +373,12 @@ func (s *Store) GetFacebookCAPIStats(landingID string, days int) (*models.Facebo
 	}
 
 	// landingID = '' ⇒ lấy TẤT CẢ landing (dùng cho báo cáo tổng).
-	where := "(landing_id = $1 OR $1 = '') AND created_at >= make_interval(days => $2::int)"
+	//
+	// ⚠️ `created_at` là TIMESTAMPTZ ⇒ phải so sánh với TIMESTAMPTZ.
+	// `make_interval(...)` trả về INTERVAL ⇒ KHÔNG dùng trực tiếp
+	// (`timestamptz >= interval` ⇒ lỗi 42P01/42883 → HTTP 500).
+	// Phải trừ khỏi NOW() (NOW() là timestamptz ⇒ timestamptz - interval OK).
+	where := "(landing_id = $1 OR $1 = '') AND created_at >= NOW() - make_interval(days => $2::int)"
 	args := []interface{}{landingID, days}
 
 	q := `
