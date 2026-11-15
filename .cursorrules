@@ -27,6 +27,8 @@
 14. CAPI không chặn luồng chính — lỗi Meta chỉ ghi log `facebook_capi_logs` · PII băm SHA-256, IP/UA/fbc/fbp gửi rõ
 15. Pipeline CRM 10 trạng thái — nguồn: `backend/models/lead_status.go` · UI gọi `GET /api/facebook-ads/lead-statuses` (động)
 16. URL Meta Ads: `utm_campaign`=`campaign.id` · `utm_content`=`adset.id` · `utm_term`=`ad.id` (KHÔNG theo Google Ads)
+17. Danh mục trường Google Sheets: 1 nguồn duy nhất `backend/integrations/googlesheets/fields.go` — frontend nạp từ `GET /api/integrations/sheets/defaults`, KHÔNG hardcode
+18. Cột chuẩn mới không tự áp dụng cho config cũ — Admin bấm "Bổ sung Cột" (thêm vào CUỐI, không phá cột cũ) · đổi trạng thái CRM cập nhật dòng Sheet qua `BatchUpdate` (không append)
 
 ## Production
 

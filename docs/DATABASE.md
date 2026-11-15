@@ -598,6 +598,56 @@ gốc** ⇒ không có `google_sheet_ids` ⇒ rơi vào nhánh "đồng bộ m�
 - Nhánh `targetSheetIDs` trong `GetActiveGoogleSheetConfigsForLead` cũng tôn trọng
   `filter_landing_id` (chống tràn chéo landing).
 
+### 8.1. Danh mục trường ánh xạ & cập nhật trạng thái (2026-11-15)
+
+#### Danh mục trường (nguồn sự thật duy nhất)
+
+`backend/integrations/googlesheets/fields.go` → `leadFieldCatalog` (~90 trường, 9 nhóm).
+
+| Nhàm | Nội dung |
+|---|---|
+| `GetStandardDefaultMappings()` | Bộ cột chuẩn A, B, C… theo đúng thứ tự danh mục |
+| `AvailableLeadFields()` | Danh sách trường cho UI (`GET /api/integrations/sheets/defaults`) |
+| `MergeStandardMappings(existing)` | Bổ sung trường chuẩn còn thiếu vào **cuối** config cũ (không phá cột cũ) |
+| `ExtractLeadValue(field, ...)` | Lấy giá trị cho 1 key (`sync.go`) |
+
+> ⚠️ Trước 2026-11-15 danh sách trường bị lặp ở 3 nơi (handler + `sync.go`
+> + `frontend/admin/js/sheets.js`) ⇒ dễ lệch. Nay frontend **nạp từ API**.
+
+#### `google_sheet_sync_logs` — dùng để cập nhật dòng đã ghi
+
+Khi CRM đổi trạng thái, backend cần biết dòng nào trong Sheet chứa lead đó:
+
+```sql
+SELECT DISTINCT ON (config_id) config_id, row_range
+FROM google_sheet_sync_logs
+WHERE lead_id = $1 AND status = 'success' AND row_range <> ''
+ORDER BY config_id, id DESC;
+```
+
+`row_range` có dạng `Data!A123:BS123` ⇒ `ParseRowNumber()` trích ra `123`.
+
+| Hàm store | Mục đích |
+|---|---|
+| `GetLatestSyncRowRanges(leadID)` | Map `{configID: row_range}` của lần ghi thành công gần nhất |
+
+#### Cập nhật trạng thái CRM trên Sheet
+
+`POST /api/leads/update` → `syncLeadStatusToGoogleSheets()`:
+
+| Bước | Chi tiết |
+|---|---|
+| 1 | `GetLatestSyncRowRanges(leadID)` → tra dòng đã ghi |
+| 2 | `StatusColumnIndexes(mappings)` → tìm chỉ số cột của 8 trường trạng thái |
+| 3 | `BuildStatusRowValues(...)` → dựng giá trị (ô rỗng ⇒ bỏ qua) |
+| 4 | `UpdateRowCells(...)` → `Values.BatchUpdate` trên **đúng dòng** (không append) |
+
+> ⚠️ Dùng `ValueInputOption` mặc định (`RAW`) ⇒ không diễn giải `=` là công thức
+> (chống formula injection qua ghi chú sales).
+>
+> ⚠️ Cấu hình đã lưu KHÔNG tự đổi ⇒ Admin phải bấm **"Bổ sung Cột"**
+> (`POST /api/integrations/sheets/configs/upgrade-mappings`) để có đủ cột mới.
+
 ---
 
 ## 8.5. Meta Conversions API — `facebook_capi_configs` & `facebook_capi_logs`

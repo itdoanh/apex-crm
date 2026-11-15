@@ -782,6 +782,14 @@ func (h *LeadHandler) HandleUpdateLead(w http.ResponseWriter, r *http.Request) {
 		go h.dispatchCAPICRMSync(req.ID, models.NormalizeLeadStatus(req.TrangThai))
 	}
 
+	// ─── Google Sheets: cập nhật dòng đã ghi khi CRM đổi trạng thái ──
+	//
+	// Sheet chỉ nhận 1 DÒNG lúc lead mới tạo. Nếu không cập nhật, cột
+	// "Trạng Thái" kẹt vĩnh viễn ở `moi` ⇒ báo cáo bán hàng sai.
+	//
+	// ⚠️ Cập nhật (không append) ⇒ không sinh dòng trùng.
+	go h.syncLeadStatusToGoogleSheets(req.ID)
+
 	// Ghi nhận Audit Log hoạt động quản trị
 	clientIP := ExtractClientIP(r)
 	ua := r.UserAgent()
@@ -1382,5 +1390,77 @@ func (h *LeadHandler) syncLeadToGoogleSheets(lead *models.Lead, rawData map[stri
 
 			_ = h.store.CreateSyncLog(syncLog)
 		}(cfg)
+	}
+}
+
+// syncLeadStatusToGoogleSheets cập nhật dòng ĐÃ GHI trong Google Sheets khi
+// CRM đổi trạng thái / ghi chú / người phụ trách.
+//
+// 📌 2026-11-15 — vì sao cần:
+//   Sheet chỉ nhận 1 DÒNG lúc lead mới tạo (append). Sau đó sales đổi
+//   trạng thái trong CRM ⇒ nếu không cập nhật, cột "Trạng Thái" kẹt ở
+//   `moi` vĩnh viễn ⇒ báo cáo bán hàng sai.
+//
+// ⚠️ Cơ chế:
+//   1. Tra `google_sheet_sync_logs` lấy `row_range` của lần ghi THÀNH CÔNG
+//      gần nhất cho lead này (theo từng config).
+//   2. Dùng `Values.BatchUpdate` ghi đè CHỈ các ô trạng thái đúng vị trí
+//      cột ⇒ không sinh dòng trùng, không ghi đè dữ liệu người dùng sửa tay.
+//
+// Lỗi KHÔNG được làm fail request CRM (chạy trong goroutine).
+func (h *LeadHandler) syncLeadStatusToGoogleSheets(leadID uint64) {
+	if leadID == 0 {
+		return
+	}
+
+	// ⚠️ Môi trường TEST không đồng bộ ra Google Sheets production.
+	if h.cfg != nil && !h.cfg.IsExternalSyncEnabled() {
+		return
+	}
+
+	lead, err := h.store.GetLeadByID(leadID)
+	if err != nil || lead == nil {
+		return
+	}
+
+	rowRanges, err := h.store.GetLatestSyncRowRanges(leadID)
+	if err != nil || len(rowRanges) == 0 {
+		// Lead chưa từng được ghi sang Sheet (VD: tạo trước khi bật đồng bộ)
+		// ⇒ không có dòng để cập nhật.
+		return
+	}
+
+	tracking := map[string]interface{}{}
+	if len(lead.Tracking) > 0 {
+		_ = json.Unmarshal(lead.Tracking, &tracking)
+	}
+
+	for configID, rowRange := range rowRanges {
+		cfg, err := h.store.GetGoogleSheetConfig(configID)
+		if err != nil || cfg == nil || !cfg.IsActive {
+			continue
+		}
+
+		rowNum, ok := googlesheets.ParseRowNumber(rowRange)
+		if !ok {
+			continue
+		}
+
+		cells := googlesheets.BuildStatusRowValues(cfg.FieldMappings, lead, tracking)
+		if len(cells) == 0 {
+			// Cấu hình không map trường trạng thái nào ⇒ không cần cập nhật.
+			continue
+		}
+
+		go func(c models.GoogleSheetConfig, row int, cells map[int]interface{}) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+
+			if err := googlesheets.UpdateRowCells(ctx, c.CredentialsJSON, c.SpreadsheetID, c.SheetTabName, row, cells); err != nil {
+				fmt.Printf("[GOOGLE_SHEET_SYNC_ERROR] Config '%s' (ID=%d) cập nhật trạng thái dòng %d: %v\n", c.Name, c.ID, row, err)
+				return
+			}
+			fmt.Printf("[GOOGLE_SHEET_SYNC_UPDATE] Config '%s' (ID=%d): đã cập nhật trạng thái lead #%d tại dòng %d\n", c.Name, c.ID, leadID, row)
+		}(*cfg, rowNum, cells)
 	}
 }
