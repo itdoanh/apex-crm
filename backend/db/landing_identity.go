@@ -56,6 +56,25 @@ var reConfigJSONNguon = regexp.MustCompile(`"nguon"\s*:\s*"[^"]*"`)
 // (không khớp object để tránh vấn đề nested brace).
 var reAPEXConfigAssign = regexp.MustCompile(`window\.APEX_LANDING_CONFIG\s*=\s*`)
 
+// StripUTF8BOM loại bỏ BOM (byte `\xEF\xBB\xBF`) ở đầu nội dung tệp.
+//
+// BỐI CẢNH (2026-11-15):
+//   Tệp `config.json` / `index.html` được upload từ Windows (Notepad, VS Code)
+//   thường CÓ BOM. JSON chuẩn (RFC 8259) KHÔNG cho phép BOM ⇒ `json.Unmarshal`
+//   trong Go và `JSON.parse` trong trình duyệt đều THROW với BOM.
+//
+//   Hậu quả trong hệ thống:
+//   - `tracker.js` gọi `res.json()` ⇒ ném lỗi ⇒ fallback `config.json` không
+//     bao giờ nạp được ⇒ landing mất cấu hình (title, countdown, form mapping).
+//   - `EnsureLandingConfigFile` / `RepairLandingIdentity` dùng `json.Unmarshal`
+//     ⇒ parse fail ⇒ cơ chế TỰ HEAL không sửa được file BOM ⇒ bug nhân bản
+//     chồng chéo định danh có thể tái diễn.
+//
+// Hàm này giữ nguyên phần còn lại của nội dung, chỉ cắt BOM ở đầu.
+func StripUTF8BOM(content string) string {
+	return strings.TrimPrefix(content, "\xEF\xBB\xBF")
+}
+
 // RewriteLandingIdentityHTML viết lại mọi dấu vân tay định danh của landing
 // trong một tệp HTML.
 //
@@ -221,6 +240,11 @@ func RewriteLandingConfigJSON(content string, landingID string, nguon string) st
 	if content == "" || landingID == "" {
 		return content
 	}
+
+	// BOM làm `json.Unmarshal` fail ⇒ phải cắt BOM TRƯỚC khi parse.
+	// Đồng thời kết quả marshal lại KHÔNG có BOM ⇒ JSON chuẩn, trình duyệt
+	// `JSON.parse` chạy được.
+	content = StripUTF8BOM(content)
 
 	var cfg map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &cfg); err == nil {

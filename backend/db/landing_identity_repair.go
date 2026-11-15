@@ -229,8 +229,9 @@ func setConfigJSONNguon(content string, nguon string) string {
 	if content == "" || nguon == "" {
 		return content
 	}
+	// BOM làm `json.Unmarshal` fail ⇒ cắt BOM trước khi parse.
 	var cfg map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &cfg); err != nil {
+	if err := json.Unmarshal([]byte(StripUTF8BOM(content)), &cfg); err != nil {
 		return reConfigJSONNguon.ReplaceAllString(content, `"nguon": "`+nguon+`"`)
 	}
 	cfg["nguon"] = nguon

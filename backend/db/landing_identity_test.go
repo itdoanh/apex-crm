@@ -136,6 +136,49 @@ func TestRewriteLandingConfigJSON_KeepCustomNguon(t *testing.T) {
 	}
 }
 
+// TestRewriteLandingConfigJSON_BOM chứng minh file `config.json` có BOM
+// (upload từ Windows) vẫn được parse và viết lại đúng.
+//
+// BỐI CẢNH: BOM làm `json.Unmarshal` fail ⇒ cơ chế tự-heal không hoạt động
+// ⇒ bug nhân bản landing chồng chéo định danh có thể tái diễn.
+func TestRewriteLandingConfigJSON_BOM(t *testing.T) {
+	src := "\xEF\xBB\xBF" + `{"landing_id":"doanh_chung","nguon":"doanh_chung","title":"Tối Ưu"}`
+
+	out := RewriteLandingConfigJSON(src, "xu_huong_1", "xu_huong_1")
+
+	if strings.HasPrefix(out, "\xEF\xBB\xBF") {
+		t.Errorf("output vẫn còn BOM ⇒ JSON.parse trong trình duyệt sẽ throw:\n%q", out)
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatalf("config.json (BOM) không parse được: %v", err)
+	}
+	if cfg["landing_id"] != "xu_huong_1" {
+		t.Errorf("landing_id = %v, mong đợi xu_huong_1", cfg["landing_id"])
+	}
+	if cfg["nguon"] != "xu_huong_1" {
+		t.Errorf("nguon = %v, mong đợi xu_huong_1", cfg["nguon"])
+	}
+	if cfg["title"] != "Tối Ưu" {
+		t.Errorf("mất key 'title': %v", cfg)
+	}
+}
+
+// TestStripUTF8BOM chứng minh chỉ cắt BOM ở đầu, không đụng nội dung.
+func TestStripUTF8BOM(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"\xEF\xBB\xBF{}", "{}"},
+		{"{}", "{}"},
+		{"{}\xEF\xBB\xBF", "{}\xEF\xBB\xBF"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := StripUTF8BOM(c.in); got != c.want {
+			t.Errorf("StripUTF8BOM(%q) = %q, mong đợi %q", c.in, got, c.want)
+		}
+	}
+}
+
 // TestValidateLandingIdentity chứng minh page_id không hợp lệ bị chặn.
 func TestValidateLandingIdentity(t *testing.T) {
 	cases := []struct {

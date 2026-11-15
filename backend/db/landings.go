@@ -867,6 +867,9 @@ func (s *Store) UpdateLandingCode(domain string, pageID string, codeHTML string,
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// BOM làm HTML bị lỗi ở byte đầu ⇒ strip trước khi ghi.
+	codeHTML = StripUTF8BOM(codeHTML)
+
 	query := `
 		UPDATE landing_pages
 		SET code_html = $1, status = $2, updated_at = NOW()
@@ -1140,6 +1143,10 @@ func (s *Store) SaveLandingFile(domain string, pageID string, filePath string, f
 	defer cancel()
 
 	filePath = strings.TrimPrefix(filePath, "/")
+	// BOM (byte `\xEF\xBB\xBF`) làm JSON.parse trong trình duyệt và
+	// `json.Unmarshal` trong Go đều throw ⇒ file không dùng được.
+	// Strip lúc GHI ⇒ file upload từ Code Studio (Windows) luôn sạch.
+	content = StripUTF8BOM(content)
 	if fileType == "" {
 		ext := strings.ToLower(filepath.Ext(filePath))
 		switch ext {
@@ -1336,7 +1343,8 @@ func (s *Store) EnsureLandingConfigFile(ctx context.Context) error {
 			continue
 		}
 		var cfg map[string]interface{}
-		if err := json.Unmarshal([]byte(f.Content), &cfg); err != nil {
+		// BOM làm `json.Unmarshal` fail ⇒ cắt BOM trước khi parse.
+		if err := json.Unmarshal([]byte(StripUTF8BOM(f.Content)), &cfg); err != nil {
 			continue
 		}
 		current, _ := cfg["landing_id"].(string)

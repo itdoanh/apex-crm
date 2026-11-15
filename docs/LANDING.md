@@ -790,7 +790,32 @@ của landing nguồn sang bản sao:
 > - `RewriteLandingConfigJSON(content, landingID, nguon)`
 > - `ValidateLandingIdentity(pageID, nguonDefault)`
 >
-> **Test:** `backend/db/landing_identity_test.go` (6 test, PASS).
+> **Test:** `backend/db/landing_identity_test.go` (8 test, PASS).
+
+### 🔧 File landing phải KHÔNG CÓ BOM (fix 2026-11-15)
+
+**Triệu chứng:** `config.json` / `index.html` upload từ Windows (Notepad, VS Code)
+thường có BOM (`EF BB BF`) ở đầu ⇒:
+
+- `tracker.js` gọi `res.json()` ⇒ **throw** `Unexpected token ﻿` ⇒ fallback
+  `config.json` **không bao giờ nạp được** ⇒ landing mất cấu hình (title,
+  countdown, form mapping).
+- Backend `json.Unmarshal` ⇒ **fail** ⇒ `EnsureLandingConfigFile` /
+  `RepairLandingIdentity` **không tự sửa được** file BOM ⇒ bug nhân bản landing
+  chồng chéo định danh có thể **tái diễn**.
+
+> ⚠️ JSON chuẩn (RFC 8259) **KHÔNG cho phép BOM**.
+
+✅ **Cách sửa:**
+- `StripUTF8BOM(content)` (`backend/db/landing_identity.go`) — cắt BOM ở đầu.
+- `RewriteLandingConfigJSON()` cắt BOM **trước khi parse** ⇒ kết quả marshal
+  lại **không có BOM** ⇒ JSON chuẩn.
+- `EnsureLandingConfigFile()` + `setConfigJSONNguon()` cắt BOM trước parse.
+- `SaveLandingFile()` + `UpdateLandingCode()` **strip BOM lúc GHI** ⇒ file upload
+  từ Code Studio luôn sạch ⇒ không còn BOM trong DB.
+
+> **Vệ sinh dữ liệu cũ:** `UPDATE landing_files SET content = substr(content, 4)
+> WHERE content LIKE (chr(65279) || '%');` (+ tương tự cho `landing_pages.code_html`).
 
 ### 🔧 Tự sửa chữa landing bị chồng chéo (fix 2026-11-15)
 
