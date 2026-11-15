@@ -353,6 +353,16 @@ trong Inspector (PC scope) biến mất.
 | `syncPreviewDeviceToIframe()` (`file-manager.js`) | Gửi `APEX_CMD_SET_PREVIEW_DEVICE` (device + pcForceCss) xuống iframe |
 | Handler `APEX_CMD_SET_PREVIEW_DEVICE` (`ast-mapper.js`) | Set `data-apex-preview-device` trên `<html>` + cập nhật style block |
 
+> 🚨 **Scope GLOBAL bắt buộc (fix 2026-11-15)**: `syncPreviewDeviceToIframe()` phải
+> được khai báo ở **scope global** (cùng cấp với `setStudioDevice`), **KHÔNG** khai
+> báo bên trong `setStudioDevice()`. Nếu khai báo bên trong ⇒ hàm không có scope global
+> ⇒ `inspector.js` (`applyAstStyleChange`) và `refreshStudioPreview()` đều gọi
+> `typeof syncPreviewDeviceToIframe === 'function'` ⇒ luôn `false` ⇒
+> `data-apex-preview-device` **không bao giờ được set** ⇒ CSS ép PC không áp dụng.
+>
+> Bổ sung: style block `#__apex_preview_pc_force_styles__` **luôn được tạo** (kể cả
+> rỗng) và handler `APEX_CMD_SET_PREVIEW_DEVICE` **tự tạo** element nếu thiếu.
+
 > 🚨 **Ràng buộc quan trọng**: style block ép PC này **CHỈ tồn tại trong preview
 > iframe**, **không bao giờ** được ghi vào `code_html` / `landing_files` ⇒ production
 > vẫn dùng media query thật ⇒ không ảnh hưởng trang live.
