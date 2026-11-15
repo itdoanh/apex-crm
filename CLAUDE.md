@@ -53,6 +53,9 @@
 17. **Dedupe browser ↔ server** — `eventID` là **tham số thứ 4** của `fbq('track', …)`: `fbq('track','Lead',{ content_name:'…' },{ eventID: <cùng event_id> })`. Đặt trong object tham số 3 ⇒ Meta không đọc được ⇒ đếm đôi.
 18. **Dataset Quality v27.0** — `web` trả về là **MẢNG** (mỗi phần tử = 1 `event_name` kèm chỉ số riêng); `dataset_id` là tham số **bắt buộc**; `agent_name` tuỳ chọn.
 19. **Bật/tắt CAPI theo từng landing** — `POST /api/facebook-ads/config/toggle` (`landing_id` + `is_active`). Chỉ toggle được dòng có cấu hình riêng; **không** toggle cấu hình mặc định (`landing_id = ''`).
+20. **Danh mục trường Google Sheets có 1 nguồn duy nhất** — `backend/integrations/googlesheets/fields.go` (`leadFieldCatalog`, ~90 trường / 9 nhóm). Handler + frontend đều lấy từ đây (`GET /api/integrations/sheets/defaults`); frontend **không** hardcode danh sách trường.
+21. **Cột chuẩn mới không tự áp dụng cho config đã lưu** — Admin bấm "Bổ sung Cột" (`POST /api/integrations/sheets/configs/upgrade-mappings`): giữ nguyên cột cũ, thêm cột mới vào CUỐI, ghi tiêu đề mới vào dòng 1.
+22. **Đổi trạng thái CRM cập nhật lại dòng Sheet** (không append) — `syncLeadStatusToGoogleSheets()` tra `google_sheet_sync_logs.row_range` rồi `Values.BatchUpdate` đúng dòng. Ô rỗng ⇒ bỏ qua; `RAW` (không diễn giải `=` là công thức).
 
 ## Production
 

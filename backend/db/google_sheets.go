@@ -333,6 +333,45 @@ func (s *Store) CreateSyncLog(log *models.GoogleSheetSyncLog) error {
 	).Scan(&log.ID, &log.SyncedAt)
 }
 
+// GetLatestSyncRowRanges trả về map {configID: row_range} của lần đồng bộ
+// THÀNH CÔNG gần nhất cho 1 lead.
+//
+// Dùng để cập nhật dòng đã ghi khi CRM đổi trạng thái (thay vì append
+// dòng mới ⇒ tránh dòng trùng).
+//
+// ⚠️ Chỉ lấy log `status = 'success'` và có `row_range` khác rỗng.
+func (s *Store) GetLatestSyncRowRanges(leadID uint64) (map[int]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT DISTINCT ON (config_id) config_id, row_range
+		FROM google_sheet_sync_logs
+		WHERE lead_id = $1
+		  AND status = 'success'
+		  AND row_range IS NOT NULL
+		  AND row_range <> ''
+		ORDER BY config_id, id DESC;
+	`
+
+	rows, err := s.pool.Query(ctx, query, leadID)
+	if err != nil {
+		return nil, fmt.Errorf("lỗi tra row_range đồng bộ của lead %d: %w", leadID, err)
+	}
+	defer rows.Close()
+
+	out := make(map[int]string)
+	for rows.Next() {
+		var configID int
+		var rowRange string
+		if err := rows.Scan(&configID, &rowRange); err != nil {
+			return nil, err
+		}
+		out[configID] = rowRange
+	}
+	return out, rows.Err()
+}
+
 // ListSyncLogs lấy danh sách nhật ký đồng bộ có phân trang
 func (s *Store) ListSyncLogs(limit int, offset int, configID int) ([]models.GoogleSheetSyncLog, int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

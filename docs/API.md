@@ -693,7 +693,8 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 | `GET /api/integrations/sheets/configs/get` | Chi tiết config |
 | `POST /api/integrations/sheets/configs/toggle` | Bật/tắt |
 | `GET /api/integrations/sheets/logs` | Lịch sử sync |
-| `GET /api/integrations/sheets/defaults` | 14 mapping mặc định |
+| `GET /api/integrations/sheets/defaults` | Danh mục trường + bộ cột chuẩn mặc định (nguồn sự thật duy nhất) |
+| `POST /api/integrations/sheets/configs/upgrade-mappings` | **Bổ sung các trường chuẩn MỚI** vào 1 config đã lưu (an toàn — không phá cột cũ) |
 
 ---
 
@@ -707,7 +708,77 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 
 ---
 
-## 9. Ma trận ánh xạ 15 trường Google Sheets
+## 9. Ma trận ánh xạ trường Google Sheets (2026-11-15)
+
+> ⭐ **NGUỒN SỰ THẬT DUY NHẤT:** `backend/integrations/googlesheets/fields.go`
+> (`leadFieldCatalog`).
+>
+> - `GetStandardDefaultMappings()` → bộ cột chuẩn (sinh từ danh mục).
+> - `AvailableLeadFields()` → danh sách trường cho UI (`GET .../sheets/defaults`).
+> - `ExtractLeadValue()` (`sync.go`) → cách lấy giá trị cho từng key.
+>
+> ⇒ Trước đây danh sách bị lặp ở 3 nơi (handler + `sync.go` + `sheets.js`)
+> ⇒ dễ lệch. Nay frontend **nạp từ API**, không hardcode.
+
+### 9.0.0. Danh mục trường (~90 trường, 9 nhóm)
+
+| Nhóm (`group`) | Trường chính |
+|---|---|
+| **Thông tin lead** | `thoi_gian`, `cap_nhat_luc`, `fullName`, `so_dien_thoai`, `carrier`, `landing_id`, `url`, `nguon`, `nguoi_phu_trach`, `ghi_chu`, `lead_id` |
+| **CRM Pipeline** | `trang_thai` (mã), `trang_thai_label` (nhãn tiếng Việt), `trang_thai_stage` (giai đoạn), `capi_event` (sự kiện Meta), `capi_has_value` |
+| **Địa lý & Nhà mạng** | `city`, `region_name` (tỉnh gốc GeoIP), `region` (vùng kinh tế), `country`, `country_code` (ISO-2), `isp` |
+| **Nguồn quảng cáo** | `ad_platform`, `ad_placement`, `ad_source_tag`, `utm_source/medium/campaign/content/term`, `utm_placement`, `campaign_name`, `adset_name`, `ad_name`, `ad_account_id`, `site_source_name` |
+| **Định danh lượt nhấp Meta** | `fbclid`, `fbc`, `fbp`, `igshid`, `meta_click_id`, `event_id` |
+| **Thiết bị & Trình duyệt** | `device_type`, `device_brand`, `device_name`, `device_model`, `device_model_code`, `browser`, `browser_version`, `browser_engine`, `os`, `os_version`, `screen_res`, `viewport_res`, `screen_color_depth`, `pixel_ratio`, `device_memory`, `device_cores`, `device_touchpoints`, `timezone`, `language`, `platform_info`, `connection_type`, `device_state`, `is_in_app_browser`, `in_app_type` |
+| **Hành vi người dùng** | `time_on_page`, `max_scroll`, `max_scroll_percent`, `clicks_count`, `visible_seconds`, `hidden_seconds`, `session_count`, `session_id`, `visitor_id`, `is_new_visitor`, `scroll_depth_25/50/75/90/100`, `has_video_play`, `has_zalo_click`, `has_tel_click`, `referrer`, `referrer_host`, `landing_path`, `entry_url` |
+| **Form & Autofill** | `is_autofill`, `autofill_source`, `fill_duration_ms`, `validation_passed`, `form_focus_ms` |
+| **VPN / Proxy / Bot** | `is_vpn`, `is_proxy`, `is_tor`, `vpn_provider`, `vpn_confidence`, `vpn_reason`, `is_bot`, `bot_score`, `bot_reasons` |
+| **Khác** | `ip_address`, `server_received_at`, `tracking_json`, `custom_text` |
+
+> ⚠️ `trang_thai_label` / `trang_thai_stage` / `capi_event` được suy ra từ
+> `models.GetLeadStatus()` / `models.LeadStatusCAPIEvent()` ⇒ tự động khớp
+> pipeline 10 trạng thái (không hardcode chuỗi).
+
+### 9.0.1. Bộ cột chuẩn mặc định
+
+`GetStandardDefaultMappings()` sinh cột A, B, C… **theo đúng thứ tự danh mục**
+(trước 2026-11-15 chỉ có 45 cột A→AS).
+
+> ⚠️ Cấu hình đã lưu trong DB **KHÔNG tự đổi** ⇒ sheet cũ giữ mapping cũ
+> cho tới khi Admin bấm **"Bổ sung Cột"** (UI) hoặc gọi
+> `POST /api/integrations/sheets/configs/upgrade-mappings`.
+
+**Cơ chế "Bổ sung Cột" (an toàn):**
+1. Giữ nguyên thứ tự + tiêu đề + mapping của các cột **đang có**.
+2. Thêm các trường chuẩn **còn thiếu** vào **cuối** (đánh số cột liên tiếp).
+3. Ghi tiêu đề của các cột mới vào **đúng ô dòng 1** trên Google Sheet.
+4. Lưu lại `field_mappings` trong DB.
+
+⇒ Dữ liệu lead đã ghi **không bị xáo trộn** (cột mới luôn nằm sau cột cũ).
+
+### 9.0.2. Cập nhật trạng thái CRM trên Sheet (2026-11-15)
+
+⚠️ Trước đây Sheet chỉ nhận **1 dòng** lúc lead mới tạo ⇒ cột "Trạng Thái"
+kẹt vĩnh viễn ở `moi` dù sales đã đổi trạng thái.
+
+⇒ Nay `POST /api/leads/update` (đổi trạng thái / ghi chú / người phụ trách)
+gọi thêm `syncLeadStatusToGoogleSheets()`:
+
+1. Tra `google_sheet_sync_logs` lấy `row_range` của lần ghi **thành công**
+   gần nhất (theo từng config) ⇒ `GetLatestSyncRowRanges(leadID)`.
+2. `Values.BatchUpdate` ghi đè **CHỈ** các ô trạng thái
+   (`trang_thai`, `trang_thai_label`, `trang_thai_stage`, `capi_event`,
+   `capi_has_value`, `ghi_chu`, `nguoi_phu_trach`, `cap_nhat_luc`).
+
+| Đặc điểm | Chi tiết |
+|---|---|
+| Không append | dùng `BatchUpdate` trên đúng dòng ⇒ **không sinh dòng trùng** |
+| Không ghi đè dữ liệu tay | chỉ ghi các ô trạng thái; ô có giá trị rỗng ⇒ bỏ qua |
+| `ValueInputOption` | `RAW` (mặc định) ⇒ không diễn giải `=` là công thức (chống formula injection) |
+| Không chặn CRM | chạy goroutine riêng; lỗi chỉ log |
+| Môi trường TEST | bị chặn bởi `IsExternalSyncEnabled()` |
+
+### 9.0.3. Ma trận 15 trường chuẩn (legacy — vẫn hỗ trợ)
 
 | # | Key | Tiêu đề cột | Ví dụ |
 |---|---|---|---|
@@ -727,12 +798,7 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 | 14 | `thoi_gian_xem` | Thời Gian Xem Trang | `45 giây` |
 | 15 | `ghi_chu` | Ghi Chú / Nhu Cầu | `Cần tư vấn hợp đồng` |
 
-**Ngoài 15 trường chuẩn** còn map được: `fill_duration_ms`, `max_scroll`, `utm_source`,
-`utm_medium`, `utm_content`, `utm_term`, `session_id`, `referrer`, `tracking_json`, `custom_text`.
-
-Danh sách đầy đủ trả về từ `GET /api/integrations/sheets/defaults` (`available_fields`).
-
-### 9.0. Bản đồ mặc định mở rộng (2026-11-12) — 45 cột A→AS
+### 9.0.4. Bản đồ mặc định 45 cột A→AS (2026-11-12 — đã bị thay bằng danh mục 2026-11-15)
 
 `backend/integrations/googlesheets/sync.go` → `defaultColumnMappings()`:
 

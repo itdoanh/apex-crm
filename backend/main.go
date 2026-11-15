@@ -287,6 +287,8 @@ func main() {
 	mux.HandleFunc("/api/integrations/sheets/configs/toggle", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(sheetHandler.HandleToggleConfig)))
 	mux.HandleFunc("/api/integrations/sheets/logs", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(sheetHandler.HandleListLogs)))
 	mux.HandleFunc("/api/integrations/sheets/defaults", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(sheetHandler.HandleGetDefaultMappings)))
+	// 📌 2026-11-15: bổ sung các trường chuẩn MỚI vào cấu hình đã lưu (an toàn, không phá cột cũ).
+	mux.HandleFunc("/api/integrations/sheets/configs/upgrade-mappings", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(sheetHandler.HandleUpgradeMappings)))
 
 	// Analytics API Endpoints (Tracking chi tiết từ landing là public, các báo cáo phân tích bảo vệ nghiêm ngặt)
 	mux.HandleFunc("/api/analytics/track", leadHandler.CORSMiddleware(analyticsHandler.HandleTrackEvent))

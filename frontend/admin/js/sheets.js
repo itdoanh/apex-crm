@@ -7,32 +7,71 @@
         // ==============================================================
         let sheetConfigs = [];
         let currentFieldMappings = [];
-        let availableLeadFields = [
-            { key: "thoi_gian", label: "Thời Gian Đăng Ký" },
-            { key: "fullName", label: "Họ Và Tên" },
-            { key: "so_dien_thoai", label: "Số Điện Thoại" },
-            { key: "carrier", label: "Nhà Mạng Viễn Thông" },
-            { key: "landing_id", label: "ID Trang Landing" },
-            { key: "url", label: "URL Trang Khách Đăng Ký" },
-            { key: "nguon", label: "Nguồn Traffic (Kênh)" },
-            { key: "trang_thai", label: "Trạng Thái Lead (Pipeline)" },
-            { key: "ghi_chu", label: "Ghi Chú Tư Vấn" },
-            { key: "is_autofill", label: "Tự Động Điền (1-Tap)" },
-            { key: "fill_duration_ms", label: "Tốc Độ Điền Form (ms)" },
-            { key: "time_on_page", label: "Thời Gian Xem Trang" },
-            { key: "max_scroll", label: "Tỷ Lệ Cuộn Trang (%)" },
-            { key: "device_type", label: "Thiết Bị (Mobile/Desktop)" },
-            { key: "ip_address", label: "Địa Chỉ IP" },
-            { key: "utm_source", label: "UTM Source" },
-            { key: "utm_medium", label: "UTM Medium" },
-            { key: "utm_campaign", label: "UTM Campaign" },
-            { key: "utm_content", label: "UTM Content" },
-            { key: "utm_term", label: "UTM Term" },
-            { key: "session_id", label: "Mã Phiên (Session ID)" },
-            { key: "referrer", label: "Referrer (Trang Trước)" },
-            { key: "tracking_json", label: "Toàn Bộ JSON Tracking" },
-            { key: "custom_text", label: "Văn Bản Cố Định" }
+
+        // ─── Danh mục trường ánh xạ cột ─────────────────────────────────
+        //
+        // 📌 2026-11-15: danh sách này được NẠP TỪ BACKEND qua
+        // `GET /api/integrations/sheets/defaults` (nguồn sự thật duy nhất).
+        // Trước đây hardcode ở frontend + backend + handler ⇒ 3 nơi lệch nhau.
+        //
+        // `fallbackLeadFields` chỉ dùng khi API lỗi (offline) — giữ cho UI
+        // vẫn render được danh sách cơ bản.
+        let availableLeadFields = [];
+        let defaultStandardMappings = [];
+
+        const fallbackLeadFields = [
+            { key: "thoi_gian", label: "Thời Gian Đăng Ký", group: "Thông tin lead" },
+            { key: "fullName", label: "Họ Và Tên", group: "Thông tin lead" },
+            { key: "so_dien_thoai", label: "Số Điện Thoại", group: "Thông tin lead" },
+            { key: "carrier", label: "Nhà Mạng Viễn Thông", group: "Thông tin lead" },
+            { key: "landing_id", label: "ID Trang Landing", group: "Thông tin lead" },
+            { key: "url", label: "URL Trang Khách Đăng Ký", group: "Thông tin lead" },
+            { key: "nguon", label: "Nguồn Traffic (Kênh)", group: "Thông tin lead" },
+            { key: "trang_thai", label: "Trạng Thái Lead (Mã)", group: "CRM Pipeline" },
+            { key: "trang_thai_label", label: "Trạng Thái Lead (Nhãn)", group: "CRM Pipeline" },
+            { key: "ghi_chu", label: "Ghi Chú Tư Vấn", group: "Thông tin lead" },
+            { key: "is_autofill", label: "Tự Động Điền (1-Tap)", group: "Form & Autofill" },
+            { key: "fill_duration_ms", label: "Tốc Độ Điền Form (ms)", group: "Form & Autofill" },
+            { key: "time_on_page", label: "Thời Gian Xem Trang", group: "Hành vi người dùng" },
+            { key: "max_scroll", label: "Tỷ Lệ Cuộn Trang (%)", group: "Hành vi người dùng" },
+            { key: "device_type", label: "Thiết Bị (Mobile/Desktop)", group: "Thiết bị & Trình duyệt" },
+            { key: "ip_address", label: "Địa Chỉ IP", group: "Khác" },
+            { key: "utm_source", label: "UTM Source", group: "Nguồn quảng cáo" },
+            { key: "utm_medium", label: "UTM Medium", group: "Nguồn quảng cáo" },
+            { key: "utm_campaign", label: "UTM Campaign", group: "Nguồn quảng cáo" },
+            { key: "utm_content", label: "UTM Content (Adset ID)", group: "Nguồn quảng cáo" },
+            { key: "utm_term", label: "UTM Term (Ad ID)", group: "Nguồn quảng cáo" },
+            { key: "session_id", label: "Mã Phiên (Session ID)", group: "Hành vi người dùng" },
+            { key: "referrer", label: "Referrer (Trang Trước)", group: "Hành vi người dùng" },
+            { key: "tracking_json", label: "Toàn Bộ JSON Tracking", group: "Khác" },
+            { key: "custom_text", label: "Văn Bản Cố Định", group: "Khác" }
         ];
+
+        /**
+         * Nạp danh mục trường + bộ cột chuẩn từ backend.
+         * Gọi 1 lần khi mở trang / mở modal.
+         */
+        async function loadSheetFieldCatalog() {
+            try {
+                const res = await fetch('/api/integrations/sheets/defaults');
+                const json = await res.json();
+                if (json && json.success) {
+                    if (Array.isArray(json.available_fields) && json.available_fields.length > 0) {
+                        availableLeadFields = json.available_fields;
+                    }
+                    if (Array.isArray(json.default_mappings) && json.default_mappings.length > 0) {
+                        defaultStandardMappings = json.default_mappings;
+                    }
+                }
+            } catch (e) { /* offline ⇒ dùng fallback */ }
+
+            if (availableLeadFields.length === 0) {
+                availableLeadFields = fallbackLeadFields.slice();
+            }
+            if (defaultStandardMappings.length === 0) {
+                defaultStandardMappings = getDefaultStandardMappings();
+            }
+        }
 
         let systemBotEmail = "sheet-bot@rinva-drive-tool.iam.gserviceaccount.com";
 
@@ -92,6 +131,8 @@
 
         async function loadGoogleSheetsConfigs() {
             fetchBotInfo();
+            // 📌 Nạp danh mục trường (dùng cho dropdown ánh xạ cột).
+            loadSheetFieldCatalog();
             try {
                 const res = await fetch('/api/integrations/sheets/configs');
                 const json = await res.json();
@@ -206,6 +247,11 @@
                                     <span>Test Dòng</span>
                                 </button>
 
+                                <button onclick="upgradeSheetMappings(${c.id}, '${escapeHTML(c.name)}')" class="bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-800 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5" title="Bổ sung các trường chuẩn mới (địa lý, CRM, thiết bị, hành vi...) vào cấu hình này — không phá cột cũ">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
+                                    <span>Bổ sung Cột</span>
+                                </button>
+
                                 <button onclick="openSyncLogsModal(${c.id})" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5" title="Xem lịch sử đồng bộ của Sheet này">
                                     <i class="fa-solid fa-list-ul"></i>
                                     <span>Lịch Sử</span>
@@ -233,6 +279,10 @@
             document.getElementById('gsTestResultBox').className = 'hidden';
             document.getElementById('driveFilesContainer').classList.add('hidden');
             fetchBotInfo();
+
+            // 📌 Nạp danh mục trường + bộ cột chuẩn từ backend TRƯỚC khi
+            //    dựng bảng ánh xạ (để dropdown có đủ trường mới).
+            await loadSheetFieldCatalog();
 
             const customContainer = document.getElementById('advancedCustomKeyContainer');
             const chev = document.getElementById('advancedKeyChevron');
@@ -464,7 +514,7 @@
 
                 const headers = json.headers || [];
                 if (headers.length === 0) {
-                    alert(`Tab '${tabName}' chưa có dòng tiêu đề nào (dòng 1 trống). Hãy dùng 14 cột chuẩn hoặc tự nhập.`);
+                    alert(`Tab '${tabName}' chưa có dòng tiêu đề nào (dòng 1 trống). Hãy bấm "Bộ Cột Chuẩn Đầy Đủ" hoặc tự nhập.`);
                     return;
                 }
 
@@ -487,17 +537,24 @@
             }
         }
 
+        /**
+         * Đoán trường dữ liệu từ tiêu đề cột có sẵn trên Sheet.
+         *
+         * 📌 2026-11-15: bổ sung nhận diện cho các nhóm trường mới
+         * (địa lý, CRM, thiết bị, hành vi, VPN/bot) để khi bấm
+         * "Nhận Diện Tự Động" sheet cũ vẫn map đúng cột.
+         */
         function guessFieldFromHeader(header) {
-            const h = header.toLowerCase().trim();
+            const h = (header || '').toLowerCase().trim();
+            if (!h) return "fullName";
             // URL phải được kiểm tra TRƯỚC "landing"/"trang" để không bị nuốt nhầm
             if (h.includes("url") || h.includes("đường dẫn") || h.includes("duong dan") || h.includes("link")) return "url";
-            if (h.includes("thời gian") || h.includes("ngày") || h.includes("time") || h.includes("date")) return "thoi_gian";
-            if (h.includes("họ tên") || h.includes("họ và tên") || h.includes("tên") || h.includes("name")) return "fullName";
             if (h.includes("sđt") || h.includes("điện thoại") || h.includes("phone") || h.includes("tel")) return "so_dien_thoai";
+            if (h.includes("họ tên") || h.includes("họ và tên") || h.includes("tên khách") || h.includes("tên")) return "fullName";
+            if (h.includes("thời gian") || h.includes("ngày") || h.includes("time") || h.includes("date")) return "thoi_gian";
             if (h.includes("nhà mạng") || h.includes("carrier") || h.includes("mạng")) return "carrier";
             if (h.includes("landing") || h.includes("trang")) return "landing_id";
             if (h.includes("nguồn") || h.includes("source") || h.includes("kênh")) return "nguon";
-            if (h.includes("trạng thái") || h.includes("status") || h.includes("pipeline")) return "trang_thai";
             if (h.includes("ghi chú") || h.includes("note") || h.includes("nhận xét")) return "ghi_chu";
             if (h.includes("tự động điền") || h.includes("autofill")) return "is_autofill";
             if (h.includes("chiến dịch") || h.includes("campaign")) return "utm_campaign";
@@ -506,27 +563,69 @@
             if (h.includes("thời gian xem") || h.includes("time on page")) return "time_on_page";
             if (h.includes("cuộn") || h.includes("scroll")) return "max_scroll";
             if (h.includes("tracking") || h.includes("raw")) return "tracking_json";
+            // ─── Nhóm mới (2026-11-15) ───
+            if (h.includes("thành phố") || h.includes("tỉnh/thành gốc") || h.includes("city") || h.includes("province")) return "region_name";
+            if (h.includes("vùng") || h.includes("khu vực") || h.includes("region")) return "region";
+            if (h.includes("quốc gia") || h.includes("country")) return "country";
+            if (h.includes("iso")) return "country_code";
+            if (h.includes("isp") || h.includes("internet")) return "isp";
+            if (h.includes("nền tảng quảng cáo") || h.includes("platform")) return "ad_platform";
+            if (h.includes("vị trí phân phối") || h.includes("placement")) return "ad_placement";
+            if (h.includes("placement") || h.includes("vị trí")) return "utm_placement";
+            if (h.includes("adset")) return "adset_name";
+            if (h.includes("mẫu quảng cáo") || h.includes(" ad ") || h.includes("ad name")) return "ad_name";
+            if (h.includes("click id") || h.includes("fbclid")) return "fbclid";
+            if (h.includes("_fbc") || h.includes("fbc")) return "fbc";
+            if (h.includes("_fbp") || h.includes("fbp")) return "fbp";
+            if (h.includes("sự kiện meta") || h.includes("capi")) return "capi_event";
+            if (h.includes("giai đoạn") || h.includes("stage")) return "trang_thai_stage";
+            if (h.includes("nhãn") || h.includes("label")) return "trang_thai_label";
+            if (h.includes("trạng thái") || h.includes("status") || h.includes("pipeline")) return "trang_thai";
+            if (h.includes("phụ trách") || h.includes("assigned")) return "nguoi_phu_trach";
+            if (h.includes("mã lead") || h.includes("lead id")) return "lead_id";
+            if (h.includes("hãng") || h.includes("brand")) return "device_brand";
+            if (h.includes("mã model") || h.includes("model")) return "device_model_code";
+            if (h.includes("trình duyệt") || h.includes("browser")) return "browser";
+            if (h.includes("hệ điều hành") || h.includes("hđh") || h.includes("os")) return "os";
+            if (h.includes("múi giờ") || h.includes("timezone")) return "timezone";
+            if (h.includes("ngôn ngữ") || h.includes("language")) return "language";
+            if (h.includes("mạng") || h.includes("connection")) return "connection_type";
+            if (h.includes("vpn")) return "is_vpn";
+            if (h.includes("proxy")) return "is_proxy";
+            if (h.includes("tor")) return "is_tor";
+            if (h.includes("bot")) return "is_bot";
+            if (h.includes("session") || h.includes("phiên")) return "session_id";
+            if (h.includes("visitor") || h.includes("mã khách")) return "visitor_id";
+            if (h.includes("referrer")) return "referrer";
+            if (h.includes("văn bản") || h.includes("custom")) return "custom_text";
             return "fullName";
         }
 
+        /**
+         * Bộ cột chuẩn mặc định.
+         *
+         * 📌 2026-11-15: lấy từ backend (`defaultStandardMappings` nạp ở
+         * `loadSheetFieldCatalog()`). Nếu API lỗi ⇒ dựng lại từ
+         * `availableLeadFields` (fallback tối thiểu).
+         *
+         * Bộ cột chuẩn giờ bao phủ TOÀN BỘ danh mục trường (địa lý, CRM,
+         * thiết bị, hành vi, VPN/bot…) — trước đây chỉ 15 cột.
+         */
         function getDefaultStandardMappings() {
-            return [
-                { column: "A", header: "Thời Gian", field: "thoi_gian", custom_text: "" },
-                { column: "B", header: "Họ Và Tên", field: "fullName", custom_text: "" },
-                { column: "C", header: "Số Điện Thoại", field: "so_dien_thoai", custom_text: "" },
-                { column: "D", header: "Nhà Mạng", field: "carrier", custom_text: "" },
-                { column: "E", header: "Landing ID", field: "landing_id", custom_text: "" },
-                { column: "F", header: "Nguồn Traffic", field: "nguon", custom_text: "" },
-                { column: "G", header: "Trạng Thái CRM", field: "trang_thai", custom_text: "" },
-                { column: "H", header: "Tự Động Điền", field: "is_autofill", custom_text: "" },
-                { column: "I", header: "UTM Campaign", field: "utm_campaign", custom_text: "" },
-                { column: "J", header: "Địa Chỉ IP", field: "ip_address", custom_text: "" },
-                { column: "K", header: "Thiết Bị", field: "device_type", custom_text: "" },
-                { column: "L", header: "Thời Gian Xem Trang", field: "time_on_page", custom_text: "" },
-                { column: "M", header: "Tỷ Lệ Cuộn", field: "max_scroll", custom_text: "" },
-                { column: "N", header: "Ghi Chú", field: "ghi_chu", custom_text: "" },
-                { column: "O", header: "URL Trang Đăng Ký", field: "url", custom_text: "" }
-            ];
+            if (defaultStandardMappings.length > 0) {
+                return defaultStandardMappings.map(m => ({
+                    column: m.column,
+                    header: m.header,
+                    field: m.field,
+                    custom_text: m.custom_text || ""
+                }));
+            }
+            return availableLeadFields.map((f, idx) => ({
+                column: getColumnLetter(idx),
+                header: f.header || f.label,
+                field: f.key,
+                custom_text: ""
+            }));
         }
 
         function resetDefaultMappings() {
@@ -566,15 +665,69 @@
 
         function updateMappingField(index, key, value) {
             if (currentFieldMappings[index]) {
-                currentFieldMappings[index][key] = value;
+                const m = currentFieldMappings[index];
+                const oldField = m.field;
+                m[key] = value;
                 if (key === 'field') {
                     const customInput = document.getElementById(`gsCustomText_${index}`);
                     if (customInput) {
                         customInput.disabled = (value !== 'custom_text');
                         if (value !== 'custom_text') customInput.value = "";
                     }
+                    // Tự cập nhật tiêu đề cột khi nó đang là tiêu đề mặc định
+                    // của trường cũ (tránh ghi đè tiêu đề do Admin tự gõ).
+                    const oldLabel = fieldLabelFor(oldField);
+                    if (!m.header || m.header === oldLabel) {
+                        const newLabel = fieldLabelFor(value);
+                        if (newLabel) {
+                            m.header = newLabel;
+                            const headerInput = document.querySelector(`#gsMappingsTableBody tr:nth-child(${index + 1}) td:nth-child(2) input`);
+                            if (headerInput) headerInput.value = newLabel;
+                        }
+                    }
                 }
             }
+        }
+
+        /**
+         * Lấy nhãn hiển thị của 1 key trường (từ danh mục backend).
+         */
+        function fieldLabelFor(key) {
+            const f = availableLeadFields.find(x => x.key === key);
+            if (!f) return '';
+            return f.header || f.label;
+        }
+
+        /**
+         * Dựng HTML `<option>` cho dropdown chọn trường.
+         *
+         * 📌 2026-11-15: gom theo nhóm (`<optgroup>`) vì danh mục đã lên tới
+         * ~90 trường — không nhóm sẽ không tìm được.
+         */
+        function buildFieldOptionsHtml(selectedKey) {
+            const groups = new Map();
+            availableLeadFields.forEach(f => {
+                const g = f.group || 'Khác';
+                if (!groups.has(g)) groups.set(g, []);
+                groups.get(g).push(f);
+            });
+
+            let html = '';
+            groups.forEach((fields, groupName) => {
+                html += `<optgroup label="${escapeHTML(groupName)}">`;
+                fields.forEach(f => {
+                    const sel = (f.key === selectedKey) ? 'selected' : '';
+                    html += `<option value="${escapeHTML(f.key)}" ${sel}>${escapeHTML(f.label)}</option>`;
+                });
+                html += `</optgroup>`;
+            });
+
+            // Trường đang dùng nhưng không còn trong danh mục (VD: bản cũ)
+            // → vẫn phải hiển thị để không mất mapping khi lưu.
+            if (selectedKey && !availableLeadFields.some(f => f.key === selectedKey)) {
+                html += `<optgroup label="Trường không xác định"><option value="${escapeHTML(selectedKey)}" selected>${escapeHTML(selectedKey)}</option></optgroup>`;
+            }
+            return html;
         }
 
         function renderMappingsTable() {
@@ -582,10 +735,7 @@
             if (!tbody) return;
 
             tbody.innerHTML = currentFieldMappings.map((m, idx) => {
-                const optionsHtml = availableLeadFields.map(f => {
-                    const sel = (f.key === m.field) ? 'selected' : '';
-                    return `<option value="${f.key}" ${sel}>${f.label}</option>`;
-                }).join('');
+                const optionsHtml = buildFieldOptionsHtml(m.field);
 
                 const isCustom = (m.field === 'custom_text');
 
@@ -741,6 +891,36 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> <span>Lưu Cấu Hình Kết Nối</span>`;
+            }
+        }
+
+        /**
+         * Bổ sung các trường chuẩn MỚI vào 1 cấu hình đã lưu.
+         *
+         * 📌 An toàn: giữ nguyên cột cũ, chỉ THÊM cột mới vào cuối và ghi
+         * tiêu đề của cột mới vào dòng 1 trên Google Sheet.
+         */
+        async function upgradeSheetMappings(id, name) {
+            if (!confirm(`Bổ sung các trường chuẩn mới (địa lý, CRM pipeline, thiết bị chi tiết, hành vi, VPN/bot...) vào cấu hình "${name}"?\n\nCác cột hiện có được giữ nguyên — cột mới sẽ thêm vào cuối.`)) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/integrations/sheets/configs/upgrade-mappings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    alert(json.message + (json.new_headers && json.new_headers.length
+                        ? `\n\nCột mới: ${json.new_headers.join(', ')}`
+                        : ''));
+                    loadGoogleSheetsConfigs();
+                } else {
+                    alert("Lỗi bổ sung cột: " + (json.error || 'Không xác định'));
+                }
+            } catch(e) {
+                alert("Lỗi kết nối: " + e.message);
             }
         }
 

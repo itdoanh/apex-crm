@@ -72,6 +72,26 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 | Hiệu Quả Landing | So sánh CR% giữa các landing || Bảo Mật & Bot | Spam quarantine + security stats |
 | Đồng Bộ Google Sheets | Config, mapping matrix, sync logs |
 
+#### Panel "Đồng Bộ Google Sheets" — mapping matrix (2026-11-15)
+
+> ⭐ **Danh mục trường được NẠP TỪ BACKEND**, không hardcode trong JS.
+> `loadSheetFieldCatalog()` gọi `GET /api/integrations/sheets/defaults`
+> ⇒ trả `available_fields` (~90 trường, có `group`) + `default_mappings`
+> (bộ cột chuẩn). Fallback tối thiểu nếu API lỗi.
+
+| Hàm | Vai trò |
+|---|---|
+| `loadSheetFieldCatalog()` | Nạp danh mục + bộ cột chuẩn (gọi khi mở trang & mở modal) |
+| `buildFieldOptionsHtml(selectedKey)` | Dựng `<optgroup>` theo `group` — dễ tìm trong ~90 trường |
+| `getDefaultStandardMappings()` | Bộ cột chuẩn (từ backend; fallback dựng từ danh mục) |
+| `guessFieldFromHeader(header)` | Đoán field khi bấm "Đọc Tiêu Đề Từ Sheet" — đã nhận diện nhóm mới |
+| `updateMappingField(index, key, value)` | Đổi field ⇒ tự cập nhật tiêu đề cột nếu tiêu đề còn là mặc định |
+| `upgradeSheetMappings(id, name)` | Bấm "Bổ sung Cột" ⇒ `POST /api/integrations/sheets/configs/upgrade-mappings` |
+
+> ⚠️ **Cột chuẩn mới không tự áp dụng cho config đã lưu** (tránh phá dữ liệu
+> đang ghi). Admin bấm **"Bổ sung Cột"** trên từng config ⇒ cột mới thêm vào
+> CUỐI, tiêu đề được ghi vào dòng 1 trên Sheet.
+
 > Trong modal "Thêm kết nối Sheet" → phần **3. Kiểm Tra & Gửi Dòng Thử Nghiệm (Test Row)**:
 > nút "Gửi Dòng Thử Nghiệm Ngay" gọi `POST /api/integrations/sheets/test`. Dòng ghi ra luôn có tên
 > dạng `Test <3 số ngẫu nhiên>` (vd: `Test 734`) với dữ liệu mô phỏng người dùng thật (SĐT VN,

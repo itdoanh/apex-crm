@@ -277,6 +277,63 @@ func (h *GoogleSheetHandler) HandleTestAppend(w http.ResponseWriter, r *http.Req
 		"url":              fmt.Sprintf("https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test_%s", testCode),
 		"entry_url":        fmt.Sprintf("https://hanghoaphaisinh.net/?utm_source=google&utm_campaign=test_%s", testCode),
 		"referrer":         "https://www.google.com/",
+
+		// ─── Địa lý & nhà mạng (2026-11-15) ───
+		"region_name":  "Hà Nội",
+		"country_code": "VN",
+
+		// ─── CRM pipeline (2026-11-15) ───
+		// trạng thái "moi" ⇒ capi_event = "Lead" (suy ra từ models.GetLeadStatus)
+
+		// ─── Thiết bị & trình duyệt chi tiết (2026-11-15) ───
+		"device_brand":        "Apple",
+		"device_name":         "iPhone 14 Pro",
+		"device_model":        "iPhone 14 Pro",
+		"device_model_code":   "A2638",
+		"browser_version":     "151.0.0.0",
+		"browser_engine":      "Blink",
+		"os_version":          "13",
+		"viewport_res":        "390x844",
+		"screen_color_depth":  24,
+		"pixel_ratio":         "3",
+		"device_memory":       6,
+		"device_cores":        6,
+		"device_touchpoints":  5,
+		"timezone":            "Asia/Ho_Chi_Minh",
+		"language":            "vi-VN",
+		"platform_info":       "iPhone | Apple Computer, Inc.",
+		"connection_type":     "4g",
+		"device_state":        "focus:1",
+		"is_in_app_browser":   false,
+		"in_app_type":         "",
+
+		// ─── Hành vi (2026-11-15) ───
+		"visible_seconds": 42,
+		"hidden_seconds":  3,
+		"session_count":   1,
+		"is_new_visitor":  true,
+		"scroll_depth_25": true,
+		"scroll_depth_50": true,
+		"scroll_depth_75": true,
+		"scroll_depth_90": true,
+		"scroll_depth_100": false,
+		"has_video_play":  true,
+		"has_zalo_click":  true,
+		"has_tel_click":   false,
+		"referrer_host":   "www.google.com",
+		"landing_path":    "/",
+
+		// ─── Form & autofill (2026-11-15) ───
+		"validation_passed": true,
+		"form_focus_ms":     8200,
+
+		// ─── VPN / bot (2026-11-15) ───
+		"is_vpn":      false,
+		"is_proxy":    false,
+		"is_tor":      false,
+		"is_bot":      false,
+		"bot_score":   0,
+		"event_id":    "apex-test-" + testCode,
 	}
 
 	if req.TestLead != nil {
@@ -613,6 +670,99 @@ func (h *GoogleSheetHandler) HandleToggleConfig(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleUpgradeMappings bổ sung các trường chuẩn MỚI vào 1 cấu hình đã lưu.
+//
+// 📌 2026-11-15 — vì sao cần:
+//   Danh mục trường được mở rộng (địa lý, CRM pipeline, thiết bị chi tiết,
+//   hành vi, VPN/bot). Các cấu hình Sheet đã lưu trong DB vẫn dùng bộ cột
+//   CŨ (15–45 cột) ⇒ lead mới vẫn thiếu dữ liệu.
+//
+// Cơ chế AN TOÀN (không phá dữ liệu đang ghi):
+//   1. Giữ nguyên toàn bộ cột đang có (thứ tự, tiêu đề, mapping).
+//   2. Thêm các trường chuẩn còn thiếu vào CUỐI.
+//   3. Ghi tiêu đề của các cột MỚI vào đúng ô dòng 1 trên Google Sheet.
+//   4. Lưu lại `field_mappings` trong DB.
+//
+// ⇒ Dữ liệu lead đã ghi không bị xáo trộn (cột mới luôn nằm sau cột cũ).
+func (h *GoogleSheetHandler) HandleUpgradeMappings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Chỉ chấp nhận POST", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID <= 0 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Thiếu id cấu hình",
+		})
+		return
+	}
+
+	cfg, err := h.store.GetGoogleSheetConfig(req.ID)
+	if err != nil || cfg == nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Không tìm thấy cấu hình Google Sheet",
+		})
+		return
+	}
+
+	merged, newHeaders := googlesheets.MergeStandardMappings(cfg.FieldMappings)
+	if len(newHeaders) == 0 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":         true,
+			"message":         "Cấu hình đã có đầy đủ các trường chuẩn — không cần bổ sung.",
+			"added_count":     0,
+			"total_columns":   len(cfg.FieldMappings),
+			"field_mappings":  cfg.FieldMappings,
+		})
+		return
+	}
+
+	// Ghi tiêu đề của các cột MỚI vào dòng 1 (bỏ qua lỗi — người dùng có thể
+	// tự thêm tiêu đề sau; cấu hình vẫn được lưu để dùng cho lead mới).
+	headerCells := make(map[int]string, len(newHeaders))
+	for i, h := range newHeaders {
+		headerCells[len(cfg.FieldMappings)+i] = h
+	}
+	if cfg.SpreadsheetID != "" && cfg.SheetTabName != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if hErr := googlesheets.WriteHeaderCells(ctx, cfg.CredentialsJSON, cfg.SpreadsheetID, cfg.SheetTabName, headerCells); hErr != nil {
+			fmt.Printf("[GOOGLE_SHEET_UPGRADE_WARN] Config '%s' (ID=%d) không ghi được tiêu đề cột mới: %v\n", cfg.Name, cfg.ID, hErr)
+		}
+	}
+
+	cfg.FieldMappings = merged
+	if err := h.store.UpdateGoogleSheetConfig(cfg); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":        true,
+		"message":        fmt.Sprintf("Đã bổ sung %d cột trường chuẩn mới.", len(newHeaders)),
+		"added_count":    len(newHeaders),
+		"new_headers":    newHeaders,
+		"total_columns":  len(merged),
+		"field_mappings": merged,
+	})
+}
+
 // HandleListLogs xem danh sách lịch sử đồng bộ (Audit Logs)
 func (h *GoogleSheetHandler) HandleListLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -650,78 +800,14 @@ func (h *GoogleSheetHandler) HandleListLogs(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// HandleGetDefaultMappings trả về danh sách các trường chuẩn sẵn có để người dùng chọn trên giao diện ánh xạ
+// HandleGetDefaultMappings trả về danh sách các trường chuẩn sẵn có để người dùng chọn trên giao diện ánh xạ.
+//
+// 📌 2026-11-15: danh sách trường lấy từ `googlesheets.AvailableLeadFields()`
+// (nguồn sự thật duy nhất) thay vì hardcode trong handler ⇒ không còn lệch
+// giữa backend và frontend.
 func (h *GoogleSheetHandler) HandleGetDefaultMappings(w http.ResponseWriter, r *http.Request) {
 	defaultMappings := googlesheets.GetStandardDefaultMappings()
-	availableFields := []map[string]string{
-		{"key": "thoi_gian", "label": "Thời Gian Đăng Ký"},
-		{"key": "fullName", "label": "Họ Và Tên"},
-		{"key": "so_dien_thoai", "label": "Số Điện Thoại"},
-		{"key": "carrier", "label": "Nhà Mạng Viễn Thông"},
-		{"key": "landing_id", "label": "ID Trang Landing"},
-		{"key": "url", "label": "URL Trang Khách Đăng Ký"},
-		{"key": "nguon", "label": "Nguồn Traffic (Kênh)"},
-		{"key": "trang_thai", "label": "Trạng Thái Lead (Pipeline)"},
-		{"key": "ghi_chu", "label": "Ghi Chú Tư Vấn"},
-		{"key": "is_autofill", "label": "Tự Động Điền (1-Tap)"},
-		{"key": "fill_duration_ms", "label": "Tốc Độ Điền Form (ms)"},
-		{"key": "time_on_page", "label": "Thời Gian Xem Trang"},
-		{"key": "max_scroll", "label": "Tỷ Lệ Cuộn Trang (%)"},
-		{"key": "device_type", "label": "Thiết Bị (Mobile/Desktop)"},
-		{"key": "ip_address", "label": "Địa Chỉ IP"},
-		{"key": "utm_source", "label": "UTM Source"},
-		{"key": "utm_medium", "label": "UTM Medium"},
-		{"key": "utm_campaign", "label": "UTM Campaign"},
-		{"key": "utm_content", "label": "UTM Content"},
-		{"key": "utm_term", "label": "UTM Term"},
-		{"key": "session_id", "label": "Mã Phiên (Session ID)"},
-		{"key": "referrer", "label": "Referrer (Trang Trước)"},
-		{"key": "tracking_json", "label": "Toàn Bộ JSON Tracking"},
-		{"key": "custom_text", "label": "Văn Bản Tùy Chọn Cố Định"},
-
-		// ─── Meta Ads macros (2026-11-12) ───────────────────────────
-		{"key": "utm_placement", "label": "Meta Placement ({{placement}})"},
-		{"key": "campaign_name", "label": "Meta Campaign Name"},
-		{"key": "adset_name", "label": "Meta Adset Name"},
-		{"key": "ad_name", "label": "Meta Ad Name"},
-		{"key": "ad_account_id", "label": "Meta Account ID"},
-		{"key": "site_source_name", "label": "Meta Site Source Name"},
-
-		// ─── Định danh lượt nhấp Meta (CAPI) ─────────────────────────
-		{"key": "fbclid", "label": "Meta Click ID (fbclid)"},
-		{"key": "fbc", "label": "Meta Cookie _fbc"},
-		{"key": "fbp", "label": "Meta Cookie _fbp"},
-		{"key": "meta_click_id", "label": "Meta Click ID Tổng"},
-
-		// ─── Thiết bị & trình duyệt (2026-11-12) ───────────────────
-		{"key": "device_brand", "label": "Hãng Thiết Bị"},
-		{"key": "device_name", "label": "Tên Thiết Bị (Model Thật)"},
-		{"key": "device_model_code", "label": "Mã Model Thiết Bị"},
-		{"key": "browser_version", "label": "Phiên Bản Trình Duyệt"},
-		{"key": "is_in_app_browser", "label": "Trình Duyệt Trong App"},
-		{"key": "in_app_type", "label": "Loại App (FB/IG/Zalo/TikTok)"},
-		{"key": "device_memory", "label": "RAM (GB)"},
-		{"key": "device_cores", "label": "Số Lõi CPU"},
-		{"key": "device_touchpoints", "label": "Số Điểm Chạm"},
-		{"key": "viewport_res", "label": "Kích Thước Viewport"},
-		{"key": "screen_color_depth", "label": "Độ Sâu Màu Màn Hình"},
-		{"key": "pixel_ratio", "label": "Pixel Ratio"},
-		{"key": "timezone", "label": "Múi Giờ"},
-		{"key": "language", "label": "Ngôn Ngữ"},
-		{"key": "connection_type", "label": "Loại Kết Nối (4g/5g)"},
-		{"key": "device_state", "label": "Trạng Thái Thiết Bị"},
-
-		// ─── VPN & hành vi (2026-11-12) ─────────────────────────────
-		{"key": "is_vpn", "label": "Dùng VPN"},
-		{"key": "is_proxy", "label": "Dùng Proxy"},
-		{"key": "is_tor", "label": "Dùng Tor"},
-		{"key": "vpn_provider", "label": "Nhà Cung Cấp VPN"},
-		{"key": "vpn_confidence", "label": "Độ Tin Cậy VPN"},
-		{"key": "vpn_reason", "label": "Lý Do Phát Hiện VPN"},
-		{"key": "visible_seconds", "label": "Thời Gian Hiển Thị Trang"},
-		{"key": "hidden_seconds", "label": "Thời Gian Ẩn Trang"},
-		{"key": "session_count", "label": "Số Phiên Truy Cập"},
-	}
+	availableFields := googlesheets.AvailableLeadFields()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

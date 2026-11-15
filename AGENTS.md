@@ -137,6 +137,9 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
 9. **Tracking phải tách theo landing**: `tracker.js` namespace hoá cookie/localStorage theo `landing_id` (`apex_vid_<landing>`). Landing mới **phải** khai báo `data-landing-id` + `data-nguon` trùng `landing_id` trong `config.json`.
 10. **Proof-of-Work**: TTL 10 phút, dung sai clock skew 60 giây. Client phải gọi `ensureChallengeReady()` **trước khi submit** và disable nút ngay khi click. Hash format: `SHA256(challenge_id + ":" + salt + ":" + solution)`.
 11. **CAPI không được chặn luồng chính** — lỗi gửi sự kiện Meta chỉ ghi log vào `facebook_capi_logs`, tuyệt đối không fail `POST /api/leads` hay `POST /api/leads/update`. PII gửi lên Meta phải băm SHA-256; `client_ip_address` / `client_user_agent` / `fbc` / `fbp` gửi **rõ**.
+12. **Danh mục trường Google Sheets có 1 nguồn duy nhất** — `backend/integrations/googlesheets/fields.go` (`leadFieldCatalog`). Thêm/sửa trường phải sửa ở đây (KHÔNG hardcode lại ở handler hay `frontend/admin/js/sheets.js`; frontend nạp từ `GET /api/integrations/sheets/defaults`).
+13. **Cột chuẩn mới KHÔNG tự áp dụng cho config đã lưu** — phải bấm "Bổ sung Cột" (`POST /api/integrations/sheets/configs/upgrade-mappings`) ⇒ cột mới thêm vào CUỐI, không phá cột cũ / dữ liệu đã ghi.
+14. **Đổi trạng thái CRM phải cập nhật lại dòng Sheet** (không append) — `syncLeadStatusToGoogleSheets()` dùng `Values.BatchUpdate` trên dòng đã ghi (tra qua `google_sheet_sync_logs.row_range`). Ô có giá trị rỗng ⇒ bỏ qua; `ValueInputOption` mặc định `RAW` (chống formula injection).
 
 ---
 
