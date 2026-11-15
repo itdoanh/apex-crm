@@ -760,6 +760,62 @@ hợp lệ ⇒ `ListLandingFiles()` trả về rỗng ⇒ preview bản sao tr�
 > - Khi user Deploy, `HandleDeployLanding` gọi `SyncLandingFilesToDomain()` để
 >   đồng bộ cây file sang domain đích ⇒ không mất file.
 
+### 🚨 NHÂN BẢN LANDING PHẢI TÁCH BIỆT ĐỊNH DANH (fix 2026-11-15)
+
+**Triệu chứng:** nhân bản landing `xu_huong_1` từ `doanh_chung` ⇒ landing mới
+vẫn chạy, vẫn nhận khách, nhưng **mọi view + lead đều bị ghi về `doanh_chung`**
+⇒ thống kê chồng chéo, không tách được, không bao giờ phân biệt được.
+
+**Nguyên nhân:** `DuplicateLandingPage()` copy **nguyên si** "dấu vân tay" định danh
+của landing nguồn sang bản sao:
+
+| Nơi | Giá trị bị copy | Hậu quả |
+|---|---|---|
+| `landing_pages.nguon_default` | `"DTN 1"` | Lead ghi nhận dưới nguồn của landing nguồn |
+| `landing_files/config.json` | `landing_id` + `nguon` của landing nguồn | `tracker.js` nạp config sai |
+| `landing_files/index.html` | `data-landing-id` + `data-nguon` của landing nguồn | **`data-landing-id` là ưu tiên CAO NHẤT** ⇒ view/lead về landing nguồn |
+| `landing_pages.code_html` | `window.APEX_LANDING_CONFIG` của landing nguồn | Config inject sai |
+| URL trong HTML | `https://lophoc.hanghoaphaisinh.net/` | `og:url` / `canonical` trỏ domain cũ ⇒ crawler đánh giá sai trang |
+
+> ✅ **Cách sửa:** mọi dấu vân tay định danh được **viết lại** theo `page_id` bản sao:
+> - `nguon_default` = `newPageID` (quy tắc mục 5: `nguon` mặc định = `landing_id`).
+> - `config.json`: `landing_id` + `nguon` = `newPageID`.
+> - HTML: `data-landing-id`, `data-nguon`, `APEX_LANDING_CONFIG` = `newPageID`.
+> - `settings` bản sao **xoá** `nguon`, `landing_id`, `google_sheet_ids`,
+>   `google_sheet_sync_mode` (tránh lead bắn sang sheet của landing nguồn).
+> - Validate `page_id` (không rỗng, không khoảng trắng, ≤ 100 ký tự).
+>
+> **Helper:** `backend/db/landing_identity.go`
+> - `RewriteLandingIdentityHTML(content, landingID, nguon, oldDomain, newDomain)`
+> - `RewriteLandingConfigJSON(content, landingID, nguon)`
+> - `ValidateLandingIdentity(pageID, nguonDefault)`
+>
+> **Test:** `backend/db/landing_identity_test.go` (6 test, PASS).
+
+### 🔧 Tự sửa chữa landing bị chồng chéo (fix 2026-11-15)
+
+**Vấn đề:** các landing đã nhân bản **trước khi có fix** vẫn còn dấu vân tay
+cũ trong DB ⇒ không tự lành.
+
+> ✅ **Cách sửa:** `store.RepairLandingIdentity(ctx)` chạy **mỗi lần backend khởi
+> động** (sau `EnsureLandingConfigFile`):
+> 1. Gom `nguon_default` theo landing ⇒ landing nào **dùng chung nguồn** với
+>    landing khác ⇒ tách ra theo `page_id` (giữ 1 landing gốc).
+> 2. Sửa `config.json` (`landing_id` + `nguon`).
+> 3. Sửa HTML (`data-landing-id`, `data-nguon`, `APEX_LANDING_CONFIG`).
+> 4. Sửa `landing_pages.code_html`.
+>
+> **Idempotent** — chỉ sửa dữ liệu ĐỊNH DANH, KHÔNG xoá lead, KHÔNG đụng nội dung,
+> KHÔNG đụng Google Sheets.
+
+**API admin (bọc `RequireAdminAuth`):**
+
+| Endpoint | Method | Mô tả |
+|---|---|---|
+| `/api/landings/identity/report` | GET | Báo cáo định danh mọi landing + cảnh báo "nguồn dùng chung" |
+| `/api/landings/identity/repair` | POST | Chạy `RepairLandingIdentity()` thủ công + reload cache |
+
+
 ### 🔧 `syncPreviewDeviceToIframe()` phải ở scope GLOBAL (fix 2026-11-15)
 
 **Triệu chứng:** sửa style PC trong Inspector ⇒ không thấy thay đổi khi zoom

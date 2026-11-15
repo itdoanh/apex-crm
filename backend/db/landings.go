@@ -961,13 +961,27 @@ func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, n
 	// Domain đích sẽ được set khi user Deploy lên tên miền.
 	newPage.Domain = ""
 	newPage.PathPrefix = ""
+	//
+	// ⚠️ BẮT BUỘC (fix 2026-11-15 — bug nhân bản landing chồng chéo thống kê):
+	//
+	//   KHÔNG được copy `nguon_default` của landing NGUỒN sang bản sao.
+	//
+	//   Bối cảnh: landing `xu_huong_1` được nhân bản từ `doanh_chung` ⇒ cả hai
+	//   cùng có `nguon_default = "DTN 1"` ⇒ mọi lead gửi từ `xu_huong_1` bị ghi
+	//   nhận dưới nguồn của `doanh_chung` ⇒ báo cáo "nguồn" gộp 2 landing,
+	//   không tách được, không bao giờ phân biệt được.
+	//
+	//   Quy tắc (docs/LANDING.md mục 5): `nguon` mặc định = `landing_id` ⇒ mỗi
+	//   landing có 1 nguồn riêng. Bản sao sẽ dùng `newPageID` làm nguồn.
+	newPage.NguonDefault = newPageID
+	//
 	// Xoá cấu hình riêng của domain nguồn khỏi bản sao (google_sheet_ids,
 	// path_prefix, ...). Giữ lại cấu hình chung (title, meta_description...).
 	if srcSettings := src.Settings; srcSettings != nil {
 		newSettings := make(map[string]interface{}, len(srcSettings))
 		for k, v := range srcSettings {
 			switch k {
-			case "path_prefix", "google_sheet_ids", "google_sheet_sync_mode", "domain", "landing_id":
+			case "path_prefix", "google_sheet_ids", "google_sheet_sync_mode", "domain", "landing_id", "nguon":
 				continue
 			default:
 				newSettings[k] = v
@@ -976,11 +990,23 @@ func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, n
 		newPage.Settings = newSettings
 	}
 
+	if err := ValidateLandingIdentity(newPageID, newPage.NguonDefault); err != nil {
+		return 0, err
+	}
+
 	if err := s.SaveLandingPage(&newPage); err != nil {
 		return 0, err
 	}
+	//
+	// ⚠️ BẮT BUỘC (fix 2026-11-15): viết lại định danh trong HTML.
+	//
+	//   `data-landing-id` trên thẻ `<script src="tracker.js">` là nguồn định
+	//   danh ưu tiên CAO NHẤT trong tracker.js (cao hơn cả `APEX_LANDING_CONFIG`).
+	//   Nếu copy nguyên HTML của landing nguồn ⇒ bản sao gửi mọi view/lead
+	//   về landing nguồn ⇒ CHỒNG CHÉO 100%.
 	if src.CodeHTML != "" {
-		_ = s.UpdateLandingCode("", newPageID, src.CodeHTML, "draft")
+		rewritten := RewriteLandingIdentityHTML(src.CodeHTML, newPageID, newPageID, src.Domain, "")
+		_ = s.UpdateLandingCode("", newPageID, rewritten, "draft")
 	}
 
 	// Sao chép TOÀN BỘ file (không chỉ index.html) sang bản sao.
@@ -998,11 +1024,33 @@ func (s *Store) DuplicateLandingPage(sourceDomain string, sourcePageID string, n
 	}
 	copied := 0
 	for _, f := range files {
-		if err := s.SaveLandingFile("", newPageID, f.FilePath, f.FileType, f.Content); err != nil {
+		//
+		// ⚠️ BẮT BUỘC (fix 2026-11-15): viết lại định danh trong file copy.
+		//
+		//   - `config.json` : `landing_id` + `nguon` → `newPageID`.
+		//     (Nếu không, tracker.js nạp config của landing nguồn ⇒ lead ghi về
+		//      landing nguồn.)
+		//   - `*.html`      : `data-landing-id`, `data-nguon`,
+		//     `window.APEX_LANDING_CONFIG` → `newPageID`.
+		//     (Nếu không, view/lead của bản sao ghi về landing nguồn.)
+		content := f.Content
+		switch strings.ToLower(f.FilePath) {
+		case "config.json":
+			content = RewriteLandingConfigJSON(content, newPageID, newPageID)
+		default:
+			if strings.HasSuffix(strings.ToLower(f.FilePath), ".html") {
+				content = RewriteLandingIdentityHTML(content, newPageID, newPageID, resolvedSourceDomain, "")
+			}
+		}
+
+		if err := s.SaveLandingFile("", newPageID, f.FilePath, f.FileType, content); err != nil {
 			continue
 		}
 		copied++
 	}
+
+	log.Printf("[INFO] DuplicateLandingPage: đã nhân bản '%s' -> '%s' (%d file, nguon='%s')",
+		sourcePageID, newPageID, copied, newPage.NguonDefault)
 
 	return copied, nil
 }
@@ -1292,23 +1340,36 @@ func (s *Store) EnsureLandingConfigFile(ctx context.Context) error {
 			continue
 		}
 		current, _ := cfg["landing_id"].(string)
-		if current == lk.pageID {
+		curNguon, _ := cfg["nguon"].(string)
+
+		// `nguon` trong config.json phải trỏ về CHÍNH landing này, KHÔNG trỏ về
+		// landing khác (bug nhân bản chồng chéo — 2026-11-15).
+		//
+		// Ngoại lệ: `nguon` rỗng / bằng "landing_chinh" (giá trị mặc định cũ) ⇒
+		// coi như chưa cấu hình ⇒ đặt lại theo `page_id`.
+		nguonInvalid := strings.TrimSpace(curNguon) == "" ||
+			strings.TrimSpace(curNguon) == "landing_chinh"
+
+		if current == lk.pageID && !nguonInvalid {
 			continue
 		}
 		cfg["landing_id"] = lk.pageID
+		if nguonInvalid {
+			cfg["nguon"] = lk.pageID
+		}
 		newContent, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			continue
 		}
 		if err := s.SaveLandingFile(lk.domain, lk.pageID, "config.json", "json", string(newContent)); err == nil {
 			fixed++
-			log.Printf("[INFO] EnsureLandingConfigFile: đã sửa landing_id của config.json '%s' (domain='%s'): '%s' -> '%s'",
-				lk.pageID, lk.domain, current, lk.pageID)
+			log.Printf("[INFO] EnsureLandingConfigFile: đã sửa config.json '%s' (domain='%s'): landing_id '%s' -> '%s', nguon '%s' -> '%s'",
+				lk.pageID, lk.domain, current, lk.pageID, curNguon, cfg["nguon"])
 		}
 	}
 
 	if fixed > 0 {
-		log.Printf("[INFO] EnsureLandingConfigFile: đã sửa %d config.json có landing_id sai", fixed)
+		log.Printf("[INFO] EnsureLandingConfigFile: đã sửa %d config.json có định danh sai", fixed)
 	}
 	return nil
 }

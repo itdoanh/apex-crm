@@ -228,7 +228,9 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 | `/api/landings/save-code` | POST | Alias của `/code` |
 | `/api/landings/deploy` | POST | Deploy landing lên domain/path |
 | `/api/landings/toggle` | POST | Bật/tắt feature flag |
-| `/api/landings/duplicate` | POST | Nhân bản landing (**copy đủ cây file** — xem bên dưới) |
+| `/api/landings/duplicate` | POST | Nhân bản landing (**copy đủ cây file + tách biệt định danh** — xem bên dưới) |
+| `/api/landings/identity/report` | GET | Báo cáo định danh landing + cảnh báo nguồn dùng chung |
+| `/api/landings/identity/repair` | POST | Sửa chữa landing bị chồng chéo định danh |
 | `/api/landings/delete` | POST | Xoá landing |
 | `/api/landings/files` | GET | Cây file (File Manager) |
 | `/api/landings/file/save` | POST | Lưu 1 file |
@@ -259,7 +261,8 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 {
   "success": true,
   "message": "Đã nhân bản thành công sang 'doanh_chung_copy' (54 tệp tin)",
-  "copied_files": 54
+  "copied_files": 54,
+  "nguon": "doanh_chung_copy"
 }
 ```
 
@@ -270,8 +273,60 @@ Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_
 | Copy **toàn bộ** cây file | CSS, JS, ảnh, video, font, vendor… — không chỉ `index.html` |
 | Ghi vào row gốc `domain = ''` | Bản sao có đủ file ngay ⇒ Code Studio hiển thị preview đúng, kể cả khi chưa Deploy |
 | **Không** gán domain của landing nguồn | Bản sao là landing riêng; khi Deploy sẽ `SyncLandingFilesToDomain()` sang domain đích |
-| Xoá cấu hình riêng của domain nguồn | `settings.path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode` không bị copy sang |
+| Xoá cấu hình riêng của domain nguồn | `settings.path_prefix`, `google_sheet_ids`, `google_sheet_sync_mode`, `nguon`, `landing_id` không bị copy sang |
 | `status = 'draft'` | Bản sao mặc định chưa publish |
+| 🚨 **Tách biệt định danh** | `nguon_default` = `new_page_id`; `config.json` (`landing_id`+`nguon`) = `new_page_id`; HTML (`data-landing-id`, `data-nguon`, `APEX_LANDING_CONFIG`) = `new_page_id` |
+| 🚨 **Validate `page_id`** | Không rỗng, không chứa khoảng trắng / dấu gạch chéo, ≤ 100 ký tự |
+
+> ⚠️ **Lý do tách biệt định danh:** trước fix này, bản sao giữ nguyên
+> `data-landing-id` + `nguon_default` của landing nguồn ⇒ `data-landing-id` là
+> nguồn ưu tiên **cao nhất** trong `tracker.js` ⇒ **mọi view + lead của bản sao
+> bị ghi về landing nguồn** ⇒ thống kê chồng chéo.
+> Chi tiết: `docs/LANDING.md` mục "NHÂN BẢN LANDING PHẢI TÁCH BIỆT ĐỊNH DANH".
+
+### `GET /api/landings/identity/report` — Admin (báo cáo định danh landing)
+
+Trả về định danh của **mọi** landing + cảnh báo khi 2 landing dùng **chung 1 nguồn**.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "report": {
+    "xu_huong_1": {
+      "nguon": "xu_huong_1",
+      "so_domain": "2",
+      "canh_bao": "nguồn 'DTN 1' đang dùng chung với: doanh_chung, xu_huong_1"
+    },
+    "doanh_chung": {
+      "nguon": "DTN 1",
+      "so_domain": "2"
+    }
+  }
+}
+```
+
+### `POST /api/landings/identity/repair` — Admin (sửa chữa landing chồng chéo)
+
+Chạy `store.RepairLandingIdentity()`:
+tách nguồn dùng chung + sửa `config.json` / `data-landing-id` / `data-nguon` /
+`APEX_LANDING_CONFIG` / `code_html` về đúng landing. Reload cache sau khi sửa.
+
+> ⚠️ **An toàn:** chỉ sửa dữ liệu ĐỊNH DANH — KHÔNG xoá lead, KHÔNG đụng nội dung,
+> KHÔNG đụng Google Sheets. **Idempotent** — chạy lại nhiều lần vẫn an toàn.
+> Hàm này cũng tự chạy mỗi lần backend khởi động.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Đã sửa chữa 12 bản ghi định danh landing",
+  "fixed": 12
+}
+```
+
 
 ### `POST /api/landings/files/save` — Admin (batch save)
 

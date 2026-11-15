@@ -670,6 +670,64 @@ func (h *LandingHandler) HandleDuplicateLanding(w http.ResponseWriter, r *http.R
 		"success": true,
 		"message": fmt.Sprintf("Đã nhân bản thành công sang '%s' (%d tệp tin)", payload.NewPageID, copiedFiles),
 		"copied_files": copiedFiles,
+		// Nguồn riêng của bản sao — KHÔNG copy từ landing nguồn (fix 2026-11-15).
+		"nguon": payload.NewPageID,
+	})
+}
+
+// HandleLandingIdentityReport trả về báo cáo định danh của toàn bộ landing.
+//
+// Dùng để phát hiện landing bị "dùng chung nguồn" (bug nhân bản chồng chéo
+// thống kê — 2026-11-15). Mỗi landing phải có 1 nguồn riêng.
+func (h *LandingHandler) HandleLandingIdentityReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	report, err := h.store.LandingIdentityReport(r.Context())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Lỗi đọc báo cáo định danh landing: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"report":  report,
+	})
+}
+
+// HandleLandingIdentityRepair sửa chữa định danh landing bị chồng chéo.
+//
+// ⚠️ Endpoint này sửa DỮ LIỆU ĐỊNH DANH (nguồn, config.json, data-landing-id)
+//    nhưng KHÔNG xoá lead, KHÔNG đụng nội dung, KHÔNG đụng Google Sheets.
+//    Idempotent — chạy lại nhiều lần vẫn an toàn.
+func (h *LandingHandler) HandleLandingIdentityRepair(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fixed, err := h.store.RepairLandingIdentity(r.Context())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Lỗi sửa chữa định danh landing: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Nạp lại cache để thay đổi có hiệu lực ngay.
+	if h.cache != nil {
+		h.cache.InvalidateAll()
+	}
+	if h.domainCache != nil {
+		_ = h.domainCache.Reload(r.Context())
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Đã sửa chữa %d bản ghi định danh landing", fixed),
+		"fixed":   fixed,
 	})
 }
 
