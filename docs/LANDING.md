@@ -816,6 +816,17 @@ thường có BOM (`EF BB BF`) ở đầu ⇒:
 
 > **Vệ sinh dữ liệu cũ:** `UPDATE landing_files SET content = substr(content, 4)
 > WHERE content LIKE (chr(65279) || '%');` (+ tương tự cho `landing_pages.code_html`).
+>
+> ⚠️ **LƯU Ý — `substr` trên `text` đếm KÝ TỰ, không phải BYTE!**
+> `substr(content, 4)` cắt 3 **ký tự** ⇒ mất cả `{` đầu JSON / `<!` đầu HTML ⇒
+> file hỏng. Phải cắt theo **byte**:
+> ```sql
+> UPDATE landing_files
+> SET content = convert_from(
+>       substring(convert_to(content,'UTF8') from 4 for octet_length(content)-3),'UTF8')
+> WHERE substring(content,1,1) = chr(65279);
+> ```
+> ⇒ **Luôn BACKUP trước** (`CREATE TABLE ... AS SELECT`) rồi verify lại đầu file.
 
 ### 🔧 Tự sửa chữa landing bị chồng chéo (fix 2026-11-15)
 
