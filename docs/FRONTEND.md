@@ -66,7 +66,8 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 
 | Panel | Nội dung |
 |---|---|
-| Quản Trị CRM | Bảng dữ liệu + Kanban 7 bước + Customer 360° drawer |
+| Quản Trị CRM | Bảng dữ liệu + Kanban 10 cột + Customer 360° drawer |
+| Facebook Ads | Meta Conversions API: cấu hình, test event, Dataset Quality (EMQ), log gửi, breakdown chiến dịch, parse URL QC |
 | Biểu Đồ & Giờ Vàng | Heatmap khung giờ, funnel, geo, ad placement, traffic source |
 | Hiệu Quả Landing | So sánh CR% giữa các landing || Bảo Mật & Bot | Spam quarantine + security stats |
 | Đồng Bộ Google Sheets | Config, mapping matrix, sync logs |
@@ -590,6 +591,56 @@ phân giải **URL tương đối** trong HTML landing (`assets/css/style.css`, 
 ```powershell
 git diff --stat frontend/admin backend/static
 ```
+
+> ⚠️ `copy` bằng PowerShell `Copy-Item` giữ nguyên byte → OK. Nhưng nếu dùng `Set-Content`
+> / redirect (`>`), file sẽ bị đổi line-ending CRLF → LF ⇒ **nội dung khác nhau** dù logic
+> giống. Luôn dùng `cmd /c copy /Y` cho file mirror.
+
+---
+
+## 6.5. Tab "Facebook Ads" — Meta Conversions API (thêm 2026-11-15)
+
+| File | Vai trò |
+|---|---|
+| `frontend/admin/js/facebook-ads.js` | Controller của tab Facebook Ads (nguồn chuẩn) |
+| `frontend/admin/js/lead-status.js` | Loader danh mục 10 trạng thái CRM (dùng chung CRM + Analytics) |
+| `backend/integrations/facebook/*` | Backend: hashing, payload, Graph API client, Gateway, Dataset Quality, dispatcher |
+
+### Danh mục trạng thái động (không hardcode)
+
+`lead-status.js` gọi `GET /api/facebook-ads/lead-statuses` → `window.LeadStatusCatalog`:
+
+```javascript
+{ key, label, short, icon, stage, color, badge, has_value, capi_event }
+```
+
+- `stage`: `new` · `contacted` · `free` · `paid` · `won` · `lost` — dùng để gom báo cáo.
+- `has_value` + `capi_event`: trạng thái sinh sự kiện Meta có giá trị
+  (`da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`).
+- `renderStatusOptions()` → đổ option của mọi `<select>` trạng thái trong bảng & drawer.
+- `applyStatusCatalogToUI()` → dựng Kanban **10 cột** động từ catalog (thêm/bớt cột tự động).
+- Fallback: nếu API lỗi, dùng catalog mặc định hardcode trong `lead-status.js` ⇒ UI không trắng.
+
+### Thẻ trạng thái trong Analytics
+
+`analytics.js` dựng biểu đồ tròn (donut) 10 lát theo `STATUS_INFO` động — màu lấy từ
+trường `color` của catalog ⇒ không phải sửa lại biểu đồ khi thêm trạng thái.
+
+### Deduplication browser ↔ server
+
+`frontend/landing/tracker.js`:
+1. `ensureLeadEventId()` sinh `event_id` (UUID v4) và lưu vào `sessionStorage` theo landing.
+2. Gửi `event_id` trong payload `POST /api/leads`.
+3. `fbq('track','Lead',{ eventID: <cùng id> })`.
+
+Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (không đếm đôi).
+
+> ⚠️ `tracker.js` có **7 bản mirror** — sửa 1 chỗ phải copy đủ:
+> `tracker.js` (root), `frontend/landing/tracker.js`, `frontend/admin/tracker.js`,
+> `frontend/admin/js/tracker.js`, `backend/tracker.js`, `backend/static/tracker.js`,
+> `backend/static/js/tracker.js`.
+> Test `backend/handlers/landing_tracker_pixel_test.go::TestTrackerMirrorsAreIdentical`
+> sẽ FAIL nếu lệch.
 
 ---
 

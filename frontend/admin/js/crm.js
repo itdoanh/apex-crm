@@ -9,15 +9,31 @@ let crmTotal = 0;
 let curLeads = [];
 let currentOpenLead = null;
 
-        const STATUS_INFO = {
-            'moi':          { label: 'Mới Tiếp Nhận',   color: 'sky',     badge: 'bg-sky-950 text-sky-400 border-sky-800' },
-            'da_goi':       { label: 'Đã Gọi Điện',     color: 'amber',   badge: 'bg-amber-950 text-amber-400 border-amber-800' },
-            'ket_ban_zalo': { label: 'Đã Kết Bạn Zalo', color: 'blue',    badge: 'bg-blue-950 text-blue-400 border-blue-800' },
-            'da_vao_zoom':  { label: 'Đã Vào Zoom',     color: 'purple',  badge: 'bg-purple-950 text-purple-400 border-purple-800' },
-            'tiem_nang':    { label: 'Khách Tiềm Năng', color: 'orange',  badge: 'bg-orange-950 text-orange-400 border-orange-800' },
-            'chot':         { label: 'Đã Chốt HĐ',      color: 'emerald', badge: 'bg-emerald-950 text-emerald-400 border-emerald-800' },
-            'huy':          { label: 'Hủy / Sai Số',    color: 'rose',    badge: 'bg-rose-950 text-rose-400 border-rose-800' }
-        };
+// ⚠️ Danh sách trạng thái KHÔNG hard-code ở đây.
+// Xem `js/lead-status.js` — nạp từ `/api/facebook-ads/lead-statuses` (fallback cục bộ).
+// `STATUS_INFO` giữ lại dưới dạng accessor để các module cũ không bị vỡ.
+const STATUS_INFO = new Proxy({}, {
+    get(_target, key) {
+        if (typeof key !== 'string') return undefined;
+        return (typeof getStatusInfo === 'function') ? getStatusInfo(key) : undefined;
+    },
+    has(_target, key) {
+        return typeof key === 'string' && (typeof APEX_STATUS_MAP !== 'undefined') && !!APEX_STATUS_MAP[key];
+    }
+});
+
+/**
+ * normalizeStatusLocal là bản chuẩn hoá trạng thái (fallback nếu lead-status.js chưa nạp).
+ */
+function normalizeStatusLocal(raw) {
+    if (typeof normalizeStatus === 'function') return normalizeStatus(raw);
+    const s = (raw || '').toString().trim();
+    if (!s) return 'moi';
+    if (s === 'tiem_nang') return 'da_hoc_buoi_chia_se';
+    if (s === 'chot') return 'da_mua_hang';
+    if (s === 'da_vao_zoom') return 'da_hoc_buoi_chia_se';
+    return s;
+}
 
         function getRegionBadgeClass(region) {
             const r = (region || '').toLowerCase();
@@ -144,7 +160,9 @@ let currentOpenLead = null;
                 if (typeof renderHourlyChart === 'function') {
                     renderHourlyChart(d.hourly_distribution || [], s.peak_hour);
                     renderDailyTrendChart(d.daily_trend || []);
-                    renderStatusChart(d.status_counts || {});
+                    // Lưu lại để khi danh mục trạng thái nạp xong có thể vẽ lại biểu đồ.
+                    window.__apexStatusCounts = d.status_counts || {};
+                    renderStatusChart(window.__apexStatusCounts);
                     renderSourceChart(d.source_counts || []);
                     renderCarrierChart(d.carrier_counts || {});
                     renderAutofillChart(d.autofill_ratio || {});
@@ -310,13 +328,7 @@ let currentOpenLead = null;
                         </td>
                         <td class="py-3 px-4" onclick="event.stopPropagation()">
                             <select onchange="updateLeadStatusInline(${lead.id}, this.value)" class="bg-slate-950 border border-slate-700 text-xs rounded-lg px-2 py-1 font-semibold focus:outline-none cursor-pointer">
-                                <option value="moi" ${status === 'moi' ? 'selected' : ''}>📥 Mới tiếp nhận</option>
-                                <option value="da_goi" ${status === 'da_goi' ? 'selected' : ''}>📞 Đã gọi điện</option>
-                                <option value="ket_ban_zalo" ${status === 'ket_ban_zalo' ? 'selected' : ''}>💬 Đã kết bạn Zalo</option>
-                                <option value="da_vao_zoom" ${status === 'da_vao_zoom' ? 'selected' : ''}>💻 Đã vào Zoom</option>
-                                <option value="tiem_nang" ${status === 'tiem_nang' ? 'selected' : ''}>⭐ Tiềm năng</option>
-                                <option value="chot" ${status === 'chot' ? 'selected' : ''}>🏆 Đã chốt HĐ</option>
-                                <option value="huy" ${status === 'huy' ? 'selected' : ''}>❌ Hủy / Sai số</option>
+                                ${renderStatusOptions(status, false)}
                             </select>
                         </td>
                         <td class="py-3 px-4 max-w-xs truncate text-[11px] text-slate-300">
@@ -346,12 +358,18 @@ let currentOpenLead = null;
 
         // 9. Render Kanban Board
         function renderKanbanBoard(leads) {
-            const cols = ['moi', 'da_goi', 'ket_ban_zalo', 'da_vao_zoom', 'tiem_nang', 'chot', 'huy'];
+            // ⚠️ Danh sách cột lấy động từ catalog trạng thái (js/lead-status.js).
+            // Nhờ vậy thêm/bớt trạng thái mới không phải sửa HTML + JS ở 2 nơi.
+            const cols = (typeof APEX_LEAD_STATUSES !== 'undefined' && APEX_LEAD_STATUSES.length)
+                ? APEX_LEAD_STATUSES.map(s => s.key)
+                : ['moi', 'da_goi', 'ket_ban_zalo', 'da_hoc_buoi_chia_se', 'da_hoc_chuyen_sau', 'da_mua_hang', 'da_hoc_truoc_do', 'khong_quan_tam', 'spam_khong_lien_lac', 'huy'];
+
             const groups = {};
             cols.forEach(c => groups[c] = []);
 
             (leads || []).forEach(lead => {
-                const st = lead.trang_thai || 'moi';
+                // Chuẩn hoá trạng thái cũ (tiem_nang/chot/da_vao_zoom) về giá trị mới.
+                const st = normalizeStatusLocal(lead.trang_thai || 'moi');
                 if (groups[st]) {
                     groups[st].push(lead);
                 } else {
@@ -458,7 +476,9 @@ let currentOpenLead = null;
             document.getElementById('drawerCallBtn').href = 'tel:' + cleanPhone;
             document.getElementById('drawerZaloBtn').href = 'https://zalo.me/' + cleanPhone;
 
-            document.getElementById('drawerStatusSelect').value = lead.trang_thai || 'moi';
+            // Trạng thái: chuẩn hoá giá trị cũ trước khi set vào select.
+            const drawerStatus = normalizeStatusLocal(lead.trang_thai || 'moi');
+            document.getElementById('drawerStatusSelect').value = drawerStatus;
             document.getElementById('drawerNoteText').value = lead.ghi_chu || '';
             document.getElementById('drawerSaveMsg').classList.add('hidden');
 

@@ -100,6 +100,10 @@
                         <i class="fa-solid fa-chart-pie"></i>
                         <span>Biểu Đồ & Giờ Vàng</span>
                     </button>
+                    <a href="/ads/reports.html" class="tab-btn px-3.5 py-2 rounded-lg font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5" title="Trung tâm báo cáo & biểu đồ (6 phân hệ, bộ lọc toàn cục)">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span>Trung Tâm Báo Cáo</span>
+                    </a>
                     <button id="tabBtnLanding" onclick="switchMainTab('landing')" class="tab-btn px-3.5 py-2 rounded-lg font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5">
                         <i class="fa-solid fa-layer-group"></i>
                         <span>Hiệu Quả Landing</span>
@@ -123,6 +127,11 @@
                         <i class="fa-solid fa-globe text-indigo-400"></i>
                         <span>Quản Lý Tên Miền</span>
                         <span id="badgeDomainsActive" class="bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 text-[10px] px-1.5 py-0.2 rounded font-mono">0</span>
+                    </button>
+                    <button id="tabBtnFacebookAds" onclick="switchMainTab('facebookAds')" class="tab-btn px-3.5 py-2 rounded-lg font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5">
+                        <i class="fa-brands fa-facebook-f text-blue-400"></i>
+                        <span>Facebook Ads</span>
+                        <span id="badgeFbAdsFailed" class="bg-rose-950/80 text-rose-400 border border-rose-800/60 text-[10px] px-1.5 py-0.2 rounded font-mono hidden">0</span>
                     </button>
                     <button id="tabBtnAuditLogs" onclick="switchMainTab('auditLogs')" class="tab-btn px-3.5 py-2 rounded-lg font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5">
                         <i class="fa-solid fa-fingerprint text-emerald-400"></i>
@@ -216,15 +225,9 @@
                     </select>
 
                     <!-- Filter Status CRM -->
+                    <!-- ⚠️ Options được sinh động bởi js/lead-status.js (danh mục trạng thái từ backend) -->
                     <select id="filterStatus" onchange="applyFilters()" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-orange-500">
                         <option value="">Tất cả Trạng thái CRM</option>
-                        <option value="moi">📥 Mới tiếp nhận</option>
-                        <option value="da_goi">📞 Đã gọi điện</option>
-                        <option value="ket_ban_zalo">💬 Đã kết bạn Zalo</option>
-                        <option value="da_vao_zoom">💻 Đã vào Zoom</option>
-                        <option value="tiem_nang">⭐ Khách tiềm năng</option>
-                        <option value="chot">🏆 Đã chốt hợp đồng</option>
-                        <option value="huy">❌ Hủy / Sai số</option>
                     </select>
 
                     <!-- Filter Carrier -->
@@ -408,109 +411,12 @@
                 </div>
             </div>
 
-            <!-- SUB-VIEW 2: KANBAN PIPELINE BOARD (7 BƯỚC BÁN HÀNG) -->
+            <!-- SUB-VIEW 2: KANBAN PIPELINE BOARD (10 BƯỚC BÁN HÀNG) -->
+            <!-- ⚠️ Các cột được dựng động bởi js/lead-status.js từ danh mục trạng thái
+                 của backend (/api/facebook-ads/lead-statuses) ⇒ thêm/bớt trạng thái
+                 không phải sửa HTML. -->
             <div id="crmKanbanView" class="hidden overflow-x-auto pb-4">
-                <div class="flex space-x-3.5 min-w-[1750px]">
-
-                    <!-- Cột 1: Mới tiếp nhận (moi) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">1. Mới Tiếp Nhận</h3>
-                            </div>
-                            <span id="kanbanCount_moi" class="bg-sky-950 text-sky-400 border border-sky-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_moi" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 2: Đã gọi điện (da_goi) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">2. Đã Gọi Điện</h3>
-                            </div>
-                            <span id="kanbanCount_da_goi" class="bg-amber-950 text-amber-400 border border-amber-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_da_goi" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 3: Đã kết bạn Zalo (ket_ban_zalo) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">3. Đã Kết Bạn Zalo</h3>
-                            </div>
-                            <span id="kanbanCount_ket_ban_zalo" class="bg-blue-950 text-blue-400 border border-blue-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_ket_ban_zalo" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 4: Đã vào Zoom (da_vao_zoom) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">4. Đã Vào Zoom</h3>
-                            </div>
-                            <span id="kanbanCount_da_vao_zoom" class="bg-purple-950 text-purple-400 border border-purple-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_da_vao_zoom" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 5: Khách tiềm năng (tiem_nang) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">5. Khách Tiềm Năng</h3>
-                            </div>
-                            <span id="kanbanCount_tiem_nang" class="bg-orange-950 text-orange-400 border border-orange-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_tiem_nang" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 6: Đã chốt hợp đồng (chot) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">6. Đã Chốt HĐ</h3>
-                            </div>
-                            <span id="kanbanCount_chot" class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_chot" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                    <!-- Cột 7: Hủy / Sai số (huy) -->
-                    <div class="w-64 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col flex-shrink-0 shadow-lg">
-                        <div class="p-3 bg-slate-850 border-b border-slate-800 rounded-t-2xl flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
-                                <h3 class="font-bold text-xs text-white uppercase tracking-wider">7. Hủy / Sai Số</h3>
-                            </div>
-                            <span id="kanbanCount_huy" class="bg-rose-950 text-rose-400 border border-rose-800 text-xs px-2 py-0.5 rounded-full font-mono font-bold">0</span>
-                        </div>
-                        <div id="kanbanList_huy" class="kanban-col-scroll p-2.5 space-y-2.5 flex-1">
-                            <!-- Cards -->
-                        </div>
-                    </div>
-
-                </div>
+                <div id="kanbanColumns" class="flex space-x-3.5 min-w-[2600px]"></div>
             </div>
         </section>
 
@@ -518,6 +424,203 @@
         <!-- TAB 2: BIỂU ĐỒ & SƠ ĐỒ THỐNG KÊ TOÀN DIỆN (ANALYTICS)      -->
         <!-- ========================================================== -->
         <section id="sectionTabAnalytics" class="hidden space-y-6">
+
+            <!-- ========================================================== -->
+            <!-- BÁO CÁO RIÊNG TỪNG LANDING PAGE (2026-11-12)                 -->
+            <!-- Mỗi landing có bộ thống kê + biểu đồ + báo cáo riêng        -->
+            <!-- ========================================================== -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+                <!-- Header + chọn landing -->
+                <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie text-orange-400"></i>
+                            <span>Báo Cáo Riêng Theo Landing Page</span>
+                        </h2>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Chọn 1 landing page để xem toàn bộ số liệu riêng: view / người thật / bot / lead / CR / thiết bị / VPN / Meta Ads</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                            <span class="text-[11px] text-slate-400"><i class="fa-solid fa-layer-group text-cyan-400 mr-1"></i>Landing:</span>
+                            <select id="reportLandingSelect" onchange="onReportLandingChange()" class="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer max-w-[220px]">
+                                <option value="">— Tất cả landing —</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-1">
+                            <span class="text-[11px] text-slate-400">Khoảng:</span>
+                            <button data-lr-granularity="hour" onclick="setReportGranularity('hour')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Giờ</button>
+                            <button data-lr-granularity="day" onclick="setReportGranularity('day')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Ngày</button>
+                            <button data-lr-granularity="week" onclick="setReportGranularity('week')" class="lr-granularity-btn px-2 py-0.5 rounded text-[11px] transition">Tuần</button>
+                        </div>
+                        <button onclick="loadLandingReport(true)" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate"></i> Tải lại
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPI grid -->
+                <div class="p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Tổng Lượt Xem</div>
+                        <div id="lrTotalViews" class="text-xl font-black text-white font-mono">0</div>
+                        <div id="lrUniqueVisitors" class="text-[11px] text-slate-500 mt-0.5">0 khách unique</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-emerald-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Người Thật</div>
+                        <div id="lrHumanVisitors" class="text-xl font-black text-emerald-400 font-mono">0</div>
+                        <div id="lrBotVisitors" class="text-[11px] text-slate-500 mt-0.5">0 bot</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-orange-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Leads</div>
+                        <div id="lrTotalLeads" class="text-xl font-black text-orange-400 font-mono">0</div>
+                        <div id="lrConversionRate" class="text-[11px] text-slate-500 mt-0.5">CR 0%</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-cyan-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Thời Gian Xem TB</div>
+                        <div id="lrAvgDuration" class="text-xl font-black text-cyan-300 font-mono">0s</div>
+                        <div id="lrAvgScroll" class="text-[11px] text-slate-500 mt-0.5">scroll 0%</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-rose-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">VPN / Proxy</div>
+                        <div id="lrVpnVisitors" class="text-xl font-black text-rose-300 font-mono">0</div>
+                        <div id="lrVpnRate" class="text-[11px] text-slate-500 mt-0.5">0% lượt</div>
+                    </div>
+                    <div class="bg-slate-950/70 border border-purple-900/50 rounded-xl p-3">
+                        <div class="text-[11px] text-slate-400 mb-1">Trình Duyệt Trong App</div>
+                        <div id="lrInAppVisitors" class="text-xl font-black text-purple-300 font-mono">0</div>
+                        <div id="lrMetaClicks" class="text-[11px] text-slate-500 mt-0.5">0 click Meta</div>
+                    </div>
+                </div>
+
+                <!-- Biểu đồ timeseries + thiết bị -->
+                <div class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 border-t border-slate-800">
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4 lg:col-span-2">
+                        <h3 class="text-xs font-bold text-white mb-1 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-area text-orange-400"></i>
+                            <span id="lrTimeseriesTitle">Xu Hướng Lượt Xem / Người Thật / Bot / Lead</span>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 mb-3" id="lrTimeseriesSub">—</p>
+                        <div class="h-64 relative">
+                            <canvas id="chartReportTimeseries"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-1 flex items-center gap-1.5">
+                            <i class="fa-solid fa-mobile-screen text-cyan-400"></i>
+                            <span>Top Thiết Bị (Model Thật)</span>
+                        </h3>
+                        <p class="text-[10px] text-slate-500 mb-3">VD: "Samsung Galaxy A52", "iPhone 13"</p>
+                        <div class="h-64 relative">
+                            <canvas id="chartReportDevices"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- In-app browser + bot + vpn + browser -->
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 border-t border-slate-800">
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-window-maximize text-purple-400"></i>
+                            <span>Trình Duyệt Trong App vs Ngoài</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportInApp"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-robot text-rose-400"></i>
+                            <span>Top Trình Duyệt</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportBrowser"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                            <span>Lý Do Phát Hiện Bot</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportBots"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs font-bold text-white mb-3 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-sky-400"></i>
+                            <span>Nhà Cung Cấp VPN</span>
+                        </h3>
+                        <div class="h-48 relative">
+                            <canvas id="chartReportVPN"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng Meta Ads Macros -->
+                <div class="border-t border-slate-800">
+                    <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <i class="fa-brands fa-meta text-blue-400"></i>
+                                <span>Hiệu Quả Meta Ads (Campaign / Adset / Ad / Placement)</span>
+                            </h3>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Dùng URL Parameters: <code class="text-slate-300">utm_campaign={{campaign.id}}&amp;utm_content={{adset.id}}&amp;utm_term={{ad.id}}&amp;utm_placement={{placement}}&amp;campaign_name={{campaign.name}}&amp;adset_name={{adset.name}}&amp;ad_name={{ad.name}}</code></p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">Chiến Dịch</th>
+                                    <th class="py-3 px-4">Nhóm QC</th>
+                                    <th class="py-3 px-4">Bài QC</th>
+                                    <th class="py-3 px-4">Vị Trí</th>
+                                    <th class="py-3 px-4 text-center">View</th>
+                                    <th class="py-3 px-4 text-center">Người Thật</th>
+                                    <th class="py-3 px-4 text-center">Lead</th>
+                                    <th class="py-3 px-4 text-center">CR%</th>
+                                    <th class="py-3 px-4 text-center">Meta Click</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lrMacroTableBody" class="divide-y divide-slate-800/70">
+                                <tr><td colspan="9" class="py-6 text-center text-slate-500">Chưa có dữ liệu</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Bảng thiết bị chi tiết -->
+                <div class="border-t border-slate-800">
+                    <div class="p-4 bg-slate-850 border-b border-slate-800">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-mobile-screen-button text-cyan-400"></i>
+                            <span>Bảng Thiết Bị &amp; Trình Duyệt Chi Tiết</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Tên thương mại thiết bị đã phân tích từ User-Agent (VD: SM-A525F → Samsung Galaxy A52)</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">Thiết Bị</th>
+                                    <th class="py-3 px-4">Thương Hiệu</th>
+                                    <th class="py-3 px-4">Mã Model</th>
+                                    <th class="py-3 px-4 text-center">View</th>
+                                    <th class="py-3 px-4 text-center">Người Thật</th>
+                                    <th class="py-3 px-4 text-center">Lead</th>
+                                    <th class="py-3 px-4 text-center">CR%</th>
+                                    <th class="py-3 px-4 text-center">Thời Gian TB</th>
+                                    <th class="py-3 px-4 text-center">Scroll TB</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lrDeviceTableBody" class="divide-y divide-slate-800/70">
+                                <tr><td colspan="9" class="py-6 text-center text-slate-500">Chưa có dữ liệu</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
 
             <!-- Row 1: Biểu đồ Giờ Vàng (24h) & Xu Hướng Ngày (30d) -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1356,7 +1459,402 @@
         </section>
 
         <!-- ============================================================== -->
-        <!-- TAB 8: NHẬT KÝ HOẠT ĐỘNG & PHIÊN ĐĂNG NHẬP (ADMIN AUDIT & SESSIONS) -->
+        <!-- TAB 8: FACEBOOK ADS — META CONVERSIONS API & CHẤT LƯỢNG DỮ LIỆU -->
+        <!-- ============================================================== -->
+        <section id="sectionTabFacebookAds" class="hidden space-y-6">
+            <!-- Header Banner -->
+            <div class="bg-gradient-to-r from-slate-900 via-blue-950/40 to-slate-900 border border-blue-900/40 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div class="flex items-center space-x-3.5">
+                    <div class="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-2xl shadow-inner shrink-0">
+                        <i class="fa-brands fa-facebook-f"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-black text-white">Facebook Ads — Conversions API &amp; Chất Lượng Dữ Liệu</h2>
+                            <span class="bg-blue-950 text-blue-400 border border-blue-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 font-mono">
+                                <i class="fa-solid fa-server"></i> SERVER-SIDE v27.0
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Gửi sự kiện Meta từ máy chủ (Lead / Purchase), theo dõi Event Match Quality, đối soát deduplication và hiệu quả theo chiến dịch.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="loadFacebookAdsTab()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 border border-slate-700 shadow-sm">
+                        <i class="fa-solid fa-rotate-right"></i> Làm mới
+                    </button>
+                </div>
+            </div>
+
+            <!-- Toast -->
+            <div id="fbAdsToast" class="hidden"></div>
+
+            <!-- ══════════ KPI TỔNG HỢP CAPI ══════════ -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 shadow">
+                    <div class="text-slate-400 text-xs mb-1 flex items-center justify-between">
+                        <span>Tổng sự kiện đã gửi</span>
+                        <i class="fa-solid fa-paper-plane text-blue-400"></i>
+                    </div>
+                    <div id="fbAdsStatSent" class="text-2xl font-black text-blue-400 font-mono">0</div>
+                    <div class="text-[11px] text-slate-400 mt-1">Trong 30 ngày gần nhất</div>
+                </div>
+                <div class="bg-slate-900 rounded-2xl p-4 border border-emerald-900/40 shadow">
+                    <div class="text-slate-400 text-xs mb-1 flex items-center justify-between">
+                        <span>Meta đã nhận</span>
+                        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                    </div>
+                    <div id="fbAdsStatSuccess" class="text-2xl font-black text-emerald-400 font-mono">0</div>
+                    <div class="text-[11px] text-slate-400 mt-1">Gửi thành công</div>
+                </div>
+                <div class="bg-slate-900 rounded-2xl p-4 border border-rose-900/40 shadow">
+                    <div class="text-slate-400 text-xs mb-1 flex items-center justify-between">
+                        <span>Thất bại</span>
+                        <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                    </div>
+                    <div id="fbAdsStatFailed" class="text-2xl font-black text-rose-400 font-mono">0</div>
+                    <div id="fbAdsLastError" class="mt-2 text-[10px] text-emerald-400">Chưa có lỗi.</div>
+                </div>
+                <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 shadow">
+                    <div class="text-slate-400 text-xs mb-1 flex items-center justify-between">
+                        <span>Bị bỏ qua</span>
+                        <i class="fa-solid fa-forward text-slate-400"></i>
+                    </div>
+                    <div id="fbAdsStatSkipped" class="text-2xl font-black text-slate-400 font-mono">0</div>
+                    <div class="text-[11px] text-slate-400 mt-1">CAPI chưa bật / tắt theo cấu hình</div>
+                </div>
+            </div>
+
+            <!-- ══════════ CẤU HÌNH CAPI ══════════ -->
+            <div id="fbAdsForm" class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                <div class="p-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                        <h2 id="fbAdsFormTitle" class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-blue-400"></i>
+                            <span>Tạo / Cập nhật cấu hình Conversions API</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Cấu hình riêng cho từng landing, hoặc để trống Landing ID để tạo cấu hình mặc định áp dụng cho mọi landing.
+                        </p>
+                    </div>
+                    <button type="button" onclick="fbAdsResetForm()" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 bg-slate-800 rounded-lg">
+                        <i class="fa-solid fa-rotate-left mr-1"></i>Làm mới form
+                    </button>
+                </div>
+
+                <div class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <!-- Cột 1: Kết nối -->
+                    <div class="space-y-3">
+                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-wider">1. Kết nối Meta</h3>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Landing ID (để trống = mặc định)</label>
+                            <input type="text" id="fbAdsFormLanding" placeholder="ví dụ: mx v_080_online" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Pixel / Dataset ID</label>
+                            <input type="text" id="fbAdsFormPixel" placeholder="ví dụ: 1234567890123456" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Access Token (System User)</label>
+                            <input type="password" id="fbAdsFormToken" placeholder="Dán access token" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Graph API Version</label>
+                            <input type="text" id="fbAdsFormVersion" value="v27.0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                            <input type="checkbox" id="fbAdsFormActive" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                            Bật Conversions API cho landing này
+                        </label>
+                    </div>
+
+                    <!-- Cột 2: Gateway + sự kiện -->
+                    <div class="space-y-3">
+                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-wider">2. Cổng API Chuyển Đổi &amp; Sự Kiện</h3>
+                        <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                            <input type="checkbox" id="fbAdsFormGatewayEnabled" class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-indigo-500">
+                            Dùng Conversions API Gateway
+                        </label>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Gateway Endpoint</label>
+                            <input type="text" id="fbAdsFormGatewayEndpoint" placeholder="https://<region>.gateway.facebook.com" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Gateway Access Key</label>
+                            <input type="password" id="fbAdsFormGatewayKey" placeholder="Dán access key" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div class="pt-2 space-y-1.5 border-t border-slate-800">
+                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                                <input type="checkbox" id="fbAdsFormSendPV" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                                Gửi <strong>PageView</strong> từ server
+                            </label>
+                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                                <input type="checkbox" id="fbAdsFormSendLead" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                                Gửi <strong>Lead</strong> khi khách đăng ký form
+                            </label>
+                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                                <input type="checkbox" id="fbAdsFormSendCRM" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                                Gửi sự kiện khi sales đổi trạng thái CRM
+                            </label>
+                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                                <input type="checkbox" id="fbAdsFormSendPurchase" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                                Gửi <strong>Subscribe / Purchase</strong> kèm giá trị khoá học
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Cột 3: Giá trị + PII -->
+                    <div class="space-y-3">
+                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-wider">3. Giá Trị Chuyển Đổi &amp; PII</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Giá khoá học (VND)</label>
+                                <input type="number" id="fbAdsFormValue" value="6000000" step="1000" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Tiền tệ</label>
+                                <input type="text" id="fbAdsFormCurrency" value="VND" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                            <input type="checkbox" id="fbAdsFormSendUserData" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
+                            Gửi <code class="user_data</code> (Advanced Matching)
+                        </label>
+                        <div class="grid grid-cols-3 gap-1.5 pt-1">
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashEmail" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">em (email)</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashPhone" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">ph (đt)</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashName" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">fn/ln</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashAddress" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">ct (thành phố)</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashState" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">st (vùng)</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashZip" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">zp</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashCountry" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">country</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashCity" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">ct</label>
+                            <label class="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold"><input type="checkbox" id="fbAdsFormHashExternal" checked class="w-3 h-3 rounded bg-slate-950 border-slate-700 accent-blue-500">external_id</label>
+                        </div>
+                        <button type="button" onclick="fbAdsSaveConfig()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
+                            <i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bảng danh sách cấu hình -->
+                <div class="border-t border-slate-800 overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
+                            <tr>
+                                <th class="py-2.5 px-3">Landing</th>
+                                <th class="py-2.5 px-3">Pixel ID</th>
+                                <th class="py-2.5 px-3">Access Token</th>
+                                <th class="py-2.5 px-3">Gateway</th>
+                                <th class="py-2.5 px-3">API Ver</th>
+                                <th class="py-2.5 px-3">Giá trị</th>
+                                <th class="py-2.5 px-3">Sự kiện</th>
+                                <th class="py-2.5 px-3 text-center">Trạng thái</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fbAdsConfigTableBody" class="divide-y divide-slate-800/80">
+                            <tr><td colspan="8" class="py-6 text-center text-slate-500 text-xs">Đang tải...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ══════════ TEST EVENT + PARSE URL ══════════ -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- Test Event -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <div class="p-4 bg-slate-850 border-b border-slate-800">
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-flask text-amber-400"></i>
+                            <span>Gửi Test Event (Meta Test Events)</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Sự kiện test không tính vào dữ liệu thật — dùng để kiểm tra token, pixel và payload.</p>
+                    </div>
+                    <div class="p-4 space-y-2.5">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Landing (cấu hình)</label>
+                                <select id="fbAdsLandingSelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"></select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Tên sự kiện</label>
+                                <select id="fbAdsTestEventName" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                                    <option value="Lead">Lead</option>
+                                    <option value="PageView">PageView</option>
+                                    <option value="Purchase">Purchase</option>
+                                    <option value="Subscribe">Subscribe</option>
+                                    <option value="StartTrial">StartTrial</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Email</label>
+                                <input type="text" id="fbAdsTestEmail" placeholder="test@example.com" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Số điện thoại</label>
+                                <input type="text" id="fbAdsTestPhone" placeholder="0912345678" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="col-span-1">
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Họ tên</label>
+                                <input type="text" id="fbAdsTestName" placeholder="Nguyễn Văn A" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Giá trị</label>
+                                <input type="number" id="fbAdsTestValue" value="6000000" step="1000" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Tiền tệ</label>
+                                <input type="text" id="fbAdsTestCurrency" value="VND" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Event Source URL</label>
+                            <input type="text" id="fbAdsTestURL" placeholder="https://lophoc.hanghoaphaisinh.net/?utm_source=fb" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <button type="button" onclick="fbAdsSendTestEvent()" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
+                            <i class="fa-solid fa-paper-plane"></i> Gửi Test Event
+                        </button>
+                        <div id="fbAdsTestResult" class="bg-slate-950 border border-slate-800 rounded-lg p-3 max-h-52 overflow-auto"></div>
+                    </div>
+                </div>
+
+                <!-- Parse URL + Dataset Quality -->
+                <div class="space-y-4">
+                    <!-- Parse URL -->
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                        <div class="p-4 bg-slate-850 border-b border-slate-800">
+                            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-link text-cyan-400"></i>
+                                <span>Kiểm Tra URL Quảng Cáo (URL Parameters)</span>
+                            </h2>
+                            <p class="text-xs text-slate-400 mt-0.5">
+                                Dán URL landing thật để xác nhận hệ thống đọc đúng campaign.id / adset.id / ad.id.
+                            </p>
+                        </div>
+                        <div class="p-4 space-y-2.5">
+                            <input type="text" id="fbAdsParseURLInput" placeholder="https://lophoc.hanghoaphaisinh.net/?utm_medium=paid&amp;utm_source=fb&amp;..." class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500">
+                            <button type="button" onclick="fbAdsParseURL()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
+                                <i class="fa-solid fa-magnifying-glass"></i> Phân Tích URL
+                            </button>
+                            <div id="fbAdsParseResult"></div>
+                        </div>
+                    </div>
+
+                    <!-- Dataset Quality -->
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                        <div class="p-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-gauge-high text-emerald-400"></i>
+                                    <span>Dataset Quality API (EMQ)</span>
+                                </h2>
+                                <p class="text-xs text-slate-400 mt-0.5">Meta cần ≥20 phút để cập nhật — dữ liệu thường trễ vài giờ.</p>
+                            </div>
+                            <button type="button" onclick="fbAdsLoadDatasetQuality()" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 bg-slate-800 rounded-lg">
+                                <i class="fa-solid fa-rotate-right mr-1"></i>Làm mới
+                            </button>
+                        </div>
+                        <div id="fbAdsQualityBox" class="p-4">
+                            <div class="py-6 text-center text-slate-500 text-xs">Bấm "Làm mới" để đọc chỉ số từ Meta.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════ LOG GỬI SỰ KIỆN ══════════ -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-blue-400"></i>
+                            <span>Nhật Ký Gửi Sự Kiện Lên Meta</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Mọi lần gửi (thành công / thất bại / bỏ qua) đều được ghi lại để đối soát.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select id="fbAdsLandingFilter" onchange="loadFacebookAdsLogs(); loadFacebookAdsCampaigns();" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"></select>
+                        <button type="button" onclick="loadFacebookAdsLogs()" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 bg-slate-800 rounded-lg">
+                            <i class="fa-solid fa-rotate-right mr-1"></i>Làm mới
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-0 border-b border-slate-800">
+                    <div class="p-4 md:col-span-3">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs whitespace-nowrap">
+                                <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
+                                    <tr>
+                                        <th class="py-2.5 px-3">Thời gian</th>
+                                        <th class="py-2.5 px-3">Trạng thái</th>
+                                        <th class="py-2.5 px-3">Sự kiện</th>
+                                        <th class="py-2.5 px-3">Event ID</th>
+                                        <th class="py-2.5 px-3">Landing</th>
+                                        <th class="py-2.5 px-3">Lead</th>
+                                        <th class="py-2.5 px-3">Nguồn kích hoạt</th>
+                                        <th class="py-2.5 px-3">HTTP</th>
+                                        <th class="py-2.5 px-3">Lỗi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fbAdsLogTableBody" class="divide-y divide-slate-800/80">
+                                    <tr><td colspan="9" class="py-6 text-center text-slate-500 text-xs">Đang tải...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="p-4 border-l border-slate-800">
+                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Phân bổ theo sự kiện</h3>
+                        <div id="fbAdsEventBreakdown"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════ BÁO CÁO CHIẾN DỊCH ══════════ -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-column text-orange-400"></i>
+                            <span>Hiệu Quả Theo Chiến Dịch / Adset / Quảng Cáo</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Dữ liệu lấy từ macro Meta trong <code class="text-orange-400">utm_campaign</code> (campaign.id),
+                            <code class="text-orange-400">utm_content</code> (adset.id), <code class="text-orange-400">utm_term</code> (ad.id).
+                        </p>
+                    </div>
+                    <button type="button" onclick="loadFacebookAdsCampaigns()" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 bg-slate-800 rounded-lg">
+                        <i class="fa-solid fa-rotate-right mr-1"></i>Làm mới
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
+                            <tr>
+                                <th class="py-2.5 px-3">Chiến dịch</th>
+                                <th class="py-2.5 px-3">Adset</th>
+                                <th class="py-2.5 px-3">Quảng cáo</th>
+                                <th class="py-2.5 px-3">Vị trí</th>
+                                <th class="py-2.5 px-3 text-center">Leads</th>
+                                <th class="py-2.5 px-3 text-center">Mới</th>
+                                <th class="py-2.5 px-3 text-center">Đã mua</th>
+                                <th class="py-2.5 px-3 text-center">CR</th>
+                                <th class="py-2.5 px-3 text-right">Doanh thu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fbAdsCampaignTableBody" class="divide-y divide-slate-800/80">
+                            <tr><td colspan="9" class="py-6 text-center text-slate-500 text-xs">Đang tải...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- TAB 9: NHẬT KÝ HOẠT ĐỘNG & PHIÊN ĐĂNG NHẬP (ADMIN AUDIT & SESSIONS) -->
         <!-- ============================================================== -->
         <section id="sectionTabAuditLogs" class="hidden space-y-6">
             <!-- Header Banner -->
@@ -1588,15 +2086,14 @@
 
                 <div>
                     <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Giai đoạn Pipeline:</label>
-                    <select id="drawerStatusSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-semibold focus:outline-none focus:border-orange-500">
-                        <option value="moi">📥 1. Mới tiếp nhận</option>
-                        <option value="da_goi">📞 2. Đã gọi điện</option>
-                        <option value="ket_ban_zalo">💬 3. Đã kết bạn Zalo</option>
-                        <option value="da_vao_zoom">💻 4. Đã vào Zoom</option>
-                        <option value="tiem_nang">⭐ 5. Khách tiềm năng</option>
-                        <option value="chot">🏆 6. Đã chốt hợp đồng</option>
-                        <option value="huy">❌ 7. Hủy / Không nhu cầu</option>
-                    </select>
+                    <!-- ⚠️ Options được sinh động bởi js/lead-status.js -->
+                    <select id="drawerStatusSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-semibold focus:outline-none focus:border-orange-500"></select>
+                    <p class="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                        <i class="fa-solid fa-circle-info mr-1"></i>
+                        Chuyển sang <strong class="text-indigo-400">Đã học chuyên sâu</strong> hoặc
+                        <strong class="text-emerald-400">Khách hàng đã mua hàng</strong> sẽ tự động gửi sự kiện
+                        chuyển đổi (Subscribe / Purchase) về Meta Conversions API — giá trị dùng trong tab Facebook Ads.
+                    </p>
                 </div>
 
                 <div>
@@ -1732,6 +2229,38 @@
                         <span class="text-slate-400 block mb-1 text-[10px]">Trang chuyển tiếp (Referrer):</span>
                         <div id="drawerReferrer" class="text-[10px] text-slate-400 font-mono truncate select-all bg-slate-950 p-1.5 rounded border border-slate-800">--</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ═══ HÀNH TRÌNH KHÁCH HÀNG (CUSTOMER JOURNEY TIMELINE) ═══ -->
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-shoe-prints text-violet-400"></i>
+                        <span>Hành Trình Khách Hàng (Customer Journey)</span>
+                    </span>
+                    <button type="button" onclick="loadCustomerJourney()" id="btnLoadJourney"
+                        class="bg-violet-700 hover:bg-violet-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg border border-violet-600 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-timeline text-[10px]"></i>Dựng Timeline
+                    </button>
+                </div>
+
+                <!-- Header hồ sơ hành vi -->
+                <div id="drawerJourneyProfile" class="hidden grid grid-cols-2 gap-2 text-[11px]"></div>
+
+                <!-- Dòng thời gian từng giây -->
+                <div id="drawerJourneyTimeline" class="hidden">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <span class="text-slate-400 font-semibold text-[10px] uppercase tracking-wider">Dòng thời gian hành động</span>
+                        <span class="flex-1 h-px bg-slate-800"></span>
+                        <span id="drawerJourneyCount" class="text-[10px] text-slate-500 font-mono">0 sự kiện</span>
+                    </div>
+                    <div id="drawerJourneyList" class="space-y-1.5 max-h-72 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div id="drawerJourneyEmpty" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-3 text-[11px] text-slate-500">
+                    <i class="fa-solid fa-circle-info mr-1"></i>
+                    Chưa có dữ liệu hành trình cho khách này. Bấm <b>Dựng Timeline</b> để tải từ hệ thống analytics.
                 </div>
             </div>
 
@@ -3005,7 +3534,9 @@
     <script src="config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/lead-status.js"></script>
     <script src="js/crm.js"></script>
+    <script src="js/facebook-ads.js"></script>
 
     <!-- ============================================================== -->
     <!-- APEX ADMIN DASHBOARD - CORE FRONTEND SCRIPTS                   -->

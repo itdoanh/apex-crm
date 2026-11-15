@@ -6,7 +6,7 @@ PostgreSQL 16, driver `pgx/v5`, connection pool (MaxConns 25, MinConns 2).
 
 ---
 
-## 1. Danh mục 12 bảng
+## 1. Danh mục 14 bảng
 
 | Bảng | Mục đích | Số dòng (prod) |
 |---|---|---|
@@ -22,6 +22,8 @@ PostgreSQL 16, driver `pgx/v5`, connection pool (MaxConns 25, MinConns 2).
 | `admin_audit_logs` | Nhật ký hành động | 55 |
 | `google_sheet_configs` | Cấu hình đồng bộ Sheets | 1 |
 | `google_sheet_sync_logs` | Lịch sử đồng bộ | 2 |
+| `facebook_capi_configs` | Cấu hình Meta Conversions API (theo landing) | 0 |
+| `facebook_capi_logs` | Lịch sử gửi sự kiện CAPI | 0 |
 
 ---
 
@@ -62,15 +64,28 @@ CREATE TABLE leads (
 
 ### Trạng thái CRM (`trang_thai`)
 
-| Giá trị | Nhãn UI |
-|---|---|
-| `moi` | 📥 Mới tiếp nhận |
-| `da_goi` | 📞 Đã gọi điện |
-| `ket_ban_zalo` | 💬 Đã kết bạn Zalo |
-| `da_vao_zoom` | 💻 Đã vào Zoom |
-| `tiem_nang` | ⭐ Khách tiềm năng |
-| `chot` | 🏆 Đã chốt hợp đồng |
-| `huy` | ❌ Hủy / Sai số |
+> ⭐ **Pipeline 10 trạng thái (thêm 2026-11-15).** Định nghĩa tập trung ở
+> `backend/models/lead_status.go` (`LeadStatusDefs` / `LeadStatusOrder`).
+> Frontend gọi `GET /api/facebook-ads/lead-statuses` để render động — không hardcode.
+
+| Giá trị (`key`) | Nhãn UI | Giai đoạn | CAPI |
+|---|---|---|---|
+| `moi` | 📥 Mới tiếp nhận | `new` | — |
+| `da_goi` | 📞 Đã gọi điện | `contacted` | — |
+| `ket_ban_zalo` | 💬 Đã kết bạn Zalo | `contacted` | — |
+| `da_hoc_buoi_chia_se` | 💻 Đã học buổi chia sẻ | `free` | — |
+| `da_hoc_chuyen_sau` | 📘 Đã học chuyên sâu (≈6.000.000đ) | `paid` | `Subscribe` |
+| `da_mua_hang` | 🏆 Khách hàng đã mua hàng | `won` | `Purchase` |
+| `da_hoc_truoc_do` | 🔁 Đã học trước đó rồi | `lost` | — |
+| `khong_quan_tam` | 🙅 Không quan tâm | `lost` | — |
+| `spam_khong_lien_lac` | 🚫 Spam / Không liên lạc được | `lost` | — |
+| `huy` | ❌ Hủy / Sai số | `lost` | — |
+
+**Tương thích ngược** (lead cũ trong DB vẫn đọc được, tự chuẩn hoá khi ghi):
+`tiem_nang` → `da_hoc_buoi_chia_se` · `chot` → `da_mua_hang` · `da_vao_zoom` → `da_hoc_buoi_chia_se`.
+
+> Ngành "Giải Mã Đầu Tư Hàng Hóa" chỉ cần khách mua **1 lần** ⇒ không có trạng thái
+> "mua lại" / "khách cũ quay lại". `da_hoc_truoc_do` là trạng thái kết thúc không mua.
 
 ### Cấu trúc `tracking` JSONB
 
@@ -582,6 +597,76 @@ gốc** ⇒ không có `google_sheet_ids` ⇒ rơi vào nhánh "đồng bộ m�
   và bản domain.
 - Nhánh `targetSheetIDs` trong `GetActiveGoogleSheetConfigsForLead` cũng tôn trọng
   `filter_landing_id` (chống tràn chéo landing).
+
+---
+
+## 8.5. Meta Conversions API — `facebook_capi_configs` & `facebook_capi_logs`
+
+> Thêm 2026-11-15. DDL trong `backend/db/db.go` (`initSchema`), idempotent.
+
+```sql
+CREATE TABLE IF NOT EXISTS facebook_capi_configs (
+    id                 BIGSERIAL PRIMARY KEY,
+    landing_id         VARCHAR(100) NOT NULL DEFAULT '',  -- '' = cấu hình mặc định
+    is_active          BOOLEAN NOT NULL DEFAULT FALSE,
+    pixel_id           VARCHAR(100) NOT NULL DEFAULT '',
+    access_token       TEXT NOT NULL DEFAULT '',
+    api_version        VARCHAR(20)  NOT NULL DEFAULT 'v27.0',
+    gateway_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
+    gateway_endpoint   TEXT NOT NULL DEFAULT '',
+    gateway_access_key TEXT NOT NULL DEFAULT '',
+    send_page_view     BOOLEAN NOT NULL DEFAULT TRUE,
+    send_lead          BOOLEAN NOT NULL DEFAULT TRUE,
+    send_purchase      BOOLEAN NOT NULL DEFAULT TRUE,
+    send_crm_sync      BOOLEAN NOT NULL DEFAULT TRUE,
+    course_value       DOUBLE PRECISION NOT NULL DEFAULT 6000000,
+    currency           VARCHAR(10) NOT NULL DEFAULT 'VND',
+    hash_email         BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_phone         BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_name          BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_address       BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_external_id   BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_city          BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_state         BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_zip           BOOLEAN NOT NULL DEFAULT TRUE,
+    hash_country       BOOLEAN NOT NULL DEFAULT TRUE,
+    send_user_data     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_facebook_capi_configs_landing
+    ON facebook_capi_configs (landing_id);
+
+CREATE TABLE IF NOT EXISTS facebook_capi_logs (
+    id             BIGSERIAL PRIMARY KEY,
+    lead_id        BIGINT DEFAULT NULL,
+    landing_id     VARCHAR(100) NOT NULL DEFAULT '',
+    event_name     VARCHAR(50)  NOT NULL DEFAULT '',   -- Lead | Purchase | Subscribe | PageView
+    event_id       VARCHAR(100) NOT NULL DEFAULT '',   -- khoá dedup browser <-> server
+    action_source  VARCHAR(30)  NOT NULL DEFAULT 'website',
+    pixel_id       VARCHAR(100) NOT NULL DEFAULT '',
+    status         VARCHAR(20)  NOT NULL DEFAULT '',   -- success | failed | skipped
+    http_status    INT NOT NULL DEFAULT 0,
+    response       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error          TEXT NOT NULL DEFAULT '',
+    triggered_by   VARCHAR(50)  NOT NULL DEFAULT '',   -- lead_submit | crm_status_change | manual_test
+    trang_thai_crm VARCHAR(50)  NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_event_name`, `_landing_id`.
+
+**Quy tắc dữ liệu:**
+
+- `landing_id = ''` ⇒ cấu hình **mặc định**, áp dụng cho mọi landing chưa có config riêng
+  (`GetFacebookCAPIConfig` fallback từ landing_id → `''`).
+- `access_token` / `gateway_access_key` lưu **rõ** trong DB; API trả về client đã mask
+  (`MaskAccessToken()`). Khi client gửi lại giá trị đã mask (`****`) ⇒ backend giữ token cũ.
+- `status = 'skipped'` ghi lại lý do bỏ qua (CAPI tắt, thiếu token, trạng thái không có giá trị…).
+- `course_value` mặc định `6000000` (VND) — giá khoá học chuyên sâu.
+- Meta chỉ nhận sự kiện server trong **7 ngày** gần nhất ⇒ log cũ không thể gửi lại.
 
 ---
 

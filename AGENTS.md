@@ -92,6 +92,7 @@ python backend/tests/test_full_suite.py
 8. **Mọi query analytics phải truyền đủ bộ lọc** `landing_id`, `nguon`, `from_date`, `to_date`, `days`, `from_hour`, `to_hour` → dùng `buildAnalyticsWhereClauseFullRange()` trong `backend/db/db.go`. Bộ lọc giờ hỗ trợ **quay vòng qua nửa đêm** (22h→06h). Không bỏ qua bộ lọc — số liệu sẽ sai.
 9. **Tracking phải tách theo landing**: `tracker.js` namespace hoá cookie/localStorage theo `landing_id` (`apex_vid_<landing>`). Landing mới **phải** khai báo `data-landing-id` + `data-nguon` trùng `landing_id` trong `config.json`.
 10. **Proof-of-Work**: TTL 10 phút, dung sai clock skew 60 giây. Client phải gọi `ensureChallengeReady()` **trước khi submit** và disable nút ngay khi click. Hash format: `SHA256(challenge_id + ":" + salt + ":" + solution)`.
+11. **CAPI không được chặn luồng chính** — lỗi gửi sự kiện Meta chỉ ghi log vào `facebook_capi_logs`, tuyệt đối không fail `POST /api/leads` hay `POST /api/leads/update`. PII gửi lên Meta phải băm SHA-256; `client_ip_address` / `client_user_agent` / `fbc` / `fbp` gửi **rõ**.
 
 ---
 
@@ -117,6 +118,32 @@ python backend/tests/test_full_suite.py
 | `GET /api/analytics/landings` · `sources` · `geo` · `ad-placements` · `sessions` · `session/{id}` | Các báo cáo còn lại |
 
 Tất cả đều hỗ trợ `landing_id`, `nguon`, `from_date`, `to_date`, `days`, `from_hour`, `to_hour`.
+
+### 6.2. Endpoint Facebook Ads / Conversions API (admin — `RequireAdminAuth`)
+
+| Endpoint | Mô tả |
+|---|---|
+| `GET /api/facebook-ads/configs` | Danh sách cấu hình CAPI (token đã mask) |
+| `GET/POST /api/facebook-ads/config` | Chi tiết / lưu cấu hình theo `landing_id` |
+| `POST /api/facebook-ads/config/delete` | Xoá cấu hình |
+| `POST /api/facebook-ads/test-event` | Gửi 1 sự kiện test (có `test_event_code`) |
+| `GET /api/facebook-ads/dataset-quality` | EMQ, coverage, dedupe, freshness, delay, value |
+| `GET /api/facebook-ads/logs` | Lịch sử gửi sự kiện CAPI |
+| `GET /api/facebook-ads/stats` | Thống kê tổng hợp CAPI |
+| `GET /api/facebook-ads/campaigns` | Breakdown theo chiến dịch Meta |
+| `POST /api/facebook-ads/parse-url` | Phân tích URL quảng cáo Meta → campaign/adset/ad |
+| `GET /api/facebook-ads/lead-statuses` | Danh mục 10 trạng thái CRM (UI render động) |
+
+**Pipeline trạng thái CRM (10 cột)** — định nghĩa tập trung tại `backend/models/lead_status.go`:
+
+`moi` → `da_goi` → `ket_ban_zalo` → `da_hoc_buoi_chia_se` → `da_hoc_chuyen_sau` → `da_mua_hang`,
+kèm kết thúc không mua: `da_hoc_truoc_do` · `khong_quan_tam` · `spam_khong_lien_lac` · `huy`.
+
+- `da_hoc_buoi_chia_se` = bước **miễn phí**; `da_hoc_chuyen_sau` = **≈6.000.000đ**; `da_mua_hang` = chuyển đổi cuối.
+- Giá trị cũ tự chuẩn hoá: `tiem_nang`/`da_vao_zoom` → `da_hoc_buoi_chia_se`, `chot` → `da_mua_hang`.
+- CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase` (kèm `value` = `course_value`).
+- **Ánh xạ URL Meta Ads KHÔNG theo Google Ads**: `utm_campaign` = `campaign.id`,
+  `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị.
 
 ---
 

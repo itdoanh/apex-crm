@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +25,18 @@ type Config struct {
 	GoogleServiceAccountJSON  string
 	GoogleServiceAccountEmail string
 	GoogleServiceAccountFile  string
+
+	// Meta Conversions API — fallback khi chưa có cấu hình trong DB
+	// (bảng `facebook_capi_configs`). Cấu hình chính nằm trong CRM.
+	MetaCAPIEnabled         bool
+	MetaCAPIDefaultPixelID  string
+	MetaCAPIDefaultToken    string
+	MetaCAPIDefaultVersion  string
+	MetaCAPIDefaultCurrency string
+	MetaCAPIDefaultValue    float64
+	MetaCAPIGatewayEnabled  bool
+	MetaCAPIGatewayEndpoint string
+	MetaCAPIGatewayAccessKey string
 }
 
 // loadDotEnv tự động đọc file .env nếu có để nạp biến môi trường cho máy chủ
@@ -173,6 +186,28 @@ func Load() *Config {
 		saEmail = "sheet-bot@rinva-drive-tool.iam.gserviceaccount.com"
 	}
 
+	// ─── Meta Conversions API (fallback khi chưa cấu hình trong DB) ───
+	metaPixel := strings.TrimSpace(os.Getenv("META_CAPI_DEFAULT_PIXEL_ID"))
+	metaToken := strings.TrimSpace(os.Getenv("META_CAPI_DEFAULT_ACCESS_TOKEN"))
+	metaVersion := strings.TrimSpace(os.Getenv("META_CAPI_DEFAULT_API_VERSION"))
+	if metaVersion == "" {
+		metaVersion = "v27.0"
+	}
+	metaCurrency := strings.TrimSpace(os.Getenv("META_CAPI_DEFAULT_CURRENCY"))
+	if metaCurrency == "" {
+		metaCurrency = "VND"
+	}
+	metaValue := 6000000.0
+	if v := strings.TrimSpace(os.Getenv("META_CAPI_DEFAULT_COURSE_VALUE")); v != "" {
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			metaValue = parsed
+		}
+	}
+	metaGatewayEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("META_CAPI_GATEWAY_ENABLED")), "true")
+	metaGatewayEndpoint := strings.TrimSpace(os.Getenv("META_CAPI_GATEWAY_ENDPOINT"))
+	metaGatewayKey := strings.TrimSpace(os.Getenv("META_CAPI_GATEWAY_ACCESS_KEY"))
+	metaCAPIEnabled := metaPixel != "" && (metaToken != "" || (metaGatewayEnabled && metaGatewayKey != ""))
+
 	return &Config{
 		Port:                      port,
 		DatabaseURL:               databaseURL,
@@ -187,5 +222,14 @@ func Load() *Config {
 		GoogleServiceAccountJSON:  saJSON,
 		GoogleServiceAccountEmail: saEmail,
 		GoogleServiceAccountFile:  saFile,
+		MetaCAPIEnabled:           metaCAPIEnabled,
+		MetaCAPIDefaultPixelID:    metaPixel,
+		MetaCAPIDefaultToken:      metaToken,
+		MetaCAPIDefaultVersion:    metaVersion,
+		MetaCAPIDefaultCurrency:   metaCurrency,
+		MetaCAPIDefaultValue:      metaValue,
+		MetaCAPIGatewayEnabled:    metaGatewayEnabled,
+		MetaCAPIGatewayEndpoint:   metaGatewayEndpoint,
+		MetaCAPIGatewayAccessKey:  metaGatewayKey,
 	}
 }

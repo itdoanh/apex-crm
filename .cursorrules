@@ -24,6 +24,9 @@
 11. Query analytics phải đủ bộ lọc `from_date`/`to_date`/`days`/`from_hour`/`to_hour` (hỗ trợ quay vòng qua nửa đêm 22h→06h)
 12. Tracking tách theo `landing_id` (cookie/localStorage namespace + `data-landing-id`)
 13. PoW: TTL 10′ · clock skew 60s · `SHA256(id:salt:solution)` · client disable nút ngay khi click
+14. CAPI không chặn luồng chính — lỗi Meta chỉ ghi log `facebook_capi_logs` · PII băm SHA-256, IP/UA/fbc/fbp gửi rõ
+15. Pipeline CRM 10 trạng thái — nguồn: `backend/models/lead_status.go` · UI gọi `GET /api/facebook-ads/lead-statuses` (động)
+16. URL Meta Ads: `utm_campaign`=`campaign.id` · `utm_content`=`adset.id` · `utm_term`=`ad.id` (KHÔNG theo Google Ads)
 
 ## Production
 

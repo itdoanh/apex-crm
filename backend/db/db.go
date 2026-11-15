@@ -469,6 +469,69 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_username ON admin_audit_logs (username);
 	CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_ip ON admin_audit_logs (ip_address);
 	CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_details_gin ON admin_audit_logs USING gin (details);
+
+	-- ══════════════════════════════════════════════════════════════
+	-- META CONVERSIONS API (CAPI) — 2026-11-15
+	-- ══════════════════════════════════════════════════════════════
+	-- Cấu hình CAPI theo từng landing (landing_id). landing_id = '' ⇒ cấu hình
+	-- mặc định, áp dụng cho mọi landing chưa có cấu hình riêng.
+	CREATE TABLE IF NOT EXISTS facebook_capi_configs (
+		id BIGSERIAL PRIMARY KEY,
+		landing_id VARCHAR(100) NOT NULL DEFAULT '',
+		is_active BOOLEAN NOT NULL DEFAULT FALSE,
+		pixel_id VARCHAR(100) NOT NULL DEFAULT '',
+		access_token TEXT NOT NULL DEFAULT '',
+		api_version VARCHAR(20) NOT NULL DEFAULT 'v27.0',
+		gateway_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+		gateway_endpoint TEXT NOT NULL DEFAULT '',
+		gateway_access_key TEXT NOT NULL DEFAULT '',
+		send_page_view BOOLEAN NOT NULL DEFAULT TRUE,
+		send_lead BOOLEAN NOT NULL DEFAULT TRUE,
+		send_purchase BOOLEAN NOT NULL DEFAULT TRUE,
+		send_crm_sync BOOLEAN NOT NULL DEFAULT TRUE,
+		course_value DOUBLE PRECISION NOT NULL DEFAULT 6000000,
+		currency VARCHAR(10) NOT NULL DEFAULT 'VND',
+		hash_email BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_phone BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_name BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_address BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_external_id BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_city BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_state BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_zip BOOLEAN NOT NULL DEFAULT TRUE,
+		hash_country BOOLEAN NOT NULL DEFAULT TRUE,
+		send_user_data BOOLEAN NOT NULL DEFAULT TRUE,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	-- Mỗi landing chỉ có 1 cấu hình (cấu hình mặc định dùng landing_id = '').
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_facebook_capi_configs_landing
+		ON facebook_capi_configs (landing_id);
+
+	-- Log gửi sự kiện lên Meta: dùng để đối soát & chẩn đoán lỗi CAPI.
+	CREATE TABLE IF NOT EXISTS facebook_capi_logs (
+		id BIGSERIAL PRIMARY KEY,
+		lead_id BIGINT DEFAULT NULL,
+		landing_id VARCHAR(100) NOT NULL DEFAULT '',
+		event_name VARCHAR(50) NOT NULL DEFAULT '',
+		event_id VARCHAR(100) NOT NULL DEFAULT '',
+		action_source VARCHAR(30) NOT NULL DEFAULT 'website',
+		pixel_id VARCHAR(100) NOT NULL DEFAULT '',
+		status VARCHAR(20) NOT NULL DEFAULT '',
+		http_status INT NOT NULL DEFAULT 0,
+		response JSONB NOT NULL DEFAULT '{}'::jsonb,
+		error TEXT NOT NULL DEFAULT '',
+		triggered_by VARCHAR(50) NOT NULL DEFAULT '',
+		trang_thai_crm VARCHAR(50) NOT NULL DEFAULT '',
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_created_at ON facebook_capi_logs (created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_lead_id ON facebook_capi_logs (lead_id);
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_status ON facebook_capi_logs (status);
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_event_name ON facebook_capi_logs (event_name);
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_landing_id ON facebook_capi_logs (landing_id);
 	`
 	_, err := s.pool.Exec(ctx, schemaSQL)
 	return err
@@ -1101,6 +1164,37 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 	return leads, nil
 }
 
+// GetLeadByID lấy 1 lead theo ID (dùng cho CAPI CRM sync & các handler admin).
+func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const q = `
+		SELECT id, TO_CHAR(thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
+		       landing_id, nguon, so_dien_thoai,
+		       COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
+		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
+		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
+		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		       tracking::text
+		FROM leads
+		WHERE id = $1
+	`
+	var lead models.Lead
+	var trackingStr string
+	err := s.pool.QueryRow(ctx, q, id).Scan(
+		&lead.ID, &lead.CreatedAt, &lead.LandingID, &lead.Nguon, &lead.Phone,
+		&lead.TrangThai, &lead.GhiChu, &lead.AssignedTo, &lead.UpdatedAt,
+		&lead.City, &lead.Region, &lead.Country, &lead.ISP,
+		&lead.AdPlatform, &lead.AdPlacement, &lead.URL, &trackingStr,
+	)
+	if err != nil {
+		return nil, err
+	}
+	lead.Tracking = json.RawMessage(trackingStr)
+	return &lead, nil
+}
+
 // UpdateLead cập nhật trạng thái CRM, ghi chú sales và người phụ trách
 func (s *Store) UpdateLead(id uint64, status string, note string, assignedTo string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1111,8 +1205,10 @@ func (s *Store) UpdateLead(id uint64, status string, note string, assignedTo str
 	idx := 1
 
 	if strings.TrimSpace(status) != "" {
+		// Chuẩn hoá trạng thái: hợp nhất giá trị cũ (tiem_nang/chot) về giá trị
+		// mới, và loại bỏ trạng thái không hợp lệ (rơi về 'moi').
 		sets = append(sets, fmt.Sprintf("trang_thai = $%d", idx))
-		args = append(args, strings.TrimSpace(status))
+		args = append(args, models.NormalizeLeadStatus(status))
 		idx++
 	}
 	if strings.TrimSpace(note) != "" {
@@ -1148,8 +1244,8 @@ func (s *Store) GetCRMStats(search string, landingID string, nguon string, statu
 			COUNT(*) FILTER (WHERE (thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)::int AS today,
 			COUNT(*) FILTER (WHERE (thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = ((NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - INTERVAL '1 day')::date)::int AS yesterday,
 			COUNT(*) FILTER (WHERE (thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh') >= ((NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '7 days'))::int AS this_week,
-			COUNT(*) FILTER (WHERE trang_thai IN ('tiem_nang', 'chot'))::int AS high_intent,
-			COUNT(*) FILTER (WHERE trang_thai = 'chot')::int AS closed
+			COUNT(*) FILTER (WHERE trang_thai IN ('tiem_nang', 'da_hoc_buoi_chia_se', 'da_hoc_chuyen_sau', 'da_mua_hang'))::int AS high_intent,
+			COUNT(*) FILTER (WHERE trang_thai IN ('chot', 'da_mua_hang'))::int AS closed
 		FROM leads
 		%s;
 	`, whereClause)
@@ -1221,21 +1317,38 @@ func (s *Store) GetCRMStats(search string, landingID string, nguon string, statu
 	}
 
 	// 4. Phân bổ trạng thái CRM (Pipeline Breakdown)
+	//
+	// Chuẩn hoá giá trị cũ ('tiem_nang' → 'da_hoc_buoi_chia_se', 'chot' → 'da_mua_hang')
+	// để biểu đồ không bị vỡ khi có lead tạo trước khi đổi pipeline.
 	statusQuery := fmt.Sprintf(`
-		SELECT COALESCE(NULLIF(trang_thai, ''), 'moi') AS st, COUNT(*)::int
-		FROM leads
-		%s
+		SELECT st, COUNT(*)::int
+		FROM (
+			SELECT CASE COALESCE(NULLIF(trang_thai, ''), 'moi')
+				WHEN 'tiem_nang' THEN 'da_hoc_buoi_chia_se'
+				WHEN 'chot' THEN 'da_mua_hang'
+				WHEN 'da_vao_zoom' THEN 'da_hoc_buoi_chia_se'
+				ELSE COALESCE(NULLIF(trang_thai, ''), 'moi')
+			END AS st
+			FROM leads
+			%s
+		) t
 		GROUP BY st
 		ORDER BY COUNT(*) DESC;
 	`, whereClause)
 	statusCounts := map[string]int{
-		"moi":          0,
-		"da_goi":       0,
-		"ket_ban_zalo": 0,
-		"da_vao_zoom":  0,
-		"tiem_nang":    0,
-		"chot":         0,
-		"huy":          0,
+		"moi":                  0,
+		"da_goi":               0,
+		"ket_ban_zalo":         0,
+		"da_hoc_buoi_chia_se":  0,
+		"da_hoc_chuyen_sau":    0,
+		"da_mua_hang":          0,
+		"da_hoc_truoc_do":      0,
+		"khong_quan_tam":       0,
+		"spam_khong_lien_lac":  0,
+		"huy":                  0,
+		// Giá trị cũ (lead tạo trước khi đổi pipeline) — vẫn hiển thị để không mất số liệu.
+		"tiem_nang":            0,
+		"chot":                 0,
 	}
 	rowsS, errS := s.pool.Query(ctx, statusQuery, args...)
 	if errS == nil {

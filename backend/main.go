@@ -310,6 +310,29 @@ func main() {
 	mux.HandleFunc("/api/crm/stats", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(leadHandler.HandleCRMStats)))
 	mux.HandleFunc("/api/stats", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(leadHandler.HandleStats)))
 
+	// ══════════════════════════════════════════════════════════════
+	// FACEBOOK ADS — Meta Conversions API (CAPI) + Dataset Quality
+	// ══════════════════════════════════════════════════════════════
+	// Tất cả endpoint dưới đây là ADMIN (RequireAdminAuth) — chỉ admin CRM
+	// được cấu hình token, đọc log gửi event và xem chỉ số chất lượng dữ liệu.
+	//
+	// ⚠️ Public endpoint KHÔNG thêm ở đây: sự kiện CAPI được server tự gửi
+	// khi lead submit / khi sales đổi trạng thái CRM — không cần client gọi.
+	facebookAdsHandler := handlers.NewFacebookAdsHandler(cfg, store)
+	facebookAdsAuth := func(h http.HandlerFunc) http.HandlerFunc {
+		return authHandler.RequireAdminAuth(h)
+	}
+	mux.HandleFunc("/api/facebook-ads/configs", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleListConfigs)))
+	mux.HandleFunc("/api/facebook-ads/config", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleSaveConfig)))
+	mux.HandleFunc("/api/facebook-ads/config/delete", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleDeleteConfig)))
+	mux.HandleFunc("/api/facebook-ads/test-event", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleTestEvent)))
+	mux.HandleFunc("/api/facebook-ads/dataset-quality", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleDatasetQuality)))
+	mux.HandleFunc("/api/facebook-ads/logs", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleListLogs)))
+	mux.HandleFunc("/api/facebook-ads/stats", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleStats)))
+	mux.HandleFunc("/api/facebook-ads/campaigns", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleCampaignBreakdown)))
+	mux.HandleFunc("/api/facebook-ads/parse-url", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleParseURL)))
+	mux.HandleFunc("/api/facebook-ads/lead-statuses", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleStatusCatalog)))
+
 	// Security & Anti-Spam APIs (Proof-of-Work Challenge là public, Thống kê tấn công & Vùng cách ly bảo vệ Admin)
 	mux.HandleFunc("/api/auth/challenge", leadHandler.CORSMiddleware(leadHandler.HandleGetChallenge))
 	mux.HandleFunc("/api/security/stats", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(leadHandler.HandleGetSecurityStats)))

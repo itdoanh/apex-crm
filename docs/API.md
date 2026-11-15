@@ -16,7 +16,7 @@ Tất cả response trả `Content-Type: application/json` trừ khi phục vụ
 | **Public** | `GET /api/auth/challenge` | — |
 | **Public** | `GET /api/internal/check-domain` | — (chỉ Caddy local) |
 | **Public** | `GET /health` | — |
-| **Admin** | Tất cả `/api/admin/*`, `/api/leads` (GET), `/api/crm/*`, `/api/analytics/*` (trừ track), `/api/domains/*`, `/api/landings/*`, `/api/integrations/sheets/*` | `RequireAdminAuth` |
+| **Admin** | Tất cả `/api/admin/*`, `/api/leads` (GET), `/api/crm/*`, `/api/analytics/*` (trừ track), `/api/domains/*`, `/api/landings/*`, `/api/integrations/sheets/*`, `/api/facebook-ads/*` | `RequireAdminAuth` |
 
 ---
 
@@ -722,6 +722,106 @@ Account + ánh xạ cột. Đặc điểm:
   "row_values": ["...", "Test 734", "..."]
 }
 ```
+
+---
+
+## 9.2. Meta Ads / Conversions API (CAPI) — Admin
+
+> Thêm 2026-11-15. Toàn bộ endpoint dưới đây yêu cầu `RequireAdminAuth`.
+
+| Endpoint | Method | Mô tả |
+|---|---|---|
+| `/api/facebook-ads/configs` | GET | Danh sách cấu hình CAPI (token đã mask) |
+| `/api/facebook-ads/config` | GET/POST | Chi tiết / lưu cấu hình theo `landing_id` |
+| `/api/facebook-ads/config/delete` | POST | Xoá cấu hình |
+| `/api/facebook-ads/test-event` | POST | Gửi 1 sự kiện test (có `test_event_code`) |
+| `/api/facebook-ads/dataset-quality` | GET | Chỉ số Dataset Quality (EMQ, coverage, dedupe…) |
+| `/api/facebook-ads/logs` | GET | Lịch sử gửi sự kiện CAPI |
+| `/api/facebook-ads/stats` | GET | Thống kê tổng hợp CAPI từ DB |
+| `/api/facebook-ads/campaigns` | GET | Báo cáo breakdown theo chiến dịch Meta |
+| `/api/facebook-ads/parse-url` | POST | Phân tích URL quảng cáo Meta → thông số campaign/adset/ad |
+| `/api/facebook-ads/lead-statuses` | GET | Danh mục 10 trạng thái CRM (dùng để render UI động) |
+
+### 9.2.1. `POST /api/facebook-ads/config`
+
+```json
+{
+  "landing_id": "mxv_080_online",
+  "is_active": true,
+  "pixel_id": "1234567890",
+  "access_token": "EAAG...",
+  "api_version": "v27.0",
+  "gateway_enabled": false,
+  "gateway_endpoint": "https://apac.gateway.facebook.com",
+  "gateway_access_key": "...",
+  "send_page_view": true,
+  "send_lead": true,
+  "send_purchase": true,
+  "send_crm_sync": true,
+  "course_value": 6000000,
+  "currency": "VND",
+  "send_user_data": true,
+  "hash_email": true, "hash_phone": true, "hash_name": true,
+  "hash_address": true, "hash_state": true, "hash_zip": true,
+  "hash_country": true, "hash_external_id": true
+}
+```
+
+- `landing_id = ""` ⇒ cấu hình **mặc định**, áp dụng cho mọi landing chưa có config riêng.
+- Token gửi lên có thể là dạng đã mask (`EAAG****abcd`) → backend giữ nguyên token cũ trong DB.
+  Muốn đổi token thì gửi giá trị đầy đủ.
+- Ghi DB xong **phải** `Reload()` cache → handler đã gọi sẵn.
+
+### 9.2.2. `POST /api/facebook-ads/parse-url`
+
+```json
+{ "url": "https://lophoc.hanghoaphaisinh.net/?utm_medium=paid&utm_source=fb&utm_campaign=120253099537400306&utm_content=120253099537410306&utm_term=120253099537420306&campaign_name=Anh+1&adset_name=Anh&ad_name=%E1%BA%A2nh+-+Chung&fbclid=IwZXh0bgNhZW0" }
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "utm_source": "fb", "utm_medium": "paid",
+    "campaign_id": "120253099537400306",
+    "adset_id": "120253099537410306",
+    "ad_id": "120253099537420306",
+    "placement": "", "utm_id": "",
+    "campaign_name": "Anh 1", "adset_name": "Anh", "ad_name": "Ảnh - Chung",
+    "fbclid": "IwZXh0bgNhZW0"
+  }
+}
+```
+
+> ⚠️ Ánh xạ **KHÔNG** theo quy ước Google Ads:
+> `utm_campaign` = **campaign.id**, `utm_content` = **adset.id**, `utm_term` = **ad.id**.
+> `campaign_name` / `adset_name` / `ad_name` là tên hiển thị (chỉ có khi bật
+> "Include names in URL" trong Ads Manager).
+
+### 9.2.3. Trigger gửi sự kiện CAPI
+
+| Trigger | Sự kiện Meta | Khi nào |
+|---|---|---|
+| `lead_submit` | `Lead` | Lead **mới** vừa submit form landing (`isNew = true`) |
+| `crm_status_change` | `Subscribe` | Sales đổi trạng thái → `da_hoc_chuyen_sau` (≈6.000.000đ) |
+| `crm_status_change` | `Purchase` | Sales đổi trạng thái → `da_mua_hang` (chuyển đổi cuối) |
+| `page_view` | `PageView` | Tắt mặc định (bật qua `send_page_view`) |
+| `manual_test` | tuỳ chọn | Nút "Gửi test event" trong tab Facebook Ads |
+
+- Mọi trạng thái còn lại (`moi`, `da_goi`, `ket_ban_zalo`, `da_hoc_buoi_chia_se`,
+  `da_hoc_truoc_do`, `khong_quan_tam`, `spam_khong_lien_lac`, `huy`) **không** sinh sự kiện Meta
+  (không có giá trị tiền ⇒ không làm nhiễu chỉ số EMQ).
+- **Deduplication browser ↔ server**: client gửi `event_id` trong payload
+  `POST /api/leads`; server dùng đúng `event_id` đó. `tracker.js` cũng gọi
+  `fbq('track','Lead',{ eventID: <cùng id> })` ⇒ Meta chỉ tính 1 lần.
+- Lỗi CAPI **không bao giờ** làm fail request chính — chỉ ghi log vào `facebook_capi_logs`.
+
+### 9.2.4. `GET /api/facebook-ads/dataset-quality`
+
+Proxy tới `GET /{version}/dataset_quality?fields=web{event_match_quality,event_coverage,dedupe_key_feedback,data_freshness,value_diagnostics,event_delay,event_spend,event_ad_sets}`.
+
+> ⏱️ Meta cần ≥ 20 phút sau khi gửi sự kiện mới có số liệu, và thường trễ vài giờ.
+> Endpoint này chỉ được gọi thủ công từ Admin UI (nút "Làm mới"), **không** gọi tự động khi submit lead.
 
 ---
 

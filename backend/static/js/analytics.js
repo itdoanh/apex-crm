@@ -123,10 +123,36 @@
             const ctx = document.getElementById('chartStatusCanvas');
             if (!ctx) return;
 
-            const labels = ['Mới', 'Đã gọi', 'Zalo', 'Vào Zoom', 'Tiềm năng', 'Chốt HĐ', 'Hủy'];
-            const keys = ['moi', 'da_goi', 'ket_ban_zalo', 'da_vao_zoom', 'tiem_nang', 'chot', 'huy'];
-            const data = keys.map(k => statusCounts[k] || 0);
-            const colors = ['#38bdf8', '#fbbf24', '#60a5fa', '#c084fc', '#fb923c', '#34d399', '#f87171'];
+            // ⚠️ Danh sách trạng thái lấy động từ catalog (js/lead-status.js) để
+            // khớp với pipeline 10 bước mới (có thêm: đã học chuyên sâu, đã mua hàng,
+            // đã học trước đó, không quan tâm, spam/không liên lạc được).
+            const catalog = (typeof APEX_LEAD_STATUSES !== 'undefined' && APEX_LEAD_STATUSES.length)
+                ? APEX_LEAD_STATUSES
+                : [
+                    { key: 'moi', label: 'Mới' },
+                    { key: 'da_goi', label: 'Đã gọi' },
+                    { key: 'ket_ban_zalo', label: 'Zalo' },
+                    { key: 'da_hoc_buoi_chia_se', label: 'Chia sẻ' },
+                    { key: 'da_hoc_chuyen_sau', label: 'Chuyên sâu' },
+                    { key: 'da_mua_hang', label: 'Đã mua' },
+                    { key: 'da_hoc_truoc_do', label: 'Học trước' },
+                    { key: 'khong_quan_tam', label: 'Không QT' },
+                    { key: 'spam_khong_lien_lac', label: 'Spam' },
+                    { key: 'huy', label: 'Hủy' },
+                ];
+
+            const labels = catalog.map(s => s.short || s.label);
+            const keys = catalog.map(s => s.key);
+            const data = keys.map(k => (statusCounts || {})[k] || 0);
+            const colors = catalog.map(s => {
+                const map = {
+                    sky: '#38bdf8', amber: '#fbbf24', blue: '#60a5fa', purple: '#c084fc',
+                    indigo: '#818cf8', emerald: '#34d399', slate: '#94a3b8', orange: '#fb923c',
+                    rose: '#f87171', zinc: '#a1a1aa', teal: '#2dd4bf', red: '#ef4444',
+                    yellow: '#facc15', green: '#4ade80', purple2: '#d8b4fe',
+                };
+                return map[s.color] || '#94a3b8';
+            });
 
             if (chartStatus) chartStatus.destroy();
 

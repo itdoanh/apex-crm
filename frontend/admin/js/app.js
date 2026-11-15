@@ -21,7 +21,7 @@ function formatYMD(d) {
         // 1. Tab Switching
         function switchMainTab(tab) {
             currentMainTab = tab;
-            ['CRM', 'Analytics', 'Landing', 'Security', 'Sheets', 'LadiStudio', 'Domains', 'AuditLogs'].forEach(t => {
+            ['CRM', 'Analytics', 'Landing', 'Security', 'Sheets', 'LadiStudio', 'Domains', 'FacebookAds', 'AuditLogs'].forEach(t => {
                 const btn = document.getElementById('tabBtn' + t);
                 const sec = document.getElementById('sectionTab' + t);
                 if (btn) btn.classList.remove('active');
@@ -32,6 +32,7 @@ function formatYMD(d) {
             if (tab === 'crm') tabKey = 'CRM';
             else if (tab === 'ladiStudio') tabKey = 'LadiStudio';
             else if (tab === 'domains') tabKey = 'Domains';
+            else if (tab === 'facebookAds') tabKey = 'FacebookAds';
             else if (tab === 'auditLogs') tabKey = 'AuditLogs';
             else tabKey = tab.charAt(0).toUpperCase() + tab.slice(1);
 
@@ -248,6 +249,8 @@ async function ensureTabModuleLoaded(moduleName) {
             } else if (currentMainTab === 'domains') {
                 await ensureTabModuleLoaded('domains');
                 if (typeof loadDomains === 'function') loadDomains();
+            } else if (currentMainTab === 'facebookAds') {
+                if (typeof loadFacebookAdsTab === 'function') loadFacebookAdsTab();
             } else if (currentMainTab === 'auditLogs') {
                 if (typeof loadActiveSessions === 'function') loadActiveSessions();
                 if (typeof loadAuditLogs === 'function') loadAuditLogs(1);
@@ -330,6 +333,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof updateApiStatusBadge === 'function') updateApiStatusBadge();
     const isAuthed = await checkAdminAuth();
     if (isAuthed) {
+        // Nạp danh mục trạng thái pipeline TỪ BACKEND trước khi vẽ CRM/Kanban,
+        // để danh sách trạng thái luôn khớp với nguồn sự thật duy nhất.
+        if (typeof loadLeadStatuses === 'function') {
+            await loadLeadStatuses();
+            // Vẽ lại Kanban nếu đang ở chế độ Kanban.
+            if (currentCrmView === 'kanban' && typeof renderKanbanBoard === 'function') {
+                renderKanbanBoard(curLeads);
+            }
+        }
+
         loadCurrentTabData();
         if (typeof loadDomains === 'function') loadDomains();
         startAutoRefreshLoop();

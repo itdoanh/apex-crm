@@ -19,6 +19,31 @@
     let currentPhone = '';
 
     // ============================================================
+    // 1.0.0 EVENT ID DÙNG CHUNG BROWSER ↔ SERVER (META CAPI DEDUP)
+    // ------------------------------------------------------------
+    // Meta Conversions API gộp sự kiện trình duyệt (fbq) với sự kiện máy
+    // chủ (CAPI) khi chúng dùng CHUNG `event_id` trong cửa sổ 48 giờ.
+    //
+    // ⇒ Sinh event_id ở client TRƯỚC khi gửi lead, truyền lên server trong
+    //   payload (`event_id`) và dùng lại cho `fbq('track', 'Lead', { eventID })`.
+    //
+    // ⚠️ Không dùng `crypto.randomUUID()` trực tiếp vì Safari cũ không có
+    //   ⇒ fallback về Math.random + timestamp.
+    let leadEventId = '';
+    function ensureLeadEventId() {
+        if (leadEventId) return leadEventId;
+        try {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                leadEventId = 'apex-' + window.crypto.randomUUID();
+                return leadEventId;
+            }
+        } catch (_) {}
+        leadEventId = 'apex-' + Date.now().toString(36) + '-' +
+            Math.random().toString(36).slice(2, 12);
+        return leadEventId;
+    }
+
+    // ============================================================
     // 1.0 KHÓA NGĂN CÁCH THEO LANDING (TÁCH BIỆT HOÀN TOÀN)
     // ------------------------------------------------------------
     // Mỗi landing page dùng một bộ khóa lưu trữ RIÊNG:
@@ -1654,6 +1679,16 @@
         const urlParams = getUrlParams();
         const meta = collectMetaTracking(urlParams);
         const dev = collectDeviceInfo();
+        // ⚠️ EVENT ID DÙNG CHUNG GIỮA BROWSER (fbq) VÀ SERVER (CAPI).
+        //
+        // Meta gộp (deduplicate) sự kiện browser + server khi chúng có CÙNG
+        // `event_id` trong cửa sổ 48h. Nếu không có event_id chung, Meta sẽ
+        // tính 1 lần đăng ký thành 2 lần ⇒ chỉ số chuyển đổi bị thổi phồng và
+        // Event Match Quality hiển thị "trùng".
+        //
+        // ⇒ Sinh 1 event_id ở client, gửi lên server trong payload, và dùng
+        //   CHÍNH event_id đó cho `fbq('track', 'Lead', { eventID })`.
+        const leadEventId = ensureLeadEventId();
         const payload = {
             landing_id: landingId,
             nguon: nguon,
@@ -1663,6 +1698,8 @@
             session_id: sessionId,
             visitor_id: visitorId,
             entry_url: window.location.href,
+            // event_id để server dùng chung với fbq (xem giải thích ở trên).
+            event_id: leadEventId,
             // URL trang khách đang đăng ký (kèm query string UTM) — trường quan trọng để
             // truy ngược lead về đúng landing page trong CRM & Google Sheets.
             url: window.location.href,
@@ -1981,8 +2018,17 @@
                     setRegistered(cleanPhone);
 
                     // Bắn sự kiện chuyển đổi Facebook Pixel nếu có
+                    //
+                    // ⚠️ `eventID` PHẢI trùng với event_id mà server dùng cho
+                    // Conversions API (CAPI). Khi đó Meta gộp 2 sự kiện thành 1
+                    // ⇒ không thổi phồng chỉ số chuyển đổi, không báo trùng.
                     if (typeof window.fbq === 'function') {
-                        try { window.fbq('track', 'Lead', { content_name: leadPayload.package || 'Landing Lead' }); } catch (_) {}
+                        try {
+                            window.fbq('track', 'Lead', {
+                                content_name: leadPayload.package || 'Landing Lead',
+                                eventID: ensureLeadEventId()
+                            });
+                        } catch (_) {}
                     }
                     // Bắn sự kiện Google Analytics nếu có
                     if (typeof window.gtag === 'function') {

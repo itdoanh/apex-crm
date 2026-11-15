@@ -18,6 +18,7 @@ import (
 	"apex-backend/cache"
 	"apex-backend/config"
 	"apex-backend/db"
+	"apex-backend/integrations/facebook"
 	"apex-backend/integrations/googlesheets"
 	"apex-backend/models"
 	"apex-backend/security"
@@ -30,14 +31,18 @@ type LeadHandler struct {
 	store        *db.Store
 	landingCache *cache.LandingCache
 	rateLimiter  *security.IPRateLimiter
+	// capiDispatcher gửi sự kiện Meta Conversions API từ server.
+	// Mọi lỗi CAPI đều được nuốt (log vào DB) — KHÔNG được làm fail luồng lead.
+	capiDispatcher *facebook.Dispatcher
 }
 
 func NewLeadHandler(cfg *config.Config, store *db.Store, landingCache *cache.LandingCache) *LeadHandler {
 	return &LeadHandler{
-		cfg:          cfg,
-		store:        store,
-		landingCache: landingCache,
-		rateLimiter:  security.NewIPRateLimiter(rate.Limit(10.0/60.0), 10, 10*time.Minute), // 10 leads/phút, burst 10
+		cfg:           cfg,
+		store:         store,
+		landingCache:  landingCache,
+		rateLimiter:   security.NewIPRateLimiter(rate.Limit(10.0/60.0), 10, 10*time.Minute), // 10 leads/phút, burst 10
+		capiDispatcher: facebook.NewDispatcher(store),
 	}
 }
 
@@ -634,6 +639,19 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[INFO] Lead #%d (SĐT %s) trùng lặp — bỏ qua đồng bộ Google Sheets\n", lead.ID, phone)
 	}
 
+	// ─── Meta Conversions API: gửi sự kiện `Lead` từ server ───────────
+	//
+	// ⚠️ Chạy goroutine riêng: CAPI là kênh bổ sung, KHÔNG được làm chậm/không
+	// được làm fail response của khách đăng ký. Mọi lỗi đều được log vào
+	// bảng `facebook_capi_logs` để admin đối soát trong tab Facebook Ads.
+	//
+	// ⚠️ Chỉ gửi khi lead MỚI (isNew): nếu khách double-click form thì client
+	// gửi nhiều request → dedup trả về cùng 1 lead ⇒ gửi nhiều sự kiện Lead
+	// sẽ làm sai chỉ số chuyển đổi và tăng Event Match Quality "trùng".
+	if isNew {
+		go h.dispatchCAPILead(lead, rawData, clientIP)
+	}
+
 	// Phản hồi thành công
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -733,6 +751,18 @@ func (h *LeadHandler) HandleUpdateLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ─── Meta Conversions API: đồng bộ chuyển đổi theo trạng thái CRM ──
+	//
+	// Khi sales đổi trạng thái sang `da_hoc_chuyen_sau` (đã học chuyên sâu) hoặc
+	// `da_mua_hang` (khách đã mua hàng) → server gửi sự kiện Meta có giá trị
+	// (Subscribe / Purchase) với giá khoá học đã cấu hình.
+	//
+	// ⚠️ Chạy goroutine riêng + không chặn response: CRM là nguồn sự thật,
+	// CAPI chỉ là kênh bổ sung cho Meta. Lỗi CAPI không được làm fail update.
+	if strings.TrimSpace(req.TrangThai) != "" {
+		go h.dispatchCAPICRMSync(req.ID, models.NormalizeLeadStatus(req.TrangThai))
+	}
+
 	// Ghi nhận Audit Log hoạt động quản trị
 	clientIP := ExtractClientIP(r)
 	ua := r.UserAgent()
@@ -764,6 +794,127 @@ func (h *LeadHandler) HandleUpdateLead(w http.ResponseWriter, r *http.Request) {
 		"message": "Cập nhật trạng thái CRM thành công",
 		"id":      req.ID,
 	})
+}
+
+// dispatchCAPILead gửi sự kiện `Lead` lên Meta Conversions API.
+//
+// Được gọi trong goroutine riêng từ HandleSubmitLead.
+func (h *LeadHandler) dispatchCAPILead(lead *models.Lead, rawData map[string]interface{}, clientIP string) {
+	if h.capiDispatcher == nil || lead == nil {
+		return
+	}
+	lc := h.buildCAPILeadContext(lead, rawData, clientIP)
+	res := h.capiDispatcher.SendLeadEvent(lc)
+	if res != nil && res.Error != "" {
+		fmt.Printf("[CAPI] Lỗi gửi sự kiện Lead cho lead #%d: %s\n", lead.ID, res.Error)
+	}
+}
+
+// buildCAPILeadContext dựng ngữ cảnh lead để gửi CAPI.
+func (h *LeadHandler) buildCAPILeadContext(lead *models.Lead, rawData map[string]interface{}, clientIP string) *facebook.LeadContext {
+	tracking := map[string]interface{}{}
+	if rawData != nil {
+		tracking = rawData
+	} else if len(lead.Tracking) > 0 {
+		_ = json.Unmarshal(lead.Tracking, &tracking)
+	}
+
+	fullName := ""
+	if v, ok := tracking["fullName"]; ok && v != nil {
+		fullName = fmt.Sprintf("%v", v)
+	}
+	if fullName == "" {
+		if v, ok := tracking["full_name"]; ok && v != nil {
+			fullName = fmt.Sprintf("%v", v)
+		}
+	}
+	if fullName == "" {
+		if v, ok := tracking["name"]; ok && v != nil {
+			fullName = fmt.Sprintf("%v", v)
+		}
+	}
+
+	email := ""
+	for _, k := range []string{"email", "user_email", "email_address"} {
+		if v, ok := tracking[k]; ok && v != nil {
+			s := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if s != "" && s != "<nil>" {
+				email = s
+				break
+			}
+		}
+	}
+
+	// event_id do client gửi lên (nếu có) → dùng chung với fbq để Meta gộp event.
+	eventID := ""
+	for _, k := range []string{"event_id", "eventId", "fb_event_id"} {
+		if v, ok := tracking[k]; ok && v != nil {
+			s := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if s != "" && s != "<nil>" {
+				eventID = s
+				break
+			}
+		}
+	}
+
+	ua := ""
+	for _, k := range []string{"server_user_agent", "user_agent", "userAgent"} {
+		if v, ok := tracking[k]; ok && v != nil {
+			s := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if s != "" && s != "<nil>" {
+				ua = s
+				break
+			}
+		}
+	}
+
+	return &facebook.LeadContext{
+		LeadID:    lead.ID,
+		LandingID: lead.LandingID,
+		Nguon:     lead.Nguon,
+		Phone:     lead.Phone,
+		FullName:  fullName,
+		Email:     email,
+		City:      lead.City,
+		Region:    lead.Region,
+		Country:   lead.Country,
+		ISP:       lead.ISP,
+		URL:       lead.URL,
+		Tracking:  tracking,
+		ClientIP:  clientIP,
+		UserAgent: ua,
+		EventID:   eventID,
+	}
+}
+
+// dispatchCAPICRMSync gửi sự kiện chuyển đổi khi sales đổi trạng thái CRM.
+//
+// Được gọi trong goroutine riêng từ HandleUpdateLead.
+func (h *LeadHandler) dispatchCAPICRMSync(leadID uint64, trangThai string) {
+	if h.capiDispatcher == nil {
+		return
+	}
+	// Chỉ các trạng thái gắn giá trị tiền mới sinh sự kiện Meta.
+	hasValue, _ := models.LeadStatusValue(trangThai)
+	if !hasValue {
+		return
+	}
+
+	lead, err := h.store.GetLeadByID(leadID)
+	if err != nil {
+		fmt.Printf("[CAPI] Không đọc được lead #%d để đồng bộ CRM: %v\n", leadID, err)
+		return
+	}
+
+	lc := h.buildCAPILeadContext(lead, nil, "")
+	// IP/UA gốc đã lưu trong tracking từ lúc lead được tạo.
+	lc.ClientIP = lc.TrackingString("server_ip", "ip_address")
+	lc.UserAgent = lc.TrackingString("server_user_agent", "user_agent")
+
+	res := h.capiDispatcher.SendCRMSyncEvent(lc, trangThai)
+	if res != nil && res.Error != "" {
+		fmt.Printf("[CAPI] Lỗi gửi sự kiện CRM cho lead #%d (trạng thái %s): %s\n", leadID, trangThai, res.Error)
+	}
 }
 
 // HandleCRMStats cung cấp toàn bộ dữ liệu thống kê CRM: 24h Hourly breakdown, Daily trends, Status counts, Carrier & Source breakdowns
