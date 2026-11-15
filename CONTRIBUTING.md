@@ -120,7 +120,11 @@ Báo cáo phải kết thúc bằng:
 □ Không còn console.log debug
 □ Output từ dữ liệu người dùng đã escape (XSS)
 □ Honeypot + autofill-safe còn nguyên (nếu đụng tracker.js)
+□ Cặp PoW (challenge, solution) khớp 1-1 — dùng `challengeState` (1 biến) + single-flight (nếu đụng tracker.js)
+□ node scripts/sync-static-mirror.js đã chạy (7 bản mirror tracker.js)
 □ Ghi DB → đã gọi Reload() cache
+□ Query có `COALESCE` fallback sang cột khác → đã bọc CTE + GROUP BY trên alias "sạch" (tránh lỗi 42803)
+□ Aggregate có thể NULL → đã bọc `COALESCE(MAX(...), 0)` (tránh lỗi Scan NULL → 500)
 □ frontend/admin/ đã đồng bộ sang backend/static/
 □ docs liên quan đã cập nhật
 □ git diff không chứa .env / service-account.json

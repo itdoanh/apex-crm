@@ -92,7 +92,7 @@ Server trả về `{ challenge_id, salt, difficulty, expires_at, signature }`.
 | `missing_params` | Thiếu tham số challenge | → `spam_quarantine` (shadow ban) |
 | `expired` | Challenge hết hạn | → `spam_quarantine` |
 | `bad_signature` | HMAC sai (client sửa tham số) | → `spam_quarantine` |
-| `invalid_solution` | Hash không thỏa điều kiện | → `spam_quarantine` |
+| `invalid_solution` | Hash không thỏa điều kiện | → `spam_quarantine` *(trừ khi server tự phục hồi được — xem mục "Nguyên nhân #5")* |
 | `replay` | Nonce đã dùng, **fingerprint KHÁC** ⇒ bot chơi lại payload | → `spam_quarantine` |
 | `duplicate_submit` | Nonce đã dùng, **fingerprint GIỐNG** ⇒ client gửi trùng | **KHÔNG ghi cách ly**, trả 200 OK idempotent |
 
@@ -167,6 +167,61 @@ Cả 3 đều gọi `ApexTracker.sendLeadToBackend()` ⇒ **cùng 1 payload** (k
 > Lớp bảo vệ #1 (fingerprint server) là lớp duy nhất **không phụ thuộc client** ⇒
 > vẫn giữ được tín hiệu "gửi trùng do client" mà không ghi lead thật vào vùng cách ly.
 
+### 🩹 Nguyên nhân #5 — RACE CONDITION challenge/solution (fix 2026-11-15)
+
+**Triệu chứng:** lead thật #65 (`0368942836` / "Luc van pao", UA HeyTapBrowser, landing `landing_cu`)
+bị ghi vào `spam_quarantine` với lý do **"Lỗi Proof-of-Work"** (`pow_invalid`) ⇒ **lead bị rơi**.
+
+**Bằng chứng (đã kiểm chứng bằng crypto, không phải phỏng đoán):**
+
+| Kiểm tra | Kết quả | Kết luận |
+|---|---|---|
+| `HMAC-SHA256(challenge_id:salt:difficulty:expires_at)` | **KHỚP** với `challenge_signature` trong payload | Challenge do **server thật** phát ⇒ không phải giả mạo |
+| `SHA256(challenge_id:salt:solution)` | `7d57932c…` — **KHÔNG** bắt đầu bằng `"000"` | Lời giải **KHÔNG thuộc** challenge mà client khai báo ⇒ thuộc challenge KHÁC |
+
+⇒ Kết luận: payload mang **`challenge_id` của challenge B** nhưng **`challenge_solution` của challenge A**.
+
+**NGUYÊN NHÂN GỐC (race condition client):** `tracker.js` bản cũ giữ 2 biến rời rạc
+`currentChallenge` + `currentChallengeSolution`. `ensureChallengeReady()` được gọi **SONG SONG**
+từ nhiều nơi (`autofill`, `focusin`, `input`, `change`, `submit`):
+
+```
+1. fetch challenge MỚI (A, B, C...)
+2. currentChallenge = <challenge vừa fetch>   ← ghi đè
+3. currentChallengeSolution = null              ← xoá
+4. await solveProofOfWork(challenge)            ← YIELD (15-30ms)
+5. currentChallengeSolution = <lời giải>        ← ghi đè
+```
+
+Lần gọi A giải chậm hơn B ⇒ thứ tự ghi: B xong trước `(cur=B, sol=solB)` → A xong sau
+`(cur=B, sol=solA)` ⇒ **cur KHÔNG đổi nhưng sol bị ghi đè** ⇒ payload ghép nhầm.
+
+**CÁCH SỬA — 3 lớp:**
+
+| Lớp | Vị trí | Nội dung |
+|---|---|---|
+| **1. Client — cặp nguyên tử** | `frontend/admin/js/tracker.js` | `challengeState = { challenge, solution }` — 1 biến duy nhất, luôn khớp 1-1 |
+| **2. Client — single-flight** | `frontend/admin/js/tracker.js` | `challengeFetchPromise` gom mọi lời gọi song song về **1** request ⇒ chỉ có 1 challenge tồn tại tại 1 thời điểm |
+| **3. Client — tự verify** | `frontend/admin/js/tracker.js` | `verifyPowSolution()` + `ensurePowPairValid()` — tự băm lại `SHA256(c:s:sol)` **trước khi gửi**; lệch ⇒ giải lại chứ KHÔNG gửi payload hỏng |
+| **4. Server — tự phục hồi** | `backend/security/challenge.go` | `healMismatchedSolution()` — server nhớ **salt gốc** của mọi challenge đã phát; khi lời giải không khớp challenge khai báo ⇒ quét các challenge gần đây (`powHealWindow` = 3 phút) để tìm challenge **thật** sở hữu lời giải |
+
+> ⚠️ **Lớp #4 (server) là lớp KHÔNG phụ thuộc client** — bắt buộc, vì trình duyệt có thể
+> đang dùng `tracker.js` **bản cũ trong cache**. Không thể chỉ dựa vào fix client.
+>
+> ⚠️ **Lớp #4 KHÔNG làm lỏng chống bot**: bot vẫn phải giải đúng 1 challenge server đã phát
+> trong cửa sổ 3 phút ⇒ vẫn tốn công SHA-256 như bình thường. Lời giải rác ⇒ vẫn bị từ chối
+> (`invalid_solution`). HMAC sai ⇒ vẫn bị từ chối (`bad_signature`). Replay từ phiên khác ⇒ vẫn
+> bị chặn (`replay`).
+>
+> ⇒ `PowResult.EffectiveChallengeID` trả về challenge **thật** ⇒ handler dùng giá trị này cho
+> `MarkChallengeActive` / `ReleaseChallengeActive` ⇒ logic "gửi trùng do client" vẫn nhất quán.
+
+**Test:**
+- `backend/security/challenge_test.go` — `TestVerifyChallengeHealMismatchedSolution` ·
+  `...HealDoesNotAcceptGarbage` · `...HealStillBlocksReplay` · `...DuplicateSubmitAfterHeal` ·
+  `...HealBadSignatureStillRejected`
+- `backend/tests/e2e_pow_race_condition_test.js` — mô phỏng race client với 2/3/5/8 lời gọi song song
+
 ### Cấu hình
 
 | Tham số | Giá trị | Vị trí |
@@ -178,6 +233,8 @@ Cả 3 đều gọi `ApexTracker.sendLeadToBackend()` ⇒ **cùng 1 payload** (k
 | Biên an toàn client | **90 giây** — client tự lấy challenge mới nếu `expires_at <= now + 90` | `tracker.js` → `ensureChallengeReady()` |
 | TTL nonce cache | 10 phút, dọn mỗi 5 phút | `usedNonces` |
 | Cửa sổ "gửi trùng do client" | 60 giây | `duplicateSubmitWindow` |
+| Cửa sổ tự phục hồi PoW | **3 phút** (`powHealWindow`) — server quét challenge đã phát để tìm challenge thật sở hữu lời giải | `challenge.go` → `healMismatchedSolution()` |
+| Số challenge server nhớ lại | 2000 (đủ cho cửa sổ 3 phút) | `challenge.go` → `issuedChallengesOrder` |
 | Khoá gửi trùng phía client | 30 giây | `tracker.js` → `LEAD_DEDUP_WINDOW_MS` |
 | Secret HMAC | biến môi trường `CHALLENGE_SECRET`, fallback `defaultChallengeSecretKey` | `challenge.go` |
 

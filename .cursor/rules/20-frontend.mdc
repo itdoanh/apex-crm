@@ -124,6 +124,8 @@ Lead data đến từ **form công khai** → không bao giờ tin. Luôn escape
 - ❌ Phá logic autofill-safe (đặt `is_autofill`, `autofill_source`, `fill_duration_ms`).
 - ❌ Gửi lead trước khi giải PoW xong.
 - ❌ Xoá `challenge_*` khỏi payload.
+- ❌ **Tách `challenge` và `challenge_solution` thành 2 biến rời rạc** → race condition → lead thật bị ghi vào `spam_quarantine` "Lỗi Proof-of-Work" (bug 2026-11-15).
+- ❌ **Gọi `fetch` challenge trực tiếp ở nhiều nơi** → mỗi nơi 1 challenge riêng → race condition. Mọi lời gọi phải qua `ensureChallengeReady()` (single-flight).
 
 **Phải giữ:**
 ```javascript
@@ -131,7 +133,19 @@ Lead data đến từ **form công khai** → không bao giờ tin. Luôn escape
 const honeypots = ['website', 'fax_company_prefix', 'user_email_verify', 'company_website_url'];
 ```
 
-Chi tiết: `docs/SECURITY.md` mục 3 & 4.
+**PoW — cặp phải khớp 1-1 (fix 2026-11-15):**
+```javascript
+// ✅ ĐÚNG
+let challengeState = { challenge: null, solution: '' };
+let challengeFetchPromise = null;
+// + verifyPowSolution(challenge, solution) — tự băm lại trước khi gửi
+// + ensurePowPairValid() — lệch thì giải lại, KHÔNG gửi payload hỏng
+```
+
+> ⚠️ Sửa `tracker.js` ⇒ **phải** chạy `node scripts/sync-static-mirror.js` (7 bản mirror).
+> Nguồn chuẩn = `frontend/admin/js/tracker.js`.
+
+Chi tiết: `docs/SECURITY.md` mục 3 & 4 & "Nguyên nhân #5" · `docs/LANDING.md` mục PoW.
 
 ---
 

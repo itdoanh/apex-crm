@@ -94,6 +94,42 @@ Cột NOT NULL DEFAULT '' vẫn có thể NULL nếu dữ liệu cũ. Luôn bọ
 COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(city, '')
 ```
 
+> ⚠️ **NULL trong aggregate cũng phải COALESCE** — `MAX(bot_score)` trả NULL khi không có
+> dòng khớp ⇒ `Scan` vào `*int` lỗi "cannot scan NULL into *int" ⇒ endpoint trả HTTP 500.
+> ```go
+> // ❌ MAX(bot_score)::int              → NULL → Scan lỗi → 500
+> // ✅ COALESCE(MAX(bot_score), 0)::int
+> ```
+
+### ⚠️ `GROUP BY` + output alias — PostgreNG resolve theo TÊN CỘT THẬT (bug 2026-11-15)
+
+PostgreSQL resolve `GROUP BY <tên>` theo **TÊN CỘT THẬT** của bảng **trước**, rồi mới tới output alias.
+Nếu `SELECT` có biểu thức fallback sang cột KHÁC mà `GROUP BY` chỉ nhắm tên cột thật ⇒ cột fallback
+không nằm trong `GROUP BY` ⇒ **SQLSTATE 42803** ⇒ endpoint trả HTTP 500.
+
+```sql
+-- ❌ SAI — GROUP BY campaign_name = cột thật analytics_sessions.campaign_name
+--         ⇒ utm_campaign không có trong GROUP BY ⇒ lỗi 42803
+SELECT COALESCE(NULLIF(campaign_name,''), NULLIF(utm_campaign,''), 'none') AS campaign_name, ...
+FROM analytics_sessions
+GROUP BY campaign_name, adset_name, ad_name
+
+-- ✅ ĐÚNG — CTE tính sẵn, alias KHÔNG trùng tên cột thật
+WITH base AS (
+    SELECT COALESCE(NULLIF(campaign_name,''), NULLIF(utm_campaign,''), 'none') AS grp_campaign, ...
+    FROM analytics_sessions
+)
+SELECT grp_campaign AS campaign_name, ...
+FROM base
+GROUP BY grp_campaign, grp_adset, grp_ad
+```
+
+> ⇒ **Quy tắc:** nếu `SELECT` có `COALESCE`/`NULLIF` fallback sang cột khác ⇒ **phải** tính sẵn trong
+> CTE/subquery rồi group trên alias "sạch" (tên KHÔNG trùng cột thật của bảng).
+>
+> ⇒ Regression test: `backend/db/analytics_report_groupby_test.go`
+> (`TestAllReportQueriesRunWithoutSQLError` gọi TẤT CẢ hàm báo cáo với bộ lọc rộng nhất).
+
 ---
 
 ## 3. Cache — BẮT BUỘC Reload sau khi ghi
