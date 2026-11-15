@@ -219,6 +219,50 @@ func WriteHeaders(ctx context.Context, credentialsJSON string, rawSpreadsheetID 
 	return err
 }
 
+// WriteHeaderCells ghi tiêu đề vào đúng các ô cột cụ thể ở dòng 1.
+//
+// Dùng khi BỔ SUNG cột mới vào 1 Sheet đang có dữ liệu — chỉ ghi tiêu đề
+// của các cột mới, KHÔNG đụng vào cột cũ.
+//
+// `headers` là map {chỉ số cột (0-based): tiêu đề}.
+func WriteHeaderCells(ctx context.Context, credentialsJSON string, rawSpreadsheetID string, tabName string, headers map[int]string) error {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	resolvedCreds, err := ResolveCredentials(credentialsJSON)
+	if err != nil {
+		return err
+	}
+	credentialsJSON = resolvedCreds
+
+	sheetID := ExtractSpreadsheetID(rawSpreadsheetID)
+	srv, err := sheets.NewService(ctx, option.WithCredentialsJSON([]byte(credentialsJSON)))
+	if err != nil {
+		return fmt.Errorf("không thể khởi tạo Google Sheets Client: %w", err)
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+
+	valueRanges := make([]*sheets.ValueRange, 0, len(headers))
+	for colIdx, title := range headers {
+		col := columnLetter(colIdx)
+		valueRanges = append(valueRanges, &sheets.ValueRange{
+			Range:  fmt.Sprintf("'%s'!%s1:%s1", tabName, col, col),
+			Values: [][]interface{}{{title}},
+		})
+	}
+
+	_, err = srv.Spreadsheets.Values.BatchUpdate(sheetID, &sheets.BatchUpdateValuesRequest{
+		Data: valueRanges,
+	}).Context(ctxTimeout).Do()
+	if err != nil {
+		return fmt.Errorf("lỗi ghi tiêu đề cột mới vào Google Sheet: %w", err)
+	}
+	return nil
+}
+
 // AppendRow thêm một dòng dữ liệu mới vào cuối bảng tính của Google Sheet
 func AppendRow(ctx context.Context, credentialsJSON string, rawSpreadsheetID string, tabName string, rowValues []interface{}) (string, error) {
 	resolvedCreds, err := ResolveCredentials(credentialsJSON)

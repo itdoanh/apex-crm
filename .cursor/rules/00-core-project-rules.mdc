@@ -37,6 +37,17 @@ alwaysApply: true
 11. **Chuẩn PII Meta** (quyết định điểm EMQ): `country` = ISO-2 (`vn`) · `ct` = bỏ dấu
     (`ha noi`) · `st` = tỉnh thật, **bỏ qua vùng kinh tế** (`Miền Bắc`) · `ph` = E.164.
     IP/UA gốc của sự kiện CRM sync lấy từ `tracking.server_ip` / `tracking.server_user_agent`.
+12. **Danh mục trường Google Sheets có 1 nguồn duy nhất** —
+    `backend/integrations/googlesheets/fields.go` (`leadFieldCatalog`, ~90 trường / 9 nhóm).
+    Handler + `frontend/admin/js/sheets.js` đều lấy từ đây
+    (`GET /api/integrations/sheets/defaults`) ⇒ **KHÔNG** hardcode lại danh sách trường.
+13. **Cột chuẩn mới không tự áp dụng cho config đã lưu** — Admin bấm "Bổ sung Cột"
+    (`POST /api/integrations/sheets/configs/upgrade-mappings`): giữ cột cũ, thêm cột mới
+    vào CUỐI, ghi tiêu đề mới vào dòng 1 ⇒ không phá dữ liệu đang ghi.
+14. **Đổi trạng thái CRM cập nhật lại dòng Sheet** (không append) —
+    `syncLeadStatusToGoogleSheets()` tra `google_sheet_sync_logs.row_range` rồi
+    `Values.BatchUpdate` đúng dòng. Ô rỗng ⇒ bỏ qua. `RAW` (không diễn giải `=`
+    là công thức — chống formula injection qua ghi chú sales).
 
 ## Nguyên tắc bảo mật
 
