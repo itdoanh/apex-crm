@@ -38,9 +38,15 @@ Hệ thống xử lý traffic quảng cáo tài chính có **CPA cao** → mỗi
         └─────────────────────┬─────────────────────┘
                               │
                      ┌────────▼────────┐
-                     │  SAVE LEAD ✅   │──► Google Sheets
+                     │  SAVE LEAD ✅   │──► Google Sheets *(chỉ khi bật đồng bộ ngoài)*
                      └─────────────────┘
 ```
+
+> ⚠️ **Môi trường `test` KHÔNG đồng bộ ra ngoài.** `APEX_DISABLE_EXTERNAL_SYNC=true`
+> ⇒ `cfg.IsExternalSyncEnabled()` trả false ⇒ **không** ghi Google Sheets và **không**
+> gửi Meta CAPI. Mục đích: lead thử nghiệm không làm nhiễu KPI doanh thu thật.
+> Nguồn: `backend/config/config.go`, `backend/handlers/lead_handler.go`,
+> `backend/integrations/facebook/dispatcher.go`.
 
 ---
 

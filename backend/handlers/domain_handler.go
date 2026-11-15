@@ -304,14 +304,18 @@ func (h *DomainHandler) HandleCheckDomainAllowed(w http.ResponseWriter, r *http.
 	}
 	domain = strings.TrimPrefix(domain, "www.")
 
-	// 1. Cho phép các domain hệ thống mặc định
-	if domain == "localhost" ||
-		domain == "127.0.0.1" ||
-		domain == "crm.hanghoaphaisinh.net" ||
-		domain == "hanghoaphaisinh.net" ||
-		domain == "ns1.hanghoaphaisinh.net" ||
-		domain == "ns2.hanghoaphaisinh.net" ||
-		strings.HasSuffix(domain, ".hanghoaphaisinh.net") {
+	// 1. Cho phép các domain hệ thống của MÔI TRƯỜNG ĐANG CHẠY.
+	//
+	// ⚠️ Danh sách lấy từ `cfg.OnDemandAllowList` (theo môi trường):
+	//    - production: crm.hanghoaphaisinh.net, hanghoaphaisinh.net, ns1/ns2
+	//    - test:      test.hanghoaphaisinh.net, ns1/ns2
+	//
+	// ⚠️ KHÔNG dùng `strings.HasSuffix(domain, ".hanghoaphaisinh.net")` ở đây:
+	//    môi trường test cũng nằm dưới hanghoaphaisinh.net ⇒ hàm cũ cho phép
+	//    server production cấp SSL cho `test.hanghoaphaisinh.net` và ngược lại.
+	//    Vì Caddy 2.8.4 không hỗ trợ `ask` riêng theo site block, tách bạch
+	//    bằng danh sách allow-list là BẮT BUỘC.
+	if h.cfg != nil && h.cfg.IsOnDemandAllowed(domain) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 		return

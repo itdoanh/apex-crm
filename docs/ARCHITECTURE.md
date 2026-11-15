@@ -62,11 +62,28 @@ crm.hanghoaphaisinh.net {
     reverse_proxy 127.0.0.1:8080 { header_up Host {host}; header_up X-Real-IP {remote_host}; ... }
 }
 
+# Môi trường TEST — site block riêng, ưu tiên hơn block catch-all
+test.hanghoaphaisinh.net {
+    tls { on_demand }
+    reverse_proxy 127.0.0.1:8081 { header_up Host {host}; ... }
+}
+
 :443 {
     tls { on_demand }
     reverse_proxy 127.0.0.1:8080 { ... }
 }
 ```
+
+> ⚠️ **Caddy 2.8.4 không hỗ trợ `on_demand { ask ... }` lồng trong site block**
+> (lỗi `unknown subdirective: {`). Vì vậy **mọi** site block dùng chung **MỘT**
+> global `on_demand_tls` → `ask http://127.0.0.1:8080/api/internal/check-domain`
+> (hỏi backend **production**).
+>
+> ⇒ Backend production phải trả `200` cho `test.hanghoaphaisinh.net` (đã có trong
+> `onDemandAllowListByEnv` → `EnvProduction`), nếu không Caddy **không cấp được
+> chứng chỉ** cho domain test.
+>
+> Tách biệt vẫn đảm bảo vì Caddy định tuyến theo **HOST**, không theo cổng ask.
 
 ### Cơ chế On-Demand TLS
 
@@ -226,11 +243,45 @@ Chi tiết: `docs/SECURITY.md`.
 
 ## 8. Môi trường
 
-| Môi trường | Database | Cách chạy |
-|---|---|---|
-| Local | `postgres` @ `localhost:5432` | `go run main.go` |
-| Docker | `postgres` @ `postgres:5432` | `docker compose up -d` |
-| Production | `postgres` @ `localhost:5432` (native) | Task Scheduler + Caddy |
+### 8.1. Bảng tổng quan
 
-Cấu hình qua `.env` (xem `.env.example`). `config.Load()` tự tìm file `.env` ở:
+| Môi trường | `APEX_ENV` | Database | Port | Code trên server | Domain quản trị | Đồng bộ ra ngoài |
+|---|---|---|---|---|---|---|
+| **Local** | `local` | `apex_leads` (Docker `apex-postgres`) | `8080` | — (chạy trên máy dev) | `localhost` | ❌ TẮT |
+| **Test** | `test` | `apex_leads_test` | `8081` | `C:\apex-test` (branch `test`) | `test.hanghoaphaisinh.net` | ❌ TẮT |
+| **Production** | `production` | `apex_leads` (native `C:\pgsql`) | `8080` | `C:\apex` (branch `main`) | `crm.hanghoaphaisinh.net` | ✅ BẬT |
+
+### 8.2. Cơ chế cô lập
+
+Môi trường `test` được cô lập khỏi production bằng **3 lớp**:
+
+1. **Database riêng** — `apex_leads_test` ⇒ lead thử nghiệm không lẫn vào KPI doanh thu thật.
+2. **`APEX_DISABLE_EXTERNAL_SYNC=true`** — chặn ở tầng code:
+   - `cfg.IsExternalSyncEnabled()` → `syncLeadToGoogleSheets()` bỏ qua.
+   - `facebook.NewDispatcherWithSync(store, false)` → `resolveConfig()` trả `nil, nil` ⇒ không gửi Meta CAPI.
+3. **Caddy định tuyến theo HOST** — site block `test.hanghoaphaisinh.net` → `127.0.0.1:8081`
+   (backend test), site block `crm.hanghoaphaisinh.net` → `127.0.0.1:8080` (backend production).
+
+### 8.3. Cấu hình `.env`
+
+Cấu hình qua `.env` (xem `.env.example`, `deploy/windows/env.test.example`,
+`deploy/windows/env.production.example`). `config.Load()` tự tìm file `.env` ở:
 `.env`, `../.env`, `backend/.env`, cạnh executable, `../` cạnh executable.
+
+Biến môi trường chính (định nghĩa trong `backend/config/config.go`):
+
+| Biến | Giá trị hợp lệ | Ý nghĩa |
+|---|---|---|
+| `APEX_ENV` | `local` \| `test` \| `production` | Định danh môi trường. Nếu để trống ⇒ suy ra từ `DB_NAME` (`apex_leads_test` ⇒ test, `apex_leads` ⇒ production). |
+| `APEX_ADMIN_HOSTS` | danh sách host, phân tách bởi `,` | Host được phục vụ CRM Admin (`/ads`, `/admin`). Host khác bị chặn ⇒ CRM không lộ ra internet. |
+| `APEX_ON_DEMAND_DOMAINS` | danh sách domain, phân tách bởi `,` | Domain được phép cấp SSL on-demand (dùng bởi `check-domain`). |
+| `APEX_DISABLE_EXTERNAL_SYNC` | `true` \| `false` | Chặn Meta CAPI + Google Sheets. Mặc định: TẮT cho `test`, BẬT cho `local`/`production`. |
+
+### 8.4. Nhánh git
+
+| Nhánh | Môi trường | Quy trình |
+|---|---|---|
+| `test` | Test | commit từ local → push → server test `git pull` → build → restart task |
+| `main` | Production | merge từ `test` sau khi test OK → push → server production `git pull` → build → restart task |
+
+Chi tiết script: `docs/DEPLOYMENT.md` mục 1.0.

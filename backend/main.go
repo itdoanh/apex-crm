@@ -78,6 +78,15 @@ func main() {
 
 	cfg := config.Load()
 
+	// Log môi trường đang chạy — giúp chẩn đoán nhầm môi trường ngay khi
+	// đọc log server.log (production / test / local chạy CÙNG 1 server).
+	log.Printf("[INFO] MÔI TRƯỜNG: %s | DB=%s | Admin host=%s | Đồng bộ ra ngoài: %s",
+		strings.ToUpper(cfg.Environment),
+		cfg.DBName,
+		cfg.AdminHost,
+		map[bool]string{true: "BẬT (CAPI + Google Sheets)", false: "TẮT (cô lập)"}[cfg.IsExternalSyncEnabled()],
+	)
+
 	// 1. Khởi tạo CSDL PostgreSQL
 	store, err := db.NewStore(cfg.DatabaseURL)
 	if err != nil {
@@ -132,6 +141,15 @@ func main() {
 	// Tự động seed tên miền mặc định (hanghoaphaisinh.net, dautuhanghoa.vn)
 	if err := store.SeedDefaultDomains(context.Background()); err != nil {
 		log.Printf("[WARN] Không thể seed tên miền mặc định: %v", err)
+	}
+
+	// Tự động seed domain + route RIÊNG cho môi trường đang chạy.
+	//
+	// ⚠️ Môi trường `test` dùng domain `test.hanghoaphaisinh.net` ⇒ Caddy
+	//    (on-demand TLS) cấp được SSL cho domain test mà KHÔNG cần đăng ký
+	//    thủ công trong CRM. Route `/` trỏ tới landing mặc định.
+	if err := store.SeedEnvironmentDomain(context.Background(), cfg.Environment); err != nil {
+		log.Printf("[WARN] Không thể seed domain của môi trường '%s': %v", cfg.Environment, err)
 	}
 
 	// Tự động khởi tạo duy nhất 1 tài khoản Admin tối cao nếu hệ thống chưa có
@@ -382,11 +400,15 @@ func main() {
 	adminHandler := func(w http.ResponseWriter, r *http.Request) {
 		reqPath := r.URL.Path
 
-		// QUAN TRỌNG: Nếu đây là custom domain (không phải domain admin crm.hanghoaphaisinh.net và không phải localhost / server IP)
-		// VÀ domainCache có route khớp với reqPath trên host này (ví dụ: host "ads.giaodichhanghoatuonglai.com" có route "/ads" hoặc "/landing")
+		// QUAN TRỌNG: Nếu đây là custom domain (không phải domain admin của môi
+		// trường đang chạy) VÀ domainCache có route khớp với reqPath trên host này
+		// (ví dụ: host "ads.giaodichhanghoatuonglai.com" có route "/ads" hoặc "/landing")
 		// -> Nhường quyền xử lý cho multi-domain edge router, KHÔNG ĐƯỢC chặn để hiện Admin!
+		//
+		// ⚠️ Danh sách host quản trị lấy từ `cfg.AdminHosts` — khác nhau theo môi
+		//    trường (production: crm.hanghoaphaisinh.net · test: test.hanghoaphaisinh.net).
 		normHost := cache.NormalizeHost(r.Host)
-		isCustomDomain := normHost != "crm.hanghoaphaisinh.net" && normHost != "localhost" && normHost != "127.0.0.1" && normHost != "103.124.95.232"
+		isCustomDomain := !cfg.IsAdminHost(normHost)
 		if isCustomDomain {
 			if domainCache != nil && domainCache.HasDomain(r.Host) {
 				if _, _, _, _, found := domainCache.ResolveRoute(r.Host, reqPath); found {
@@ -778,14 +800,15 @@ func main() {
 
 		// 3. Nếu là root '/' và không thuộc domain route nào -> redirect về /admin
 		//
-		// ⚠️ CHỈ áp dụng cho domain QUẢN TRỊ (crm.hanghoaphaisinh.net, localhost).
+		// ⚠️ CHỈ áp dụng cho domain QUẢN TRỊ (crm.hanghoaphaisinh.net ở production,
+		// test.hanghoaphaisinh.net ở test, localhost ở local).
 		// Trên CUSTOM DOMAIN, redirect tới /admin sẽ LỘ giao diện CRM Admin ra
 		// domain public (đã xác nhận trên production 2026-11-13:
 		// ads.giaodichhanghoatuonglai.com/ → 302 /admin).
 		// ⇒ Custom domain trả 404 rõ ràng thay vì điều hướng tới CRM.
 		if reqPath == "/" {
 			normHost := cache.NormalizeHost(r.Host)
-			isAdminHost := normHost == "crm.hanghoaphaisinh.net" || normHost == "localhost" || normHost == "127.0.0.1" || normHost == "103.124.95.232"
+			isAdminHost := cfg.IsAdminHost(normHost)
 			if !isAdminHost {
 				http.NotFound(w, r)
 				return

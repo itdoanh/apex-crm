@@ -205,8 +205,14 @@ ssh Administrator@103.124.95.232 -p 22899
 | Backup DB | `C:\backup\apex_leads\` (task hằng ngày 02:00) |
 | Task | `Apex_Backend_Server`, `Apex_Caddy_Server`, `Apex_DB_Backup`, `Apex_Disk_Cleanup` |
 
-> ⚠️ **Server KHÔNG có Go toolchain.** Build binary ở LOCAL rồi `scp` lên server.
+> ⚠️ **Server ĐÃ có Go toolchain** (`C:\Program Files\Go\bin\go.exe`, Go 1.27.4, cài 2026-11-15)
+> ⇒ build trực tiếp trên server được; build ở LOCAL rồi `scp` lên vẫn là dự phòng.
 > Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
+
+> ℹ️ **Hệ thống chạy 3 môi trường** (local · test · production) trên cùng server.
+> Môi trường test: `C:\apex-test` (branch `test`, port `8081`, DB `apex_leads_test`,
+> Task `Apex_Backend_Server_Test`, domain `test.hanghoaphaisinh.net`).
+> Xem `docs/DEPLOYMENT.md` mục 1.0.
 
 Chi tiết: `docs/DEPLOYMENT.md`.
 

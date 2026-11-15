@@ -77,8 +77,10 @@ reverse_proxy 127.0.0.1:8080 {
 > ⚠️ **Không dùng `lb_try_count`** — subdirective này chỉ có từ Caddy 2.9+,
 > production chạy 2.8.4 ⇒ `caddy validate` fail ⇒ Caddy không khởi động được.
 
-> ⚠️ **Server KHÔNG có Go toolchain.** Không chạy `build.bat` qua SSH (có `pause` ⇒ treo
-> phiên). Build ở local rồi `scp` binary lên. Xem `docs/DEPLOYMENT.md` mục 1.1.
+> ⚠️ **Server ĐÃ có Go toolchain** (`C:\Program Files\Go\bin\go.exe`, Go 1.27.4, cài 2026-11-15)
+> ⇒ có thể build trực tiếp trên server. Vẫn **không** chạy `build.bat` qua SSH (có `pause` ⇒ treo
+> phiên). Build ở local rồi `scp` binary lên vẫn là phương án dự phòng.
+> Xem `docs/DEPLOYMENT.md` mục 1.1.
 
 ---
 

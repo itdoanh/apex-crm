@@ -49,7 +49,7 @@ Quy tắc chi tiết cho AI agent nằm ở `.cursor/rules/` — chúng được
 ## 3. Lệnh thường dùng
 
 ```bash
-# Build backend (Windows) — chạy ở LOCAL, server KHÔNG có Go
+# Build backend (Windows) — chạy ở LOCAL hoặc trên server (server ĐÃ có Go 1.27.4)
 cd backend && build.bat              # → apex-backend.exe
 cd backend && build_linux.bat        # → apex-server (Linux binary)
 
@@ -77,13 +77,41 @@ python backend/tests/test_full_suite.py
 | Database | `apex_leads` @ `localhost:5432` (user `postgres`) |
 | Quản lý tiến trình | **Task Scheduler** (`Apex_Backend_Server`, `Apex_Caddy_Server`) — KHÔNG phải NSSM |
 | Backend listen | `:8080` · Caddy `:80/:443` |
+| Go toolchain | ✅ **ĐÃ CÓ** `C:\Program Files\Go\bin\go.exe` (Go 1.27.4, cài 2026-11-15) |
 
-> 🚨 **Quy tắc vàng:** Sửa code ở local → test → commit → push → **build binary ở LOCAL**
-> (⚠️ **server KHÔNG có Go toolchain** — đã kiểm tra 2026-11-15: không `C:\Go`,
-> không `C:\Program Files\Go`, `where go` không ra) → `scp` binary lên server →
-> pull code trên server → swap binary → restart task.
-> **TUYỆT ĐỐI KHÔNG sửa file trực tiếp trên server** bằng tay (trừ khi là emergency hotfix, và phải ghi lại).
-> Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
+> 🚨 **Quy tắc vàng:** Sửa code ở local → **test ở môi trường TEST** → merge `main` → deploy production.
+> Chi tiết quy trình 2 môi trường: `docs/DEPLOYMENT.md` mục 1.0.
+
+### 4.1. Ba môi trường (local · test · production)
+
+| | **LOCAL** | **TEST** | **PRODUCTION** |
+|---|---|---|---|
+| `APEX_ENV` | `local` | `test` | `production` |
+| Database | `apex_leads` (Docker `apex-postgres`) | `apex_leads_test` | `apex_leads` (native `C:\pgsql`) |
+| Port | `8080` | `8081` | `8080` |
+| Code trên server | — | `C:\apex-test` (branch `test`) | `C:\apex` (branch `main`) |
+| Task Scheduler | — | `Apex_Backend_Server_Test` | `Apex_Backend_Server` |
+| Domain quản trị | `localhost` | `test.hanghoaphaisinh.net` | `crm.hanghoaphaisinh.net` |
+| Đồng bộ ra ngoài | ❌ TẮT | ❌ TẮT | ✅ BẬT (Meta CAPI + Google Sheets) |
+
+**Luồng chuẩn:**
+```
+LOCAL → git push origin test → SERVER TEST (deploy_test.ps1) → test OK
+      → git merge test → git push origin main → SERVER PROD (deploy_prod.ps1)
+```
+
+Môi trường test **cô lập** bằng 3 lớp:
+1. Database riêng `apex_leads_test` ⇒ lead thử không lẫn KPI doanh thu thật.
+2. `APEX_DISABLE_EXTERNAL_SYNC=true` ⇒ `cfg.IsExternalSyncEnabled()` chặn Google Sheets + Meta CAPI.
+3. Caddy định tuyến theo HOST: `test.hanghoaphaisinh.net` → `127.0.0.1:8081`.
+
+> ⚠️ **Caddy 2.8.4 chỉ có MỘT global `on_demand_tls`** (không hỗ trợ `ask` riêng theo
+> site block) ⇒ backend production phải trả `200` cho `test.hanghoaphaisinh.net`
+> (đã có trong `onDemandAllowListByEnv` → `EnvProduction`), nếu không test domain
+> không có HTTPS.
+
+Script: `deploy/windows/setup_test_env.ps1` · `deploy_test.ps1` · `deploy_prod.ps1`.
+Mẫu env: `deploy/windows/env.test.example` · `env.production.example` · `.env.example`.
 
 ---
 

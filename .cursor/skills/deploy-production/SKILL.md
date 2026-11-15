@@ -40,19 +40,86 @@ Worker hỗ trợ: lệnh cmd thường · `PS1:<file>` (upload + execute) · `P
 
 ## Quy trình deploy
 
+> ⭐ **Luôn deploy qua môi trường TEST trước** (thiết lập 2026-11-15).
+> Chi tiết: `docs/DEPLOYMENT.md` mục 1.0.
+
 ```
-Bước 1 — Local:  build + test
-Bước 2 — Commit + push
-Bước 3 — Server:  git pull
-Bước 4 — Server:  build binary
-Bước 5 — Server:  restart Task Scheduler
-Bước 6 — Verify:  /health + log Caddy
+Bước 0 — Local:  commit + push branch `test`
+Bước 1 — Server TEST:  deploy_test.ps1 (pull → build → restart → health)
+Bước 2 — Kiểm thử tại https://test.hanghoaphaisinh.net/ads
+Bước 3 — Local:  git merge test → push main
+Bước 4 — Server PROD:  deploy_prod.ps1 (pull → build → restart → health)
+Bước 5 — Verify:  /health + log Caddy
 ```
+
+### Bước 0 — Commit & push lên branch `test`
+
+```powershell
+cd c:\code\apex_moi\landing
+git checkout test
+git status
+git diff --cached
+git add <file cụ thể>
+git commit -m "fix(scope): mô tả tiếng Việt"
+git push origin test
+```
+
+Format: `feat(scope):` / `fix(scope):` / `chore(scope):`
+Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
+
+### Bước 1 — Deploy lên môi trường TEST (server)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex-test\deploy\windows\deploy_test.ps1
+```
+
+Script tự làm: `git pull origin test` → build (Go 1.27.4 trên server) →
+restart Task `Apex_Backend_Server_Test` → verify `http://127.0.0.1:8081/health`.
+
+### Bước 2 — Kiểm thử
+
+```powershell
+Invoke-WebRequest https://test.hanghoaphaisinh.net/health -UseBasicParsing
+Invoke-WebRequest https://test.hanghoaphaisinh.net/ads -UseBasicParsing
+```
+
+### Bước 3 — Merge lên `main`
+
+```powershell
+git checkout main
+git merge test
+git push origin main
+```
+
+### Bước 4 — Deploy lên production (server)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\deploy_prod.ps1
+```
+
+> ⚠️ `deploy_prod.ps1` **từ chối chạy** nếu branch `test` chưa merge vào `main`.
+> Dùng `-Force` để bỏ qua (chỉ khi deploy khẩn cấp).
+
+### Bước 5 — Verify
+
+```cmd
+curl http://127.0.0.1:8080/health
+curl https://crm.hanghoaphaisinh.net/health
+powershell -NoProfile -Command "Select-String -Path C:\caddy\logs\caddy.log -Pattern ERROR | Select-Object -Last 5"
+```
+
+**Đạt** khi: cả 2 health trả `{"status":"ok"}` và không có 502 mới trong log Caddy.
+
+---
+
+## Phương án dự phòng — build ở LOCAL rồi `scp` binary lên
+
+Dùng khi server mất mạng hoặc cần deploy khẩn cấp.
 
 ### Bước 1 — Build & test local
 
-> 🚨 **Server KHÔNG có Go toolchain** (đã kiểm tra 2026-11-15: không `C:\Go`,
-> không `C:\Program Files\Go`, `where go` không ra). **Phải build ở LOCAL.**
+> ℹ️ Server **ĐÃ có Go toolchain** (`C:\Program Files\Go\bin\go.exe`, Go 1.27.4, cài 2026-11-15)
+> ⇒ có thể build trực tiếp trên server. Các bước dưới đây là phương án dự phòng.
 
 ```powershell
 cd c:\code\apex_moi\landing\backend
@@ -60,20 +127,6 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; $env:GOMAXPROCS="1"; $env:GOGC="25"
 go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
 go vet ./...
 ```
-
-### Bước 2 — Commit & push
-
-```powershell
-cd c:\code\apex_moi\landing
-git status
-git diff --cached
-git add <file cụ thể>
-git commit -m "fix(scope): mô tả tiếng Việt"
-git push
-```
-
-Format: `feat(scope):` / `fix(scope):` / `chore(scope):`
-Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
 
 ### Bước 3 — Upload binary lên server
 
@@ -107,23 +160,14 @@ schtasks /Run /TN "Apex_Backend_Server"
 
 Chờ 3–5 giây.
 
-### Bước 6 — Verify
-
-```cmd
-curl http://127.0.0.1:8080/health
-curl https://crm.hanghoaphaisinh.net/health
-powershell -NoProfile -Command "Select-String -Path C:\caddy\logs\caddy.log -Pattern ERROR | Select-Object -Last 5"
-```
-
-**Đạt** khi: cả 2 health trả `{"status":"ok"}` và không có 502 mới trong log Caddy.
-
 ---
 
 ## ⚠️ Bẫy vận hành
 
 | Bẫy | Hậu quả | Cách tránh |
 |---|---|---|
-| **Chạy `build.bat` / `go build` trên server** | Server KHÔNG có Go ⇒ build fail, có khi treo vì `pause` | Build ở LOCAL rồi scp binary lên |
+| **Chạy `build.bat` trên server** | Script có `pause` ⇒ treo phiên SSH vô thời hạn | Dùng `go build` trực tiếp, hoặc `deploy_test.ps1` / `deploy_prod.ps1` |
+| **Linker flag gõ trực tiếp qua SSH cmd.exe** | `flag provided but not defined: -w\` (cmd xử lý sai dấu nháy kép) | Bọc lệnh build trong file `.ps1` rồi thực thi file |
 | **PUT qua worker `apex.ps1` với path có `:`** | `scp` bị cắt path → "stat local \"C\": No such file" | Dùng `scp` trực tiếp cho path local |
 | **Copy binary cũ đè khi process đang giữ handle** | "file đang được sử dụng" | `Rename-Item` binary cũ trước rồi `Copy-Item` mới |
 | Working directory sai | Static files 404 → landing chết | Task Scheduler WD phải là `C:\apex\backend` |
@@ -155,9 +199,8 @@ Script thu thập: tiến trình · port · Task Scheduler + Working Directory �
 
 ## Rollback
 
-> ⚠️ Server KHÔNG có Go ⇒ **không** `build.bat` trên server.
-> Rollback bằng cách copy lại file `.bak` (đã lưu ở mỗi lần deploy) hoặc
-> build lại ở LOCAL rồi upload.
+> ℹ️ Server ĐÃ có Go ⇒ có thể build lại tại chỗ. Vẫn **không** `build.bat` trên server
+> (có `pause` ⇒ treo phiên). Rollback nhanh nhất: copy lại file `.bak` (đã lưu ở mỗi lần deploy).
 
 ```cmd
 cd C:\apex
@@ -168,6 +211,8 @@ dir C:\apex\backend\apex-server.exe.bak_*
 copy C:\apex\backend\apex-server.exe.bak_<timestamp> C:\apex\backend\apex-server.exe -Force
 schtasks /End /TN "Apex_Backend_Server" && schtasks /Run /TN "Apex_Backend_Server"
 ```
+
+Rollback môi trường test: thay `C:\apex` → `C:\apex-test`, task `Apex_Backend_Server` → `Apex_Backend_Server_Test`.
 
 ---
 

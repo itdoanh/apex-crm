@@ -1,6 +1,187 @@
-# Deployment & Operations — Production
+# Deployment & Operations — Production + Test
 
 Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
+
+> 🏗️ **Kiến trúc 2 môi trường trên CÙNG một server** (thiết lập 2026-11-15):
+>
+> | | **PRODUCTION** | **TEST** |
+> |---|---|---|
+> | Mục đích | Nhận lead thật, đồng bộ Sheets, gửi Meta CAPI | Up code & kiểm thử trước khi deploy |
+> | Code | `C:\apex` (branch `main`) | `C:\apex-test` (branch `test`) |
+> | Port | `8080` | `8081` |
+> | Database | `apex_leads` | `apex_leads_test` |
+> | Task Scheduler | `Apex_Backend_Server` | `Apex_Backend_Server_Test` |
+> | Domain quản trị | `crm.hanghoaphaisinh.net` | `test.hanghoaphaisinh.net` |
+> | Đồng bộ ra ngoài | ✅ CAPI + Google Sheets | ❌ TẮT (`APEX_DISABLE_EXTERNAL_SYNC=true`) |
+>
+> Chi tiết: mục **1.0**.
+
+---
+
+## 1.0. Kiến trúc 2 môi trường
+
+### 1.0.1. Sơ đồ tổng thể
+
+```
+                          Internet
+                              │
+                 :80 / :443  ▼
+                    ┌──────────────────────┐
+                    │  Caddy (2.8.4)       │
+                    │  1 tiến trình, 2 site │
+                    └───────┬──────────────┘
+                            │ reverse_proxy theo HOST
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+   crm.hanghoaphaisinh.net      test.hanghoaphaisinh.net
+   + domain landing khác         (site block riêng)
+              │                           │
+              ▼                           ▼
+      :8080 (apex-server.exe)    :8081 (apex-server.exe)
+      Task: Apex_Backend_Server  Task: Apex_Backend_Server_Test
+      WD: C:\apex\backend         WD: C:\apex-test\backend
+      Code: C:\apex (main)        Code: C:\apex-test (test)
+              │                           │
+              ▼                           ▼
+      DB: apex_leads              DB: apex_leads_test
+              │                           │
+              ▼                           ▼
+      ✅ Meta CAPI                 ❌ KHÔNG gửi CAPI
+      ✅ Google Sheets              ❌ KHÔNG ghi Sheets
+```
+
+> ⚠️ **Caddy chỉ có MỘT global `on_demand_tls`** (Caddy 2.8.4 **không** hỗ trợ
+> `on_demand { ask ... }` lồng trong site block — đã kiểm tra 2026-11-15, báo lỗi
+> `unknown subdirective: {`). Vì vậy:
+>
+> - `ask http://127.0.0.1:8080/api/internal/check-domain` — hỏi **backend production**.
+> - Backend production **phải** trả `200` cho `test.hanghoaphaisinh.net` ⇒ đã thêm
+>   domain này vào `APEX_ON_DEMAND_DOMAINS` của production
+>   (xem `backend/config/config.go` → `onDemandAllowListByEnv`).
+> - **Tách biệt thật sự vẫn đảm bảo** vì Caddy định tuyến theo **HOST**:
+>   site block `test.hanghoaphaisinh.net` → `127.0.0.1:8081`,
+>   site block `crm.hanghoaphaisinh.net` → `127.0.0.1:8080`.
+
+### 1.0.2. Luồng làm việc (branch flow)
+
+```
+   LOCAL (C:\code\apex_moi\landing)
+      │  git checkout test && git commit && git push origin test
+      ▼
+   TEST SERVER (C:\apex-test, branch test, port 8081)
+      │  https://test.hanghoaphaisinh.net/ads
+      │  ← kiểm thử đầy đủ (lead thử, CRM, landing, tracker)
+      │
+      │  OK ⇒ git checkout main && git merge test && git push origin main
+      ▼
+   PRODUCTION SERVER (C:\apex, branch main, port 8080)
+         https://crm.hanghoaphaisinh.net/ads
+```
+
+> ⚠️ **Test KHÔNG được ghi dữ liệu ra ngoài.** Nếu không, mỗi lần test lead là một
+> lần ghi vào Google Sheets production + tính vào KPI doanh thu thật.
+> Cơ chế chặn: `APEX_DISABLE_EXTERNAL_SYNC=true` → `cfg.IsExternalSyncEnabled()`
+> (chặn cả `syncLeadToGoogleSheets` lẫn `facebook.Dispatcher`).
+
+### 1.0.3. Biến môi trường
+
+| Biến | Giá trị | Ý nghĩa |
+|---|---|---|
+| `APEX_ENV` | `local` \| `test` \| `production` | Định danh môi trường (suy ra từ `DB_NAME` nếu để trống) |
+| `APEX_ADMIN_HOSTS` | danh sách host | Host được phục vụ giao diện CRM Admin (`/ads`, `/admin`) |
+| `APEX_ON_DEMAND_DOMAINS` | danh sách domain | Domain được phép cấp SSL on-demand |
+| `APEX_DISABLE_EXTERNAL_SYNC` | `true` \| `false` | Chặn Meta CAPI + Google Sheets |
+
+Nguồn: `backend/config/config.go`.
+
+### 1.0.4. Script trong repo
+
+| Script | Mục đích |
+|---|---|
+| `deploy/windows/setup_test_env.ps1` | Dựng môi trường test trên server (DB, clone, `.env`, Task, build, start) |
+| `deploy/windows/deploy_test.ps1` | Deploy branch `test` → môi trường test (pull → build → restart task → health) |
+| `deploy/windows/deploy_prod.ps1` | Deploy branch `main` → production (kiểm tra merge → pull → build → restart task → health) |
+| `deploy/windows/env.test.example` | Mẫu `.env` cho môi trường test |
+| `deploy/windows/env.production.example` | Mẫu `.env` cho production |
+| `deploy/windows/Caddyfile` | Caddyfile (đã thêm site block `test.hanghoaphaisinh.net` → 8081) |
+
+### 1.0.5. Dựng môi trường test lần đầu (trên server)
+
+```powershell
+# Chạy 1 lần duy nhất, quyền Administrator
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex-test\deploy\windows\setup_test_env.ps1
+```
+
+Script sẽ (idempotent — chạy lại được):
+1. Tạo database `apex_leads_test` nếu chưa có.
+2. Clone `C:\apex-test` từ GitHub (branch `test`) hoặc `git pull` nếu đã có.
+3. Tạo `C:\apex-test\.env` từ `deploy/windows/env.test.example` (KHÔNG đè file đã có).
+4. Copy `service-account.json` từ `C:\apex\backend`.
+5. Đăng ký Task `Apex_Backend_Server_Test` (WD = `C:\apex-test\backend`).
+6. Build binary (server đã có Go 1.27.4).
+7. Khởi động task + kiểm tra `http://127.0.0.1:8081/health`.
+
+Sau đó **copy Caddyfile** lên server và reload:
+
+```powershell
+copy /Y C:\apex-test\deploy\windows\Caddyfile C:\caddy\Caddyfile
+C:\caddy\caddy.exe validate --config C:\caddy\Caddyfile
+C:\caddy\caddy.exe reload  --config C:\caddy\Caddyfile
+```
+
+### 1.0.6. Deploy hằng ngày
+
+```powershell
+# LOCAL → test
+git checkout test
+git add <file cụ thể> && git commit -m "feat(scope): ..."
+git push origin test
+
+# SERVER → pull + build + restart task test
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex-test\deploy\windows\deploy_test.ps1
+
+# Kiểm tra
+Invoke-WebRequest https://test.hanghoaphaisinh.net/health -UseBasicParsing
+```
+
+Sau khi test OK → merge và deploy production:
+
+```powershell
+# LOCAL
+git checkout main && git merge test && git push origin main
+
+# SERVER
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\apex\deploy\windows\deploy_prod.ps1
+```
+
+> ⚠️ `deploy_prod.ps1` **từ chối chạy** nếu branch `test` chưa merge vào `main`
+> (kiểm tra bằng `git branch -r --contains origin/test`). Dùng `-Force` để bỏ qua.
+
+### 1.0.7. Firewall
+
+⚠️ **Port 8081 (backend test) cũng phải bị chặn từ internet** — giống port 8080.
+Caddy proxy qua `127.0.0.1` (loopback) nên không bị ảnh hưởng.
+
+```powershell
+New-NetFirewallRule -DisplayName "Apex_Block_External_8081" `
+    -Direction Inbound -LocalPort 8081 -Protocol TCP `
+    -RemoteAddress Any -Action Block -Profile Public,Private
+```
+
+### 1.0.8. Database test
+
+```cmd
+set PGPASSWORD=postgres
+C:\pgsql\bin\psql.exe -U postgres -h localhost -d apex_leads_test
+```
+
+Backup DB test (nên có, vì test vẫn cần dữ liệu landing/config):
+
+```powershell
+$env:PGPASSWORD = "postgres"
+C:\pgsql\bin\pg_dump.exe -U postgres -h localhost -d apex_leads_test -F p `
+    -f C:\backup\apex_leads_test\apex_leads_test_test.dump
+```
 
 ---
 
@@ -10,8 +191,9 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 1. Sửa code ở LOCAL (C:\code\apex_moi\landing)
 2. Test local (go build + go vet + go test)
 3. git commit + git push
-4. Build binary ở LOCAL  ← server KHÔNG có Go toolchain (xem mục 1.1)
-5. Upload binary lên server (scp → C:/Windows/Temp/apex-server-new.exe)
+4. ⚠️ ƯU TIÊN: deploy lên môi trường TEST (mục 1.0.6) → kiểm thử → merge main
+5. Build binary (LOCAL hoặc SERVER — server đã có Go 1.27.4, mục 1.1)
+5b. Upload binary lên server (scp → C:/Windows/Temp/apex-server-new.exe) — nếu build ở LOCAL
 6. SSH vào server: cd C:\apex && git pull
 7. Swap binary + restart Task Scheduler:
    schtasks /End /TN "Apex_Backend_Server"
@@ -24,14 +206,24 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 
 ---
 
-## 1.1. Build binary — server KHÔNG có Go toolchain
+## 1.1. Build binary — server ĐÃ CÓ Go toolchain (từ 2026-11-15)
 
-⚠️ **Production server KHÔNG cài Go.** Đã kiểm tra lại 2026-11-15: không có `C:\Go`,
-không có `C:\Program Files\Go`, `where go` không tìm thấy, `PATH` máy (registry
-`HKLM\...\Session Manager\Environment`) chỉ có:
-`C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd`
+✅ **Cập nhật 2026-11-15:** `itdoanh` đã cài **Go 1.27.4** trên production server tại
+`C:\Program Files\Go\bin\go.exe`. Đã xác minh `go version` chạy được và tải được
+module dependency (`pgx/v5`, `google.golang.org/api`, …) qua mạng.
 
-⇒ **Phải build ở LOCAL rồi upload binary:**
+⇒ Có **2 phương án build** — xem bên dưới.
+
+**Phương án A — build trực tiếp trên server (khuyến nghị cho deploy hằng ngày):**
+
+```powershell
+# SERVER (PowerShell)
+cd C:\apex\backend
+$env:GOMAXPROCS = "1"; $env:GOGC = "25"
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+```
+
+**Phương án B — build ở LOCAL rồi upload (dự phòng / dùng khi server mất mạng):**
 
 ```powershell
 # LOCAL
@@ -70,10 +262,12 @@ schtasks /Run /TN "Apex_Backend_Server"
 > "file đang được sử dụng". Rename luôn thành công và giữ lại bản backup.
 
 > 🚨 **Không chạy `build.bat` qua SSH.** Script có lệnh `pause` ở cuối ⇒ sẽ treo
-> phiên SSH vô thời hạn chờ nhấn phím. Dùng `go build` trực tiếp ở local.
+> phiên SSH vô thời hạn chờ nhấn phím. Dùng `go build` trực tiếp.
 
-> ℹ️ Nếu muốn build ngay trên server, cài Go 1.26.3+ trước rồi thêm vào PATH.
-> Hiện chưa làm vì mỗi lần deploy đều build ở local nhanh và không rủi ro hơn.
+> ⚠️ **Linker flag qua SSH phải bọc trong file `.ps1`.** Khi gõ trực tiếp trong
+> `cmd.exe` qua SSH, dấu nháy kép bị `cmd` xử lý sai ⇒ lỗi
+> `flag provided but not defined: -w\`. Luôn đặt lệnh build vào file `.ps1`
+> rồi thực thi file đó (xem `deploy/windows/deploy_test.ps1` / `deploy_prod.ps1`).
 
 > ✅ **Verify binary đúng phiên bản** (tránh deploy nhầm bản cũ):
 > ```powershell
@@ -194,7 +388,12 @@ Worker hỗ trợ 4 lệnh: lệnh cmd thường, `PS1:<file>`, `PUT:<local>:<re
 
 ---
 
-## 3. Kiến trúc production
+## 3. Kiến trúc production + test
+
+> Sơ đồ đầy đủ 2 môi trường: xem **mục 1.0.1**. Phần này mô tả chi tiết thành phần
+> của production; môi trường test dùng **cùng bộ thành phần** nhưng khác code
+> (`C:\apex-test`), port (`8081`), DB (`apex_leads_test`) và Task
+> (`Apex_Backend_Server_Test`).
 
 ```
 Internet
@@ -209,7 +408,7 @@ Internet
 | Thành phần | Đường dẫn | Quản lý |
 |---|---|---|
 | Mã nguồn | `C:\apex` (git clone) | `git pull` |
-| Binary | `C:\apex\backend\apex-server.exe` | **build ở LOCAL** rồi upload + swap (mục 1.1) |
+| Binary | `C:\apex\backend\apex-server.exe` | **build trên server** (Go 1.27.4) hoặc build ở LOCAL rồi upload (mục 1.1) |
 | Caddy | `C:\caddy\caddy.exe` + `Caddyfile` | Task `Apex_Caddy_Server` |
 | PostgreSQL | `C:\pgsql` (native, 844MB) | Windows Service `postgresql-x64-16` |
 | Log Caddy | `C:\caddy\logs\` | rotation 10MB × 3 |
@@ -225,6 +424,7 @@ Production chạy bằng **Task Scheduler**, không phải NSSM (như `deploy_re
 | `Apex_Caddy_Server` | `C:\caddy\caddy.exe run --config "C:\caddy\Caddyfile"` | `C:\caddy` |
 | `Apex_DB_Backup` | `powershell -File C:\apex\deploy\windows\backup_database.ps1` | `C:\apex\deploy\windows` |
 | `Apex_Disk_Cleanup` | `powershell -File C:\apex\deploy\windows\cleanup_disk_space.ps1` | `C:\apex\deploy\windows` |
+| `Apex_Backend_Server_Test` | `cmd /c "C:\apex-test\backend\apex-server.exe >> C:\apex-test\backend\logs\server.log 2>&1"` | `C:\apex-test\backend` |
 
 Cấu hình chung: RunAs `SYSTEM`, trigger `MSFT_TaskBootTrigger`, RestartCount 5 / 1 phút, ExecTimeLimit P365D, MultipleInstances `IgnoreNew`.
 
@@ -275,6 +475,7 @@ rồi cập nhật `C:\apex\.env` (`DB_PASSWORD`) và restart backend.
 | 80 | ✅ Allow Any | HTTP → Caddy redirect HTTPS |
 | 443 | ✅ Allow Any | HTTPS → Caddy |
 | 8080 | ✅ **Đã chặn** | Rule `Apex_Block_External_8080` (Block, RemoteAddress=Any, Profile Public,Private) |
+| 8081 | ⚠️ **Cần chặn** (backend môi trường test) | Rule `Apex_Block_External_8081` — xem mục 1.0.7 |
 | 5432 | ✅ Đã chặn + localhost only | Rule `Apex_Block_External_5432`; PostgreSQL chỉ listen loopback |
 
 ### Chặn port 8080 (đã áp dụng 2026-11-04)
@@ -302,6 +503,7 @@ Script: `deploy/windows/setup_firewall.ps1` (idempotent — chạy lại đượ
 
 ```
 A     crm      → 103.124.95.232
+A     test     → 103.124.95.232   (môi trường TEST — đã trỏ 2026-11-15)
 A     ns1      → 103.124.95.232
 A     ns2      → 103.124.95.232
 A     @        → 103.124.95.232
@@ -329,8 +531,24 @@ Sau khi đổi DNS → đăng ký domain trong CRM (`/ads` → Quản lý Tên M
 
 ### Health check
 ```powershell
+# Production
 Invoke-WebRequest -Uri "http://127.0.0.1:8080/health" -UseBasicParsing
 Invoke-WebRequest -Uri "https://crm.hanghoaphaisinh.net/health" -UseBasicParsing
+
+# Môi trường test
+Invoke-WebRequest -Uri "http://127.0.0.1:8081/health" -UseBasicParsing
+Invoke-WebRequest -Uri "https://test.hanghoaphaisinh.net/health" -UseBasicParsing
+```
+
+### Xác nhận đúng môi trường đang chạy
+
+```powershell
+# Log khởi động ghi rõ môi trường — kiểm tra dòng đầu tiên
+Get-Content C:\apex\backend\logs\server.log -Tail 200 | Select-String "MÔI TRƯỜNG"
+Get-Content C:\apex-test\backend\logs\server.log -Tail 200 | Select-String "MÔI TRƯỜNG"
+# Kỳ vọng:
+#   [INFO] MÔI TRƯỜNG: PRODUCTION | DB=apex_leads | ... | Đồng bộ ra ngoài: BẬT
+#   [INFO] MÔI TRƯỜNG: TEST | DB=apex_leads_test | ... | Đồng bộ ra ngoài: TẮT
 ```
 
 ### Đọc log Caddy
@@ -544,6 +762,9 @@ C:\pgsql\bin\pg_restore.exe -U postgres -h localhost -d apex_leads --clean --if-
 | `deploy/windows/setup_firewall.ps1` | Windows | ✅ OK — port 8080 đã chặn |
 | `deploy/windows/cleanup_disk_space.ps1` | Windows | ✅ OK — có thêm xoay vòng `server.log` |
 | `deploy/windows/health_check.ps1` | Windows | ✅ **Chẩn đoán tổng hợp** |
+| `deploy/windows/setup_test_env.ps1` | Windows | ✅ **Dựng môi trường TEST** (DB + clone + `.env` + Task + build) — mục 1.0.5 |
+| `deploy/windows/deploy_test.ps1` | Windows | ✅ **Deploy branch `test`** → môi trường test — mục 1.0.6 |
+| `deploy/windows/deploy_prod.ps1` | Windows | ✅ **Deploy branch `main`** → production (có kiểm tra merge) — mục 1.0.6 |
 | `deploy/windows/start_all.bat` / `stop_all.bat` / `restart_all.bat` | Windows | ✅ Tự phát hiện Task vs Service |
 | `deploy/scripts/deploy.sh` | Linux | ✅ OK |
 | `deploy/systemd/apex.service` | Linux | ✅ OK |
@@ -589,15 +810,31 @@ C:\pgsql\bin\pg_restore.exe -U postgres -h localhost -d apex_leads --clean --if-
 
 ## 12. Rollback
 
+### Production
+
 ```cmd
 cd C:\apex
 git log --oneline -5
 git reset --hard <commit-hash>
-REM ⚠️ Server KHÔNG có Go ⇒ rollback binary phải copy từ file .bak đã lưu,
-REM hoặc build lại ở LOCAL rồi upload (xem mục 1.1).
+REM ⚠️ Server ĐÃ có Go 1.27.4 ⇒ có thể build lại tại chỗ (mục 1.1 phương án A),
+REM hoặc copy từ file .bak đã lưu.
+cd C:\apex\backend
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+REM Nếu không build được:
 dir C:\apex\backend\apex-server.exe.bak_*
 copy C:\apex\backend\apex-server.exe.bak_<timestamp> C:\apex\backend\apex-server.exe -Force
 schtasks /End /TN "Apex_Backend_Server" && schtasks /Run /TN "Apex_Backend_Server"
+```
+
+### Môi trường test
+
+```cmd
+cd C:\apex-test
+git log --oneline -5
+git reset --hard <commit-hash>
+cd C:\apex-test\backend
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+schtasks /End /TN "Apex_Backend_Server_Test" && schtasks /Run /TN "Apex_Backend_Server_Test"
 ```
 
 ---
@@ -606,7 +843,9 @@ schtasks /End /TN "Apex_Backend_Server" && schtasks /Run /TN "Apex_Backend_Serve
 
 - `DEPLOY_WINDOWS_SERVER_2025.md` — hướng dẫn deploy Windows chi tiết (root repo)
 - `DEPLOY_SERVER_GUIDE.md` — hướng dẫn deploy Ubuntu/Docker
-- `deploy/windows/` — script cài đặt
+- `deploy/windows/` — script cài đặt (bao gồm `setup_test_env.ps1`, `deploy_test.ps1`, `deploy_prod.ps1`)
+- `deploy/windows/env.test.example` · `deploy/windows/env.production.example` — mẫu `.env` từng môi trường
 - `deploy/caddy/Caddyfile` — Caddyfile cho Linux
 - `deploy/systemd/apex.service` — service systemd cho Linux
 - `docs/RUNBOOK.md` — xử lý sự cố production
+- `docs/ARCHITECTURE.md` — kiến trúc tổng thể (3 tầng + 3 môi trường)

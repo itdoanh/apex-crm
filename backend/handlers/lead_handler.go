@@ -42,7 +42,7 @@ func NewLeadHandler(cfg *config.Config, store *db.Store, landingCache *cache.Lan
 		store:         store,
 		landingCache:  landingCache,
 		rateLimiter:   security.NewIPRateLimiter(rate.Limit(10.0/60.0), 10, 10*time.Minute), // 10 leads/phút, burst 10
-		capiDispatcher: facebook.NewDispatcher(store),
+		capiDispatcher: facebook.NewDispatcherWithSync(store, cfg.IsExternalSyncEnabled()),
 	}
 }
 
@@ -1196,6 +1196,17 @@ func (h *LeadHandler) HandleListQuarantine(w http.ResponseWriter, r *http.Reques
 // syncLeadToGoogleSheets tự động đồng bộ một lead mới sang các Google Sheet được phân quyền riêng cho Landing Page
 func (h *LeadHandler) syncLeadToGoogleSheets(lead *models.Lead, rawData map[string]interface{}) {
 	if lead == nil {
+		return
+	}
+
+	// ⚠️ Môi trường TEST không đồng bộ ra Google Sheets production.
+	//
+	// Lý do: mỗi lần test lead là một lần ghi vào sheet thật ⇒ làm nhiễu dữ liệu
+	// KPI doanh thu. Môi trường test dùng DB riêng (`apex_leads_test`) nên
+	// `google_sheet_configs` cũng rỗng ⇒ không có sheet nào để ghi, nhưng
+	// chặn tường minh ở đây để không phụ thuộc cấu hình DB.
+	if h.cfg != nil && !h.cfg.IsExternalSyncEnabled() {
+		fmt.Printf("[GOOGLE_SHEET_SYNC_INFO] Môi trường '%s' — bỏ qua đồng bộ Google Sheet.\n", h.cfg.Environment)
 		return
 	}
 
