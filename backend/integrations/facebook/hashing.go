@@ -26,7 +26,15 @@ func NormalizeEmail(raw string) string {
 }
 
 // NormalizePhone chuẩn hoá số điện thoại theo chuẩn Meta.
-// Giữ dấu `+` ở đầu (chỉ dành cho số quốc tế), bỏ mọi ký tự phi số khác.
+//
+// 📌 Meta yêu cầu `ph` ở định dạng **E.164** (vd `+84912345678`) để khoá so
+// khớp hiệu quả nhất. Số Việt Nam ở dạng local (`0912345678`) được đổi sang
+// `+84912345678`.
+//
+// Quy tắc:
+//   - Giữ dấu `+` ở đầu (chỉ dành cho số quốc tế), bỏ mọi ký tự phi số khác.
+//   - `0xxx…` (10 số kiểu VN) ⇒ `+84xxx…`
+//   - `84xxx…` (11 số, không có `+`) ⇒ `+84xxx…`
 func NormalizePhone(raw string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -45,6 +53,14 @@ func NormalizePhone(raw string) string {
 	}
 	if plus {
 		return "+" + out
+	}
+
+	// Chuẩn hoá số Việt Nam về E.164.
+	switch {
+	case strings.HasPrefix(out, "84") && len(out) == 11:
+		return "+" + out
+	case len(out) == 10 && strings.HasPrefix(out, "0"):
+		return "+84" + out[1:]
 	}
 	return out
 }

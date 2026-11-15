@@ -650,13 +650,14 @@ CREATE TABLE IF NOT EXISTS facebook_capi_logs (
     http_status    INT NOT NULL DEFAULT 0,
     response       JSONB NOT NULL DEFAULT '{}'::jsonb,
     error          TEXT NOT NULL DEFAULT '',
-    triggered_by   VARCHAR(50)  NOT NULL DEFAULT '',   -- lead_submit | crm_status_change | manual_test
+    triggered_by   VARCHAR(50)  NOT NULL DEFAULT '',   -- lead_submit | crm_status_change | page_view | manual_test
     trang_thai_crm VARCHAR(50)  NOT NULL DEFAULT '',
+    session_id     VARCHAR(120) NOT NULL DEFAULT '',   -- dedup PageView server-side (1 phiên = 1 PageView)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
-Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_event_name`, `_landing_id`.
+Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_event_name`, `_landing_id`, `_session_id`.
 
 **Quy tắc dữ liệu:**
 
@@ -667,6 +668,10 @@ Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_even
 - `status = 'skipped'` ghi lại lý do bỏ qua (CAPI tắt, thiếu token, trạng thái không có giá trị…).
 - `course_value` mặc định `6000000` (VND) — giá khoá học chuyên sâu.
 - Meta chỉ nhận sự kiện server trong **7 ngày** gần nhất ⇒ log cũ không thể gửi lại.
+- `session_id` dùng cho **dedup PageView server-side**: `tracker.js` gửi nhiều ping
+  `POST /api/analytics/track` trong 1 phiên (pageview, heartbeat, exit, scroll…) ⇒ không
+  dedup thì 1 lượt xem bị đếm 5–10 lần trên Meta Ads Manager.
+  `HasFacebookCAPISessionEvent(session_id, event_name)` kiểm tra đã gửi chưa (cửa sổ 24h).
 
 ---
 

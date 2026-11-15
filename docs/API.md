@@ -734,6 +734,7 @@ Account + ánh xạ cột. Đặc điểm:
 | `/api/facebook-ads/configs` | GET | Danh sách cấu hình CAPI (token đã mask) |
 | `/api/facebook-ads/config` | GET/POST | Chi tiết / lưu cấu hình theo `landing_id` |
 | `/api/facebook-ads/config/delete` | POST | Xoá cấu hình |
+| `/api/facebook-ads/config/toggle` | POST | Bật/tắt nhanh CAPI theo `landing_id` (không cần gửi lại config) |
 | `/api/facebook-ads/test-event` | POST | Gửi 1 sự kiện test (có `test_event_code`) |
 | `/api/facebook-ads/dataset-quality` | GET | Chỉ số Dataset Quality (EMQ, coverage, dedupe…) |
 | `/api/facebook-ads/logs` | GET | Lịch sử gửi sự kiện CAPI |
@@ -771,6 +772,23 @@ Account + ánh xạ cột. Đặc điểm:
 - Token gửi lên có thể là dạng đã mask (`EAAG****abcd`) → backend giữ nguyên token cũ trong DB.
   Muốn đổi token thì gửi giá trị đầy đủ.
 - Ghi DB xong **phải** `Reload()` cache → handler đã gọi sẵn.
+
+#### Chuẩn băm PII (theo Meta Conversions API)
+
+| Thông số | Chuẩn hoá trước khi băm SHA-256 |
+|---|---|
+| `em` | trim + lowercase |
+| `ph` | **E.164** — số VN 10 số `0912345678` ⇒ `+84912345678` |
+| `fn` / `ln` / `ct` / `st` / `zp` | trim + lowercase + gộp khoảng trắng |
+| `country` | trim + lowercase, bỏ tiền tố `vn-` / `vi-` |
+| `external_id` | chuẩn hoá như số điện thoại, hash thẳng |
+
+**KHÔNG băm** (Meta yêu cầu gửi rõ): `client_ip_address` · `client_user_agent` ·
+`fbc` · `fbp`.
+
+> 📌 Chuẩn E.164 cho `ph` giúp khoá so khớp `ph` có hiệu quả cao hơn trong
+> Advanced Matching ⇒ EMQ tốt hơn. Số dạng local `0912345678` bị Meta tính là
+> khoá khác với `+84912345678` ⇒ không khớp được với dữ liệu Meta.
 
 ### 9.2.2. `POST /api/facebook-ads/parse-url`
 
@@ -813,15 +831,103 @@ Account + ánh xạ cột. Đặc điểm:
   (không có giá trị tiền ⇒ không làm nhiễu chỉ số EMQ).
 - **Deduplication browser ↔ server**: client gửi `event_id` trong payload
   `POST /api/leads`; server dùng đúng `event_id` đó. `tracker.js` cũng gọi
-  `fbq('track','Lead',{ eventID: <cùng id> })` ⇒ Meta chỉ tính 1 lần.
+  `fbq('track','Lead',{ content_name: '…' }, { eventID: <cùng id> })` ⇒ Meta chỉ tính 1 lần.
+
+  > 📌 Theo tài liệu Meta ("Xử lý sự kiện Pixel và sự kiện API Chuyển đổi trùng lặp"),
+  > `eventID` là **tham số thứ 4** của lệnh gọi `fbq`, KHÔNG phải thuộc tính nằm trong
+  > object tham số thứ 3. Đặt sai chỗ ⇒ Meta không đọc được `eventID` ⇒ không gộp ⇒
+  > mỗi lần đăng ký bị đếm 2 lần (1 từ Pixel + 1 từ CAPI).
+  >
+  > ```js
+  > ✅ fbq('track', 'Lead', { content_name: '…' }, { eventID: 'EVENT_ID' })
+  > ❌ fbq('track', 'Lead', { content_name: '…', eventID: 'EVENT_ID' })
+  > ```
+
 - Lỗi CAPI **không bao giờ** làm fail request chính — chỉ ghi log vào `facebook_capi_logs`.
 
 ### 9.2.4. `GET /api/facebook-ads/dataset-quality`
 
-Proxy tới `GET /{version}/dataset_quality?fields=web{event_match_quality,event_coverage,dedupe_key_feedback,data_freshness,value_diagnostics,event_delay,event_spend,event_ad_sets}`.
+Proxy tới Meta Graph API `GET /{version}/dataset_quality`:
+
+```
+GET https://graph.facebook.com/v27.0/dataset_quality
+    ?dataset_id=<PIXEL_ID>          ← BẮT BUỘC
+    &agent_name=apex_crm            ← tuỳ chọn (lọc theo partner_agent)
+    &access_token=<TOKEN>
+    &fields=web{event_name,event_match_quality{...},acr{...},event_coverage{...},
+                dedupe_key_feedback{...},data_freshness{...},event_spend{...},
+                event_ad_sets{...},value_diagnostics{...},event_delay{...}}
+```
+
+**Response đã chuẩn hoá** (`quality`):
+
+```json
+{
+  "success": true,
+  "pixel_id": "123456",
+  "fetched_at": "2026-11-15 14:00:00",
+  "quality": {
+    "pixel_id": "123456",
+    "events": [
+      {
+        "event_name": "Purchase",
+        "event_match_quality": {
+          "composite_score": 7.2,
+          "match_key_feedback": [
+            { "identifier": "email", "coverage": { "percentage": 100 },
+              "potential_aly_acr_increase": { "percentage": 58.96 } }
+          ],
+          "diagnostics": [
+            { "name": "…", "description": "…", "solution": "…",
+              "percentage": 59.5, "affected_event_count": 18930, "total_event_count": 31830 }
+          ]
+        },
+        "acr": { "percentage": 37.9 },
+        "event_potential_aly_acr_increase": { "percentage": 32.9 },
+        "event_coverage": { "percentage": 34.1, "goal_percentage": 75 },
+        "dedupe_key_feedback": [
+          { "dedupe_key": "event_id",
+            "browser_events_with_dedupe_key": { "percentage": 100 },
+            "server_events_with_dedupe_key": { "percentage": 100 },
+            "overall_browser_coverage_from_dedupe_key": { "percentage": 14.8 } }
+        ],
+        "data_freshness": { "upload_frequency": "real_time" },
+        "event_spend": { "amount": 108947.38, "currency_code": "VND" },
+        "event_ad_sets": [ { "ad_set_id": "…", "ad_set_name": "…", "objective": "Sales",
+          "spend_amount": 20619.35, "spend_currency_code": "USD", "event_use": "Optimization" } ],
+        "value_diagnostics": [ { "issue_type": "MISSING_OR_INVALID_VALUE",
+          "issue_count": 250, "event_count": 1000, "issue_rate": 0.25 } ],
+        "event_delay": { "events_delayed_over_2h": 100, "events_delayed_over_24h": 10,
+          "total_events": 1000, "pct_delayed_over_2h": 10, "pct_delayed_over_24h": 1 }
+      }
+    ],
+    "aggregate": {
+      "event_count": 4, "avg_emq": 6.35, "avg_coverage": 34.1,
+      "total_spend": 108947.38, "spend_currency_code": "VND", "critical_issues": 2
+    }
+  }
+}
+```
+
+> 📌 **Lưu ý format Meta v27.0**: `web` là **MẢNG**, mỗi phần tử = 1 `event_name`
+> kèm toàn bộ chỉ số riêng. Bản cũ parse `web` như 1 object ⇒ mọi thẻ đều hiển thị "—".
 
 > ⏱️ Meta cần ≥ 20 phút sau khi gửi sự kiện mới có số liệu, và thường trễ vài giờ.
 > Endpoint này chỉ được gọi thủ công từ Admin UI (nút "Làm mới"), **không** gọi tự động khi submit lead.
+
+### 9.2.5. `POST /api/facebook-ads/config/toggle`
+
+Bật/tắt nhanh CAPI cho 1 landing mà **không** cần gửi lại toàn bộ cấu hình
+(token, pixel, gateway…).
+
+```json
+{ "landing_id": "mxv_080_online", "is_active": false }
+```
+
+- Landing phải có cấu hình riêng trong DB ⇒ nếu chưa có, trả `404` kèm thông báo
+  yêu cầu tạo cấu hình trước.
+- **Không** đụng vào cấu hình mặc định (`landing_id = ""`) — đó là fallback áp dụng
+  cho mọi landing chưa có cấu hình riêng, tắt nhầm sẽ ảnh hưởng toàn hệ thống.
 
 ---
 

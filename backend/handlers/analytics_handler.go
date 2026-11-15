@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -9,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"apex-backend/cache"
 	"apex-backend/config"
 	"apex-backend/db"
+	"apex-backend/integrations/facebook"
 	"apex-backend/models"
 	"apex-backend/security"
 
@@ -21,13 +24,24 @@ type AnalyticsHandler struct {
 	cfg         *config.Config
 	store       *db.Store
 	rateLimiter *security.IPRateLimiter
+	// landingCache để biết landing có Meta Pixel hay không (tránh bắn
+	// PageView server-side cho landing đã có Pixel browser).
+	landingCache *cache.LandingCache
+	// capiDispatcher gửi sự kiện `PageView` server-side lên Meta Conversions API.
+	//
+	// ⚠️ PageView server-side CHỈ bổ sung cho landing KHÔNG có Meta Pixel
+	// (browser). Landing đã có Pixel ⇒ PageView browser đã đủ, thêm server
+	// sẽ nhân đôi (trừ khi có event_id chung, mà Pixel không truyền).
+	capiDispatcher *facebook.Dispatcher
 }
 
-func NewAnalyticsHandler(cfg *config.Config, store *db.Store) *AnalyticsHandler {
+func NewAnalyticsHandler(cfg *config.Config, store *db.Store, landingCache *cache.LandingCache) *AnalyticsHandler {
 	return &AnalyticsHandler{
 		cfg:         cfg,
 		store:       store,
+		landingCache: landingCache,
 		rateLimiter: security.NewIPRateLimiter(rate.Limit(2.0), 60, 5*time.Minute), // 120 req/phút, burst 60
+		capiDispatcher: facebook.NewDispatcher(store),
 	}
 }
 
@@ -376,6 +390,21 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// ─── Meta Conversions API: PageView server-side ──────────────────
+	//
+	// ⚠️ CHỈ bắn khi landing KHÔNG có Meta Pixel browser.
+	//
+	// VÌ SAO: landing có Pixel ⇒ Pixel đã bắn `fbq('track','PageView')`.
+	// Nếu server bắn thêm ⇒ 1 lượt xem bị đếm 2 lần (không có event_id
+	// chung để dedup vì Pixel không truyền eventID cho PageView) ⇒ số lượt
+	// hiển thị & chi phí quảng cáo bị phồng.
+	//
+	// Landing KHÔNG có Pixel (hoặc Pixel bị chặn) ⇒ server gửi PageView để
+	// vẫn thu thập được lượt hiển thị trên Meta Ads Manager.
+	//
+	// Chạy goroutine riêng ⇒ không chặn response analytics.
+	go h.dispatchCAPIPageView(&p, clientIP, rawUA)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -388,6 +417,64 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 		"ad_platform":  p.AdPlatform,
 		"ad_placement": p.AdPlacement,
 	})
+}
+
+// dispatchCAPIPageView gửi sự kiện `PageView` server-side lên Meta.
+//
+// Bỏ qua khi:
+//   - landing có Meta Pixel (browser đã bắn PageView).
+//   - phiên là bot (Meta không cần PageView của bot).
+//   - CAPI chưa bật cho landing này (dispatcher tự xử lý).
+func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload, clientIP, rawUA string) {
+	if h.capiDispatcher == nil || p == nil {
+		return
+	}
+	// Bot: bỏ qua (PageView của bot làm nhiễu chỉ số Meta).
+	if p.IsBot {
+		return
+	}
+	// Landing có Pixel browser ⇒ KHÔNG bắn PageView server-side.
+	if h.landingHasMetaPixel(p.LandingID) {
+		return
+	}
+
+	lc := &facebook.LeadContext{
+		LandingID: p.LandingID,
+		Nguon:     p.Nguon,
+		City:      p.City,
+		Region:    p.Region,
+		Country:   p.Country,
+		ISP:       p.ISP,
+		URL:       p.EntryURL,
+		ClientIP:  clientIP,
+		UserAgent: rawUA,
+		SessionID: p.SessionID,
+	}
+	lc.Tracking = map[string]interface{}{
+		"fbc":   p.Fbc,
+		"fbp":   p.Fbp,
+		"fbclid": p.Fbclid,
+	}
+
+	res := h.capiDispatcher.SendPageViewEvent(lc)
+	if res != nil && res.Error != "" {
+		fmt.Printf("[CAPI] Lỗi gửi sự kiện PageView (landing %s): %s\n", p.LandingID, res.Error)
+	}
+}
+
+// landingHasMetaPixel kiểm tra landing có cấu hình Meta Pixel hay không.
+func (h *AnalyticsHandler) landingHasMetaPixel(landingID string) bool {
+	if h.landingCache == nil || landingID == "" {
+		return false
+	}
+	p := h.landingCache.GetByPageID(landingID)
+	if p == nil {
+		return false
+	}
+	if v, ok := p.Settings["facebook_pixel_id"].(string); ok && v != "" {
+		return true
+	}
+	return false
 }
 
 // applyMetaMacrosFromURL bổ sung các macro Meta Ads còn thiếu từ query string.

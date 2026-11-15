@@ -631,9 +631,18 @@ trường `color` của catalog ⇒ không phải sửa lại biểu đồ khi t
 `frontend/landing/tracker.js`:
 1. `ensureLeadEventId()` sinh `event_id` (UUID v4) và lưu vào `sessionStorage` theo landing.
 2. Gửi `event_id` trong payload `POST /api/leads`.
-3. `fbq('track','Lead',{ eventID: <cùng id> })`.
+3. `fbq('track','Lead',{ content_name: '…' }, { eventID: <cùng id> })`.
 
 Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (không đếm đôi).
+
+> 📌 **`eventID` là tham số THỨ 4** của `fbq`, KHÔNG phải thuộc tính trong object
+> tham số thứ 3 (theo tài liệu Meta "Xử lý sự kiện Pixel và sự kiện API Chuyển đổi
+> trùng lặp"):
+>
+> ```js
+> ✅ fbq('track', 'Lead', { content_name: '…' }, { eventID: 'EVENT_ID' })
+> ❌ fbq('track', 'Lead', { content_name: '…', eventID: 'EVENT_ID' })
+> ```
 
 > ⚠️ `tracker.js` có **7 bản mirror** — sửa 1 chỗ phải copy đủ:
 > `tracker.js` (root), `frontend/landing/tracker.js`, `frontend/admin/tracker.js`,
@@ -641,6 +650,51 @@ Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (
 > `backend/static/js/tracker.js`.
 > Test `backend/handlers/landing_tracker_pixel_test.go::TestTrackerMirrorsAreIdentical`
 > sẽ FAIL nếu lệch.
+
+### Quản lý CAPI theo từng landing (bật/tắt nhanh)
+
+| Thành phần | Mô tả |
+|---|---|
+| `loadFacebookAdsLandings()` | Nạp `GET /api/landings` → `fbAdsLandings` (danh sách landing trong hệ thống) |
+| `renderFacebookAdsLandingOptions()` | Dựng option cho 3 dropdown: `fbAdsFormLanding`, `fbAdsLandingSelect`, `fbAdsLandingFilter` |
+| `fbAdsToggleConfig(landingId, wantActive)` | Gọi `POST /api/facebook-ads/config/toggle` → bật/tắt CAPI cho 1 landing |
+
+- Dropdown luôn có lựa chọn đầu tiên là **Mặc định** (`landing_id = ""`) — cấu hình
+  fallback áp dụng cho mọi landing chưa có cấu hình riêng.
+- Option có badge `●` (đang bật) / `○` (đang tắt) để Admin thấy trạng thái ngay.
+- Nút **Bật/Tắt** trên bảng cấu hình **KHÔNG** hiển thị cho dòng "Mặc định" —
+  tắt nhầm cấu hình mặc định sẽ ảnh hưởng toàn hệ thống.
+- Khi render lại dropdown, lựa chọn đang dùng của Admin được giữ nguyên.
+
+### Dataset Quality — render theo format Meta v27.0
+
+`renderFacebookAdsQuality(quality)` nhận payload đã chuẩn hoá từ backend:
+
+```javascript
+{ pixel_id, fetched_at, events: [...], aggregate: {...} }
+```
+
+> 📌 Meta v27.0 trả `web` là **MẢNG** (mỗi phần tử = 1 `event_name` kèm toàn bộ
+> chỉ số riêng). Bản cũ parse `web` như 1 object ⇒ mọi thẻ đều hiển thị "—".
+
+- 4 thẻ tổng quan: EMQ TB · Coverage TB · Chi tiêu sự kiện · Số sự kiện + số vấn đề.
+- Mỗi event là 1 `<details>` mở rộng được, bên trong 6 khối:
+  1. **Khoá so khớp** (match_key_feedback: identifier · coverage · ACR potential)
+  2. **Bỏ trùng lặp** (dedupe_key_feedback: browser · server · overall coverage)
+  3. **Chất lượng & độ trễ** (coverage · goal · upload_frequency · delay 2h/24h · spend)
+  4. **Chẩn đoán EMQ** (6 nhóm lỗi từ 09/2026: IP trống, IP chuyển tiếp, IPv4, FBC, email placeholder, phone placeholder)
+  5. **Chẩn đoán giá trị** (value_diagnostics: issue_type · count · rate)
+  6. **Nhóm quảng cáo** (event_ad_sets: tên · chi tiêu · event_use)
+
+### Test Event Code
+
+Ô nhập `test_event_code` trong form "Gửi Test Event" — lấy mã ở
+**Events Manager → Data Sources → Pixel → Test Events**.
+
+> ⚠️ Meta **CHỈ chấp nhận mã do Events Manager sinh ra**. Mã tự bịa (vd `TEST_123`)
+> ⇒ Meta trả lỗi 100 "Invalid parameter" ⇒ Test Events không hoạt động.
+> Bỏ trống ⇒ sự kiện được gửi vào **dữ liệu thật** (dùng để đối soát),
+> không hiện trong Test Events.
 
 ---
 

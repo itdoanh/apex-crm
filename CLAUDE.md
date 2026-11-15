@@ -33,13 +33,16 @@
 11. **Mọi query analytics phải truyền đủ bộ lọc** `landing_id`/`nguon`/`from_date`/`to_date`/`days`/`from_hour`/`to_hour` → `buildAnalyticsWhereClauseFullRange()`. Bộ lọc giờ hỗ trợ **quay vòng qua nửa đêm** (22h→06h).
 12. **Tracking tách theo landing** — `tracker.js` namespace hoá cookie/localStorage theo `landing_id`. Landing mới phải khai báo `data-landing-id` + `data-nguon` trùng `config.json`.
 13. **Proof-of-Work** — TTL 10 phút, dung sai clock skew 60 giây, hash = `SHA256(challenge_id + ":" + salt + ":" + solution)`. Client gọi `ensureChallengeReady()` trước submit + disable nút ngay khi click.
-14. **CAPI không chặn luồng chính** — lỗi gửi sự kiện Meta chỉ ghi log `facebook_capi_logs`, không fail `POST /api/leads` / `POST /api/leads/update`. PII băm SHA-256; `client_ip_address`/`client_user_agent`/`fbc`/`fbp` gửi rõ.
+14. **CAPI không chặn luồng chính** — lỗi gửi sự kiện Meta chỉ ghi log `facebook_capi_logs`, không fail `POST /api/leads` / `POST /api/leads/update`. PII băm SHA-256 (SĐT theo **E.164**: `0912345678` → `+84912345678`); `client_ip_address`/`client_user_agent`/`fbc`/`fbp` gửi rõ.
 15. **Pipeline CRM 10 trạng thái** — định nghĩa tập trung tại `backend/models/lead_status.go`; frontend gọi `GET /api/facebook-ads/lead-statuses` để render động (Kanban 10 cột), không hardcode.
     - `moi` → `da_goi` → `ket_ban_zalo` → `da_hoc_buoi_chia_se` (miễn phí) → `da_hoc_chuyen_sau` (≈6.000.000đ) → `da_mua_hang` (kết)
     - Kết thúc không mua: `da_hoc_truoc_do` · `khong_quan_tam` · `spam_khong_lien_lac` · `huy`
     - Tương thích ngược: `tiem_nang`/`da_vao_zoom` → `da_hoc_buoi_chia_se`, `chot` → `da_mua_hang`
     - CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`
 16. **Ánh xạ URL Meta Ads** — `utm_campaign` = `campaign.id`, `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị. KHÔNG theo quy ước Google Ads.
+17. **Dedupe browser ↔ server** — `eventID` là **tham số thứ 4** của `fbq('track', …)`: `fbq('track','Lead',{ content_name:'…' },{ eventID: <cùng event_id> })`. Đặt trong object tham số 3 ⇒ Meta không đọc được ⇒ đếm đôi.
+18. **Dataset Quality v27.0** — `web` trả về là **MẢNG** (mỗi phần tử = 1 `event_name` kèm chỉ số riêng); `dataset_id` là tham số **bắt buộc**; `agent_name` tuỳ chọn.
+19. **Bật/tắt CAPI theo từng landing** — `POST /api/facebook-ads/config/toggle` (`landing_id` + `is_active`). Chỉ toggle được dòng có cấu hình riêng; **không** toggle cấu hình mặc định (`landing_id = ''`).
 
 ## Production
 

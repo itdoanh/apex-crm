@@ -161,6 +161,54 @@ func (h *FacebookAdsHandler) HandleDeleteConfig(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleToggleConfig bật/tắt nhanh CAPI cho 1 landing (không cần gửi lại
+// toàn bộ cấu hình). Dùng nút công tắc trên bảng cấu hình.
+//
+// Yêu cầu: landing phải có cấu hình riêng trong DB. Landing chưa có ⇒ báo
+// lỗi để Admin tạo cấu hình trước (tránh bật nhầm cấu hình mặc định).
+func (h *FacebookAdsHandler) HandleToggleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		http.Error(w, "Chỉ chấp nhận POST/PUT", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var in struct {
+		LandingID string `json:"landing_id"`
+		IsActive  *bool  `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fbWriteJSONError(w, http.StatusBadRequest, "Dữ liệu JSON không hợp lệ: "+err.Error())
+		return
+	}
+
+	in.LandingID = strings.TrimSpace(in.LandingID)
+	if in.LandingID == "" {
+		fbWriteJSONError(w, http.StatusBadRequest, "Thiếu landing_id")
+		return
+	}
+	if in.IsActive == nil {
+		fbWriteJSONError(w, http.StatusBadRequest, "Thiếu is_active")
+		return
+	}
+
+	found, err := h.store.ToggleFacebookCAPIConfig(in.LandingID, *in.IsActive)
+	if err != nil {
+		fbWriteJSONError(w, http.StatusInternalServerError, "Lỗi bật/tắt CAPI: "+err.Error())
+		return
+	}
+	if !found {
+		fbWriteJSONError(w, http.StatusNotFound,
+			"Landing "+in.LandingID+" chưa có cấu hình CAPI riêng — hãy tạo cấu hình trước khi bật/tắt")
+		return
+	}
+
+	fbWriteJSON(w, http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"landing_id": in.LandingID,
+		"is_active":  *in.IsActive,
+	})
+}
+
 // HandleTestEvent gửi 1 sự kiện thử nghiệm lên Meta (Test Events).
 func (h *FacebookAdsHandler) HandleTestEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -237,7 +285,9 @@ func (h *FacebookAdsHandler) HandleDatasetQuality(w http.ResponseWriter, r *http
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 
-	raw, httpStatus, rawBody, err := client.FetchDatasetQuality(ctx, cfg.APIVersion, cfg.AccessToken)
+	// `agent_name` là tuỳ chọn — dùng để lọc sự kiện theo đối tác gửi.
+	// Giá trị phải ở dạng chuẩn hoá (lowercase). Ta dùng "apex_crm".
+	raw, httpStatus, rawBody, err := client.FetchDatasetQuality(ctx, cfg.APIVersion, cfg.PixelID, cfg.AccessToken, "apex_crm")
 	if err != nil {
 		fbWriteJSON(w, http.StatusOK, map[string]interface{}{
 			"success":     false,
@@ -248,12 +298,12 @@ func (h *FacebookAdsHandler) HandleDatasetQuality(w http.ResponseWriter, r *http
 		return
 	}
 
-	parsed := facebook.ParseDatasetQuality(raw)
+	summary := facebook.ParseDatasetQuality(raw, cfg.PixelID)
 	fbWriteJSON(w, http.StatusOK, map[string]interface{}{
 		"success":    true,
 		"pixel_id":   cfg.PixelID,
-		"fetched_at": time.Now().Format("2006-01-02 15:04:05"),
-		"quality":    parsed,
+		"fetched_at": summary.FetchedAt,
+		"quality":    summary,
 		"raw":        raw,
 	})
 }

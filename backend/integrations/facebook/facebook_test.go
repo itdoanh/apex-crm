@@ -25,9 +25,15 @@ func TestNormalizeEmail(t *testing.T) {
 
 func TestNormalizePhone(t *testing.T) {
 	cases := map[string]string{
-		"0912 345 678":    "0912345678",
+		// Số VN local (10 số) → E.164
+		"0912 345 678":    "+84912345678",
+		"0912.345.678":    "+84912345678",
+		"0912345678":      "+84912345678",
+		// Đã có mã quốc gia
 		"+84 912-345-678": "+84912345678",
-		"0912.345.678":    "0912345678",
+		"84912345678":     "+84912345678",
+		// Quốc tế khác — giữ nguyên
+		"+1 202 555 0147": "+12025550147",
 		"":                "",
 		"abc":             "",
 	}
@@ -423,28 +429,138 @@ func TestCAPIRequestJSONShape(t *testing.T) {
 }
 
 // ─── Dataset Quality ────────────────────────────────────────────────────
+//
+// 📌 Meta v27.0 trả `web` là MẢNG: mỗi phần tử = 1 `event_name` kèm toàn bộ
+// chỉ số riêng. Test bên dưới mô phỏng đúng format đó.
 
 func TestParseDatasetQuality(t *testing.T) {
 	raw := map[string]interface{}{
-		"web": map[string]interface{}{
-			"event_match_quality": map[string]interface{}{"score": 7.2},
-			"event_coverage":      map[string]interface{}{"value": 95.0},
-			"data_freshness":      map[string]interface{}{"value": 3},
+		"web": []interface{}{
+			map[string]interface{}{
+				"event_name": "Purchase",
+				"event_match_quality": map[string]interface{}{
+					"composite_score": 7.2,
+					"match_key_feedback": []interface{}{
+						map[string]interface{}{
+							"identifier": "email",
+							"coverage":   map[string]interface{}{"percentage": 100.0},
+						},
+					},
+					"diagnostics": []interface{}{
+						map[string]interface{}{
+							"name":                 "Server sending mismatched IP addresses",
+							"percentage":           61.5,
+							"affected_event_count": 19567,
+							"total_event_count":    31830,
+						},
+					},
+				},
+				"event_coverage": map[string]interface{}{
+					"percentage":      34.1,
+					"goal_percentage": 75.0,
+				},
+				"acr":            map[string]interface{}{"percentage": 37.9},
+				"data_freshness": map[string]interface{}{"upload_frequency": "real_time"},
+				"event_spend":    map[string]interface{}{"amount": 108947.38, "currency_code": "VND"},
+				"dedupe_key_feedback": []interface{}{
+					map[string]interface{}{
+						"dedupe_key":                               "event_id",
+						"browser_events_with_dedupe_key":           map[string]interface{}{"percentage": 100.0},
+						"server_events_with_dedupe_key":            map[string]interface{}{"percentage": 100.0},
+						"overall_browser_coverage_from_dedupe_key": map[string]interface{}{"percentage": 14.8},
+					},
+				},
+				"value_diagnostics": []interface{}{
+					map[string]interface{}{
+						"issue_type":  "MISSING_OR_INVALID_VALUE",
+						"issue_count": 250,
+						"event_count": 1000,
+						"issue_rate":  0.25,
+					},
+				},
+				"event_delay": map[string]interface{}{
+					"events_delayed_over_2h":  100,
+					"events_delayed_over_24h": 10,
+					"total_events":            1000,
+					"pct_delayed_over_24h":    1.0,
+				},
+			},
+			map[string]interface{}{
+				"event_name":          "PageView",
+				"event_match_quality": map[string]interface{}{"composite_score": 5.5},
+			},
 		},
 	}
-	out := ParseDatasetQuality(raw)
-	emq, ok := out["event_match_quality"].(map[string]interface{})
-	if !ok || emq["score"] != 7.2 {
-		t.Fatalf("EMQ sai: %v", out["event_match_quality"])
+
+	out := ParseDatasetQuality(raw, "PIX123")
+
+	if len(out.Events) != 2 {
+		t.Fatalf("phải có 2 event, thực tế %d", len(out.Events))
 	}
-	if _, ok := out["dedupe_key_feedback"]; !ok {
-		t.Fatal("phải có key dedupe_key_feedback (kể cả rỗng)")
+	if out.Events[0].EventName != "Purchase" {
+		t.Fatalf("event_name sai: %q", out.Events[0].EventName)
+	}
+	if out.Events[0].EMQ == nil || out.Events[0].EMQ.CompositeScore != 7.2 {
+		t.Fatalf("EMQ composite_score sai: %+v", out.Events[0].EMQ)
+	}
+	if len(out.Events[0].EMQ.MatchKeyFeedback) != 1 ||
+		out.Events[0].EMQ.MatchKeyFeedback[0].Identifier != "email" {
+		t.Fatalf("match_key_feedback sai: %+v", out.Events[0].EMQ.MatchKeyFeedback)
+	}
+	if len(out.Events[0].EMQ.Diagnostics) != 1 ||
+		out.Events[0].EMQ.Diagnostics[0].AffectedEventCount != 19567 {
+		t.Fatalf("diagnostics sai: %+v", out.Events[0].EMQ.Diagnostics)
+	}
+	if out.Events[0].Coverage == nil || out.Events[0].Coverage.Percentage != 34.1 {
+		t.Fatalf("event_coverage sai: %+v", out.Events[0].Coverage)
+	}
+	if out.Events[0].ACR == nil || out.Events[0].ACR.Percentage != 37.9 {
+		t.Fatalf("acr sai: %+v", out.Events[0].ACR)
+	}
+	if out.Events[0].Freshness == nil || out.Events[0].Freshness.UploadFrequency != "real_time" {
+		t.Fatalf("data_freshness sai: %+v", out.Events[0].Freshness)
+	}
+	if out.Events[0].Spend == nil || out.Events[0].Spend.Amount != 108947.38 {
+		t.Fatalf("event_spend sai: %+v", out.Events[0].Spend)
+	}
+	if len(out.Events[0].DedupeKeys) != 1 ||
+		out.Events[0].DedupeKeys[0].DedupeKey != "event_id" {
+		t.Fatalf("dedupe_key_feedback sai: %+v", out.Events[0].DedupeKeys)
+	}
+	if len(out.Events[0].ValueDiags) != 1 ||
+		out.Events[0].ValueDiags[0].IssueType != "MISSING_OR_INVALID_VALUE" {
+		t.Fatalf("value_diagnostics sai: %+v", out.Events[0].ValueDiags)
+	}
+	if out.Events[0].Delay == nil || out.Events[0].Delay.EventsDelayedOver24H != 10 {
+		t.Fatalf("event_delay sai: %+v", out.Events[0].Delay)
+	}
+
+	// Aggregate
+	if out.Aggregate.EventCount != 2 {
+		t.Fatalf("aggregate.event_count sai: %d", out.Aggregate.EventCount)
+	}
+	// (7.2 + 5.5) / 2 = 6.35
+	if out.Aggregate.AvgEMQ < 6.34 || out.Aggregate.AvgEMQ > 6.36 {
+		t.Fatalf("aggregate.avg_emq sai: %v", out.Aggregate.AvgEMQ)
+	}
+	if out.Aggregate.TotalSpend != 108947.38 {
+		t.Fatalf("aggregate.total_spend sai: %v", out.Aggregate.TotalSpend)
+	}
+	// 1 value diagnostic + 1 EMQ diagnostic = 2 vấn đề
+	if out.Aggregate.CriticalIssues != 2 {
+		t.Fatalf("aggregate.critical_issues sai: %d", out.Aggregate.CriticalIssues)
 	}
 }
 
 func TestParseDatasetQualityNil(t *testing.T) {
-	out := ParseDatasetQuality(nil)
-	if len(out) != 8 {
-		t.Fatalf("phải trả đủ 8 nhóm chỉ số, thực tế %d", len(out))
+	out := ParseDatasetQuality(nil, "PIX123")
+	if len(out.Events) != 0 {
+		t.Fatalf("phải trả 0 event, thực tế %d", len(out.Events))
+	}
+	if out.PixelID != "PIX123" {
+		t.Fatalf("pixel_id sai: %q", out.PixelID)
+	}
+	if out.Aggregate.EventCount != 0 {
+		t.Fatalf("aggregate.event_count phải = 0")
 	}
 }

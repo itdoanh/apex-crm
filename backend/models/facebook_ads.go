@@ -90,9 +90,12 @@ type FacebookCAPIEvent struct {
 	HTTPStatus   int             `json:"http_status"`
 	Response     json.RawMessage `json:"response"`
 	Error        string          `json:"error"`
-	TriggeredBy  string          `json:"triggered_by"` // lead_submit | crm_status_change | manual_test
+	TriggeredBy  string          `json:"triggered_by"` // lead_submit | crm_status_change | page_view | manual_test
 	TrangThaiCRM string          `json:"trang_thai_crm"`
-	CreatedAt    string          `json:"created_at"`
+	// SessionID dùng để dedup PageView server-side: chỉ gửi 1 PageView
+	// cho mỗi session (tracker.js gửi nhiều ping /api/analytics/track).
+	SessionID string `json:"session_id,omitempty"`
+	CreatedAt string `json:"created_at"`
 }
 
 // FacebookCAPIConfigInput là payload cập nhật cấu hình từ Admin UI.
@@ -175,6 +178,13 @@ type FacebookCAPIEventRequest struct {
 	Value          float64                `json:"value"`
 	Currency       string                 `json:"currency"`
 	EventSourceURL string                 `json:"event_source_url"`
+	// TestEventCode là mã test lấy từ Events Manager → Test Events.
+	//
+	// ⚠️ Meta CHỈ chấp nhận mã do Events Manager sinh ra. Nếu gửi mã tự
+	// bịa (vd "TEST_123") ⇒ Meta trả lỗi 100 "Invalid parameter" ⇒ tính
+	// năng "Test Event" không hoạt động. Vì vậy trường này BẮT BUỘC khi
+	// dùng chế độ test; để trống ⇒ gửi sự kiện thật (và sẽ vào dữ liệu thật).
+	TestEventCode string `json:"test_event_code"`
 }
 
 // NowString trả về thời gian hiện tại theo định dạng chuẩn của repo.

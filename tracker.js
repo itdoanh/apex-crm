@@ -2022,12 +2022,22 @@
                     // ⚠️ `eventID` PHẢI trùng với event_id mà server dùng cho
                     // Conversions API (CAPI). Khi đó Meta gộp 2 sự kiện thành 1
                     // ⇒ không thổi phồng chỉ số chuyển đổi, không báo trùng.
+                    //
+                    // 📌 THEO TÀI LIỆU META ("Xử lý sự kiện Pixel và sự kiện API
+                    // Chuyển đổi trùng lặp"): `eventID` là thông số THỨ 4 của
+                    // lệnh gọi fbq, KHÔNG phải thuộc tính trong object tham số 3:
+                    //
+                    //   ✅ fbq('track', 'Lead', { content_name: '…' }, { eventID: '…' })
+                    //   ❌ fbq('track', 'Lead', { content_name: '…', eventID: '…' })
+                    //
+                    // Nếu đặt sai chỗ, Meta KHÔNG đọc được eventID ⇒ KHÔNG gộp
+                    // ⇒ mỗi lần đăng ký bị đếm 2 lần (1 từ Pixel + 1 từ CAPI)
+                    // ⇒ Event Match Quality hiển thị "trùng" và chỉ số thổi phồng.
                     if (typeof window.fbq === 'function') {
                         try {
                             window.fbq('track', 'Lead', {
-                                content_name: leadPayload.package || 'Landing Lead',
-                                eventID: ensureLeadEventId()
-                            });
+                                content_name: leadPayload.package || 'Landing Lead'
+                            }, { eventID: leadEventId });
                         } catch (_) {}
                     }
                     // Bắn sự kiện Google Analytics nếu có

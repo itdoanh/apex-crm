@@ -57,6 +57,8 @@ type LeadContext struct {
 	UserAgent string
 	// EventID là event_id do client gửi lên (để dedup với fbq phía browser).
 	EventID string
+	// SessionID là định danh phiên (dùng để dedup PageView server-side).
+	SessionID string
 }
 
 // TrackingString đọc 1 key trong tracking dạng chuỗi.
@@ -107,6 +109,11 @@ func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
 // SendPageViewEvent gửi sự kiện `PageView` từ server.
 //
 // Trigger: page_view.
+//
+// ⚠️ DEDUP: 1 phiên chỉ gửi 1 PageView (kiểm tra qua `session_id` trong log).
+// tracker.js gửi POST /api/analytics/track nhiều lần trong 1 phiên
+// (pageview, heartbeat, exit, scroll…) ⇒ không dedup thì 1 lượt xem bị
+// đếm 5–10 lần trên Meta Ads Manager.
 func (d *Dispatcher) SendPageViewEvent(lc *LeadContext) *DispatchResult {
 	cfg, err := d.resolveConfig(lc.LandingID)
 	if err != nil {
@@ -118,6 +125,19 @@ func (d *Dispatcher) SendPageViewEvent(lc *LeadContext) *DispatchResult {
 	if !cfg.SendPageView {
 		return d.logSkip(lc, EventPageView, "page_view", "sự kiện PageView đang tắt trong cấu hình")
 	}
+
+	// Dedup theo session (24 giờ).
+	if lc.SessionID != "" {
+		sent, dbErr := d.store.HasFacebookCAPISessionEvent(lc.SessionID, EventPageView)
+		if dbErr == nil && sent {
+			return &DispatchResult{
+				Skipped: true,
+				Event:   EventPageView,
+				Message: "PageView đã gửi cho session này (dedup)",
+			}
+		}
+	}
+
 	return d.send(cfg, lc, EventPageView, nil, "page_view", "")
 }
 
@@ -237,10 +257,14 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 	}
 
 	payload := &CAPIRequest{
-		Data:          []CAPIEvent{ev},
-		TestEventCode: "TEST_" + strings.ToUpper(fmt.Sprintf("%d", time.Now().UnixNano()%1000000)),
-		PartnerAgent:  "apex-crm",
+		Data:         []CAPIEvent{ev},
+		TestEventCode: strings.TrimSpace(req.TestEventCode),
+		PartnerAgent: "apex-crm",
 	}
+
+	// ⚠️ Meta CHỈ chấp nhận `test_event_code` do Events Manager sinh ra.
+	// Nếu không có mã ⇒ gửi sự kiện THẬT (vào dữ liệu thật, dùng để
+	// đối soát) chứ không phải sự kiện test.
 
 	endpoint := BuildEventURL(cfg.PixelID, cfg.APIVersion, cfg.GatewayEnabled, cfg.GatewayEndpoint, cfg.GatewayAccessKey)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -403,6 +427,7 @@ func (d *Dispatcher) send(
 		HTTPStatus:   httpStatus,
 		TriggeredBy:  triggeredBy,
 		TrangThaiCRM: trangThaiCRM,
+		SessionID:    lc.SessionID,
 	}
 	if len(rawBody) > 0 {
 		logEv.Response = json.RawMessage(rawBody)

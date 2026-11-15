@@ -153,7 +153,7 @@ func main() {
 
 	// 3. Khởi tạo Handlers
 	leadHandler := handlers.NewLeadHandler(cfg, store, landingCache)
-	analyticsHandler := handlers.NewAnalyticsHandler(cfg, store)
+	analyticsHandler := handlers.NewAnalyticsHandler(cfg, store, landingCache)
 	sheetHandler := handlers.NewGoogleSheetHandler(cfg, store)
 	landingHandler := handlers.NewLandingHandler(cfg, store, landingCache, domainCache)
 	domainHandler := handlers.NewDomainHandler(cfg, store, domainCache)
@@ -325,6 +325,7 @@ func main() {
 	mux.HandleFunc("/api/facebook-ads/configs", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleListConfigs)))
 	mux.HandleFunc("/api/facebook-ads/config", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleSaveConfig)))
 	mux.HandleFunc("/api/facebook-ads/config/delete", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleDeleteConfig)))
+	mux.HandleFunc("/api/facebook-ads/config/toggle", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleToggleConfig)))
 	mux.HandleFunc("/api/facebook-ads/test-event", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleTestEvent)))
 	mux.HandleFunc("/api/facebook-ads/dataset-quality", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleDatasetQuality)))
 	mux.HandleFunc("/api/facebook-ads/logs", leadHandler.CORSMiddleware(facebookAdsAuth(facebookAdsHandler.HandleListLogs)))

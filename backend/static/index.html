@@ -1535,7 +1535,7 @@
                             <span>Tạo / Cập nhật cấu hình Conversions API</span>
                         </h2>
                         <p class="text-xs text-slate-400 mt-0.5">
-                            Cấu hình riêng cho từng landing, hoặc để trống Landing ID để tạo cấu hình mặc định áp dụng cho mọi landing.
+                            Cấu hình riêng cho từng landing, hoặc chọn <b>Mặc định</b> để tạo cấu hình áp dụng cho mọi landing chưa có cấu hình riêng.
                         </p>
                     </div>
                     <button type="button" onclick="fbAdsResetForm()" class="text-slate-400 hover:text-white text-xs px-2.5 py-1 bg-slate-800 rounded-lg">
@@ -1548,8 +1548,12 @@
                     <div class="space-y-3">
                         <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-wider">1. Kết nối Meta</h3>
                         <div>
-                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Landing ID (để trống = mặc định)</label>
-                            <input type="text" id="fbAdsFormLanding" placeholder="ví dụ: mx v_080_online" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Landing (chọn để quản lý CAPI riêng)</label>
+                            <select id="fbAdsFormLanding" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"></select>
+                            <div class="text-[9px] text-slate-500 mt-1 leading-relaxed">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                Chọn <b>Mặc định</b> ⇒ áp dụng cho mọi landing chưa có cấu hình riêng. Chọn 1 landing cụ thể ⇒ chỉ landing đó bật/tắt được.
+                            </div>
                         </div>
                         <div>
                             <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Pixel / Dataset ID</label>
@@ -1669,7 +1673,9 @@
                             <i class="fa-solid fa-flask text-amber-400"></i>
                             <span>Gửi Test Event (Meta Test Events)</span>
                         </h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Sự kiện test không tính vào dữ liệu thật — dùng để kiểm tra token, pixel và payload.</p>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Dùng để kiểm tra token, pixel và payload. Nhập <b>Test Event Code</b> để sự kiện hiện trong Test Events của Meta; bỏ trống ⇒ sự kiện được gửi vào dữ liệu thật.
+                        </p>
                     </div>
                     <div class="p-4 space-y-2.5">
                         <div class="grid grid-cols-2 gap-2">
@@ -1715,6 +1721,17 @@
                         <div>
                             <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Event Source URL</label>
                             <input type="text" id="fbAdsTestURL" placeholder="https://lophoc.hanghoaphaisinh.net/?utm_source=fb" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1 font-semibold">
+                                Test Event Code
+                                <span class="text-slate-600 font-normal">(tuỳ chọn)</span>
+                            </label>
+                            <input type="text" id="fbAdsTestCode" placeholder="TEST1234 — lấy ở Events Manager → Test Events" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
+                            <div class="text-[9px] text-slate-500 mt-1 leading-relaxed">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                Meta CHỈ chấp nhận mã test do Events Manager sinh ra. Bỏ trống ⇒ sự kiện được gửi vào <b>dữ liệu thật</b> (dùng để đối soát), không hiện trong Test Events.
+                            </div>
                         </div>
                         <button type="button" onclick="fbAdsSendTestEvent()" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
                             <i class="fa-solid fa-paper-plane"></i> Gửi Test Event

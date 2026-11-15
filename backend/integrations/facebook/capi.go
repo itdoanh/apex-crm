@@ -113,8 +113,13 @@ func NewClient() *Client {
 // BuildEventURL trả về URL endpoint gửi sự kiện.
 //
 //   - Nếu bật Gateway: dùng endpoint của Conversions API Gateway
-//     (thường dạng https://<region>.gateway.facebook.com/events) kèm access key.
+//     (thường dạng https://<region>.gateway.facebook.com) kèm access key.
 //   - Ngược lại: gọi trực tiếp https://graph.facebook.com/{version}/{pixel_id}/events
+//
+// ⚠️ GATEWAY (theo tài liệu Meta "Conversions API Gateway"):
+//   - URL base KHÔNG kèm đuôi `/events` sẵn — ta tự chắp path.
+//   - Access key truyền bằng query `?access_key=<KEY>` (KHÔNG phải access_token).
+//   - Payload vẫn là body JSON `{ "data": [...] }` giống Graph API.
 func BuildEventURL(pixelID, apiVersion string, gatewayEnabled bool, gatewayEndpoint, gatewayAccessKey string) string {
 	version := strings.TrimSpace(apiVersion)
 	if version == "" {
@@ -130,7 +135,8 @@ func BuildEventURL(pixelID, apiVersion string, gatewayEnabled bool, gatewayEndpo
 			endpoint = GraphBaseURL
 		}
 		endpoint = strings.TrimSuffix(endpoint, "/")
-		// Gateway dùng path dạng /events (không có pixel_id trong path).
+		// Gateway base URL thường là https://<region>.gateway.facebook.com
+		// ⇒ tự chắp /{version}/{pixel_id}/events nếu admin chỉ dán base.
 		if !strings.HasSuffix(endpoint, "/events") {
 			endpoint += "/" + version + "/" + pixelID + "/events"
 		}

@@ -220,6 +220,27 @@ func (s *Store) DeleteFacebookCAPIConfig(landingID string) error {
 	return err
 }
 
+// ToggleFacebookCAPIConfig bật/tắt nhanh CAPI cho 1 landing mà không cần
+// gửi lại toàn bộ cấu hình (token, pixel, gateway…).
+//
+// ⚠️ Chỉ toggle dòng có `landing_id` đúng bằng tham số — KHÔNG đụng vào
+// cấu hình mặc định (landing_id = ''), vì đó là fallback áp dụng cho mọi
+// landing chưa có cấu hình riêng.
+//
+// Trả về `found=false` nếu landing chưa có cấu hình riêng.
+func (s *Store) ToggleFacebookCAPIConfig(landingID string, isActive bool) (found bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ct, err := s.pool.Exec(ctx,
+		`UPDATE facebook_capi_configs SET is_active = $2, updated_at = NOW() WHERE landing_id = $1`,
+		landingID, isActive)
+	if err != nil {
+		return false, err
+	}
+	return ct.RowsAffected() > 0, nil
+}
+
 // LogFacebookCAPIEvent ghi log 1 lần gửi sự kiện lên Meta.
 func (s *Store) LogFacebookCAPIEvent(e models.FacebookCAPIEvent) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -237,14 +258,46 @@ func (s *Store) LogFacebookCAPIEvent(e models.FacebookCAPIEvent) error {
 	const q = `
 		INSERT INTO facebook_capi_logs (
 			lead_id, landing_id, event_name, event_id, action_source, pixel_id,
-			status, http_status, response, error, triggered_by, trang_thai_crm, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, NOW())
+			status, http_status, response, error, triggered_by, trang_thai_crm, session_id, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, NOW())
 	`
 	_, err := s.pool.Exec(ctx, q,
 		leadID, e.LandingID, e.EventName, e.EventID, e.ActionSource, e.PixelID,
 		e.Status, e.HTTPStatus, string(respBytes), e.Error, e.TriggeredBy, e.TrangThaiCRM,
+		e.SessionID,
 	)
 	return err
+}
+
+// HasFacebookCAPISessionEvent kiểm tra session này đã gửi sự kiện đó chưa.
+//
+// Dùng để dedup PageView server-side: tracker.js gửi POST
+// /api/analytics/track nhiều lần trong 1 phiên (pageview, heartbeat, exit,
+// scroll…) ⇒ nếu mỗi lần đều bắn PageView lên Meta thì 1 lượt xem bị
+// đếm nhiều lần.
+//
+// Trả về true nếu ĐÃ gửi sự kiện `eventName` cho `sessionID` trong 24 giờ.
+func (s *Store) HasFacebookCAPISessionEvent(sessionID, eventName string) (bool, error) {
+	if sessionID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const q = `
+		SELECT EXISTS (
+			SELECT 1 FROM facebook_capi_logs
+			WHERE session_id = $1
+			  AND event_name = $2
+			  AND status IN ('success', 'skipped')
+			  AND created_at >= NOW() - INTERVAL '24 hours'
+		)
+	`
+	var exists bool
+	if err := s.pool.QueryRow(ctx, q, sessionID, eventName).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // ListFacebookCAPILogs trả về log gửi sự kiện (mới nhất trước).
@@ -279,7 +332,7 @@ func (s *Store) ListFacebookCAPILogs(landingID string, status string, eventName 
 	q := fmt.Sprintf(`
 		SELECT id, COALESCE(lead_id, 0), landing_id, event_name, event_id,
 		       action_source, pixel_id, status, http_status, response, error,
-		       triggered_by, trang_thai_crm,
+		       triggered_by, trang_thai_crm, session_id,
 		       TO_CHAR(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM facebook_capi_logs
 		WHERE %s
@@ -300,7 +353,7 @@ func (s *Store) ListFacebookCAPILogs(landingID string, status string, eventName 
 		if err := rows.Scan(
 			&e.ID, &e.LeadID, &e.LandingID, &e.EventName, &e.EventID,
 			&e.ActionSource, &e.PixelID, &e.Status, &e.HTTPStatus, &respRaw, &e.Error,
-			&e.TriggeredBy, &e.TrangThaiCRM, &e.CreatedAt,
+			&e.TriggeredBy, &e.TrangThaiCRM, &e.SessionID, &e.CreatedAt,
 		); err != nil {
 			continue
 		}

@@ -126,6 +126,7 @@ Tất cả đều hỗ trợ `landing_id`, `nguon`, `from_date`, `to_date`, `day
 | `GET /api/facebook-ads/configs` | Danh sách cấu hình CAPI (token đã mask) |
 | `GET/POST /api/facebook-ads/config` | Chi tiết / lưu cấu hình theo `landing_id` |
 | `POST /api/facebook-ads/config/delete` | Xoá cấu hình |
+| `POST /api/facebook-ads/config/toggle` | Bật/tắt nhanh CAPI theo `landing_id` |
 | `POST /api/facebook-ads/test-event` | Gửi 1 sự kiện test (có `test_event_code`) |
 | `GET /api/facebook-ads/dataset-quality` | EMQ, coverage, dedupe, freshness, delay, value |
 | `GET /api/facebook-ads/logs` | Lịch sử gửi sự kiện CAPI |
@@ -144,6 +145,12 @@ kèm kết thúc không mua: `da_hoc_truoc_do` · `khong_quan_tam` · `spam_khon
 - CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase` (kèm `value` = `course_value`).
 - **Ánh xạ URL Meta Ads KHÔNG theo Google Ads**: `utm_campaign` = `campaign.id`,
   `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị.
+- **Dedupe browser ↔ server**: `eventID` là **tham số thứ 4** của `fbq('track', …)` —
+  `fbq('track','Lead',{ content_name:'…' },{ eventID: <cùng event_id> })`.
+  Đặt trong object tham số 3 ⇒ Meta không đọc được ⇒ đếm đôi.
+- **SĐT băm theo E.164**: `0912345678` → `+84912345678` (Meta chỉ khớp E.164).
+- **Dataset Quality v27.0**: `web` là **MẢNG** (mỗi phần tử = 1 `event_name`),
+  `dataset_id` là tham số **bắt buộc**.
 
 ---
 

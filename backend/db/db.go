@@ -527,11 +527,22 @@ func (s *Store) initSchema(ctx context.Context) error {
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	-- ─── Dedup PageView server-side (2026-11-15) ───────────────────
+	--
+	-- tracker.js gửi POST /api/analytics/track nhiều lần trong 1 phiên
+	-- (pageview, heartbeat, exit, scroll…). Nếu mỗi lần đều bắn PageView
+	-- lên Meta ⇒ 1 lượt xem bị đếm 5–10 lần ⇒ chỉ số "lượt hiển thị" phồng.
+	--
+	-- ⇒ Lưu session_id trong log và kiểm tra trước khi gửi: chỉ gửi
+	--   PageView MỘT LẦN cho mỗi session_id.
+	ALTER TABLE facebook_capi_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(120) NOT NULL DEFAULT '';
+
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_created_at ON facebook_capi_logs (created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_lead_id ON facebook_capi_logs (lead_id);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_status ON facebook_capi_logs (status);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_event_name ON facebook_capi_logs (event_name);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_landing_id ON facebook_capi_logs (landing_id);
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_session_id ON facebook_capi_logs (session_id);
 	`
 	_, err := s.pool.Exec(ctx, schemaSQL)
 	return err
