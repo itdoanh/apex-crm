@@ -541,6 +541,24 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 | `GET /api/analytics/report/landings` | Bảng 1 — leaderboard đa landing | Tab 1 |
 | `GET /api/analytics/report/meta` | Biểu đồ 2 (nền tảng + placement) & 3 (in-app vs ngoài) | Tab 2 |
 | `GET /api/analytics/report/ad-hierarchy` | Bảng 2 — campaign → adset → ad | Tab 2 |
+
+> ⚠️ **Bug 2026-11-15 — lỗi 500 `SQLSTATE 42803` ở `ad-hierarchy`:**
+> PostgreSQL resolve `GROUP BY <tên>` theo **TÊN CỘT THẬT** của bảng trước, rồi mới tới
+> output alias. Query cũ dùng `SELECT COALESCE(NULLIF(campaign_name,''), NULLIF(utm_campaign,''), 'none') AS campaign_name`
+> + `GROUP BY campaign_name` ⇒ PostgreSQL hiểu là group theo cột thật `analytics_sessions.campaign_name`
+> ⇒ `utm_campaign` không nằm trong `GROUP BY` ⇒ lỗi 42803 ⇒ tab "Quảng cáo" trả HTTP 500.
+>
+> ⇒ **Fix:** dùng CTE tính sẵn giá trị hiển thị (`grp_campaign`/`grp_adset`/`grp_ad` — tên KHÔNG
+> trùng cột thật) rồi `GROUP BY` trên cột của CTE.
+> ⇒ **Quy tắc cho mọi query sau:** nếu `SELECT` có biểu thức `COALESCE` fallback sang cột KHÁC,
+> **phải** tính sẵn trong CTE/subquery rồi group trên alias đã "sạch" (không trùng tên cột thật).
+> ⇒ Regression test: `backend/db/analytics_report_groupby_test.go`
+> (`TestGetReportAdHierarchyNoGroupByError` + `TestAllReportQueriesRunWithoutSQLError` — gọi TẤT CẢ
+> hàm báo cáo với bộ lọc rộng nhất để bắt lỗi SQL còn sót).
+>
+> ⚠️ **Bug 2026-11-15 — lỗi 500 `cannot scan NULL into *int` ở `report/security`:**
+> `MAX(bot_score)::int` trả NULL khi không có phiên bot nào ⇒ `Scan` lỗi ⇒ tab "Bảo mật & Bot" trả 500.
+> ⇒ **Fix:** `COALESCE(MAX(bot_score), 0)::int` (cả ở `analytics_report.go` lẫn `analytics_ext.go`).
 | `GET /api/analytics/report/heatmap` | Biểu đồ 4 — 7 ngày × 24 giờ (`metric=leads\|sessions\|cr`) | Tab 2 |
 | `GET /api/analytics/report/behavior` | Biểu đồ 5, 6, 7 + Bảng 3 (top điểm chạm) | Tab 3 |
 | `GET /api/analytics/report/form` | Biểu đồ 8 (phễu form) & 9 (nguồn autofill) | Tab 4 |

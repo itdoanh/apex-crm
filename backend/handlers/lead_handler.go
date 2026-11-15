@@ -503,8 +503,16 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 
 		// Đánh dấu challenge đang xử lý để các request trùng lặp song song
 		// từ cùng phiên đăng ký được nhận diện là duplicate (không phải spam).
-		security.MarkChallengeActive(chID)
-		defer security.ReleaseChallengeActive(chID)
+		//
+		// ⚠️ Dùng `EffectiveChallengeID` (challenge THẬT sở hữu lời giải) thay vì
+		// `chID` — khi server tự phục hồi PoW do race condition client
+		// (bug 2026-11-15) thì challenge thật khác challenge client khai báo.
+		activeChallengeID := chID
+		if powRes.EffectiveChallengeID != "" {
+			activeChallengeID = powRes.EffectiveChallengeID
+		}
+		security.MarkChallengeActive(activeChallengeID)
+		defer security.ReleaseChallengeActive(activeChallengeID)
 	}
 
 	// 6. LỚP BẢO VỆ 6: Carrier Whitelist & Phone Sanitization (Kiểm định đầu số viễn thông VN)

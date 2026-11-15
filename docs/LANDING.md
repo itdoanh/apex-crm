@@ -570,6 +570,45 @@ utm_medium=paid&utm_source={{site_source_name}}&utm_placement={{placement}}&utm_
 > ⚠️ **Sai format hash là nguyên nhân #2 gây lỗi PoW.** Client và server **phải** dùng
 > cùng công thức nối chuỗi. Xem `docs/SECURITY.md` mục PoW.
 
+### ⚠️ Cặp (challenge, solution) phải LUÔN khớp 1-1 (fix 2026-11-15)
+
+**Triệu chứng:** lead thật #65 (`0368942836`) bị ghi vào `spam_quarantine` với lý do
+"Lỗi Proof-of-Work" ⇒ **lead bị rơi**.
+
+**Quy tắc bất biến:** `challenge_id` + `challenge_salt` + `challenge_solution` phải là
+**CÙNG MỘT BỘ**. Tách rời ⇒ server băm `SHA256(salt_KHÁC:solution)` ⇒ không khớp ⇒ lead bị cách ly.
+
+**Cấu trúc state ĐÚNG** (`frontend/admin/js/tracker.js`):
+
+```javascript
+// ✅ ĐÚNG — 1 biến duy nhất chứa CẶP, luôn khớp 1-1
+let challengeState = { challenge: null, solution: '' };
+let challengeFetchPromise = null;   // single-flight: gom lời gọi song song
+```
+
+```javascript
+// ❌ SAI — 2 biến rời rạc ⇒ race condition (đây chính là bug 2026-11-15)
+let currentChallenge = null;
+let currentChallengeSolution = null;
+```
+
+**3 hàm bắt buộc trong `tracker.js`:**
+
+| Hàm | Vai trò |
+|---|---|
+| `solveProofOfWork(challenge)` | Tìm nonce sao cho `SHA256(id:salt:nonce)` bắt đầu bằng `"000"` |
+| `verifyPowSolution(challenge, solution)` | Tự băm lại để xác nhận cặp khớp — **lớp phòng thủ cuối** |
+| `ensurePowPairValid()` | Gọi `verifyPowSolution`; lệch ⇒ **giải lại** chứ KHÔNG gửi payload hỏng |
+
+> ⚠️ **Không được dùng `fetch` challenge trực tiếp trong nhiều nơi.** Mọi lời gọi phải đi qua
+> `ensureChallengeReady()` ⇒ dùng chung `challengeFetchPromise` (single-flight).
+>
+> ⚠️ **Server có lớp phục hồi riêng** (`healMismatchedSolution()`) vì trình duyệt có thể
+> đang dùng `tracker.js` **bản cũ trong cache**. Xem `docs/SECURITY.md` mục "Nguyên nhân #5".
+>
+> ⇒ Khi sửa `tracker.js` phải chạy `node scripts/sync-static-mirror.js` để đồng bộ **7 bản mirror**
+> (`frontend/admin/js/tracker.js` là nguồn chuẩn).
+
 ### 🔒 Cách ly tracking giữa các landing (bắt buộc)
 
 `tracker.js` namespace hoá **toàn bộ** storage theo `landing_id`:

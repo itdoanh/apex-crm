@@ -105,6 +105,34 @@ func resolveChallengeSecretKey() []byte {
 - Tối đa `6` — `ParseDifficulty` trả `3` nếu out of range.
 - Difficulty cao quá → người dùng thật chờ lâu → giảm CR.
 
+### ⚠️ Cặp (challenge, solution) phải khớp 1-1 (bug 2026-11-15)
+
+**Bằng chứng:** lead thật #65 (`0368942836`) bị ghi vào `spam_quarantine` "Lỗi Proof-of-Work".
+HMAC challenge **khớp** (server thật phát) nhưng `SHA256(id:salt:solution)` **không** bắt đầu `"000"`
+⇒ lời giải thuộc challenge KHÁC ⇒ race condition client.
+
+**Client** (`frontend/admin/js/tracker.js`):
+```javascript
+// ✅ ĐÚNG — 1 biến duy nhất + single-flight + tự verify
+let challengeState = { challenge: null, solution: '' };
+let challengeFetchPromise = null;
+// + verifyPowSolution() / ensurePowPairValid() trước khi gửi
+```
+```javascript
+// ❌ SAI — 2 biến rời rạc ⇒ race condition ⇒ lead thật bị cách ly
+let currentChallenge = null;
+let currentChallengeSolution = null;
+```
+
+**Server** — lớp phục hồi `healMismatchedSolution()`:
+- Server nhớ salt gốc của mọi challenge đã phát (`issuedChallenges`, cửa sổ `powHealWindow` = 3 phút).
+- Khi lời giải không khớp challenge khai báo ⇒ quét challenge gần đây để tìm challenge **thật** sở hữu lời giải.
+- ⚠️ **KHÔNG được nới lỏng chống bot**: bot vẫn phải giải đúng 1 challenge server đã phát.
+  HMAC sai ⇒ `bad_signature`; lời giải rác ⇒ `invalid_solution`; replay từ phiên khác ⇒ `replay`.
+- `PowResult.EffectiveChallengeID` = challenge thật ⇒ handler dùng cho `MarkChallengeActive`.
+
+Xem `docs/SECURITY.md` mục "Nguyên nhân #5".
+
 ---
 
 ## 5. Honeypot

@@ -825,11 +825,40 @@ func (s *Store) GetReportAdHierarchy(f ReportFilter, limit int) ([]map[string]in
 		limit = 1000
 	}
 
+	// ⚠️ BẮT BUỘC dùng CTE (subquery) — KHÔNG được GROUP BY trực tiếp trên
+	// bảng gốc khi SELECT có biểu thức COALESCE fallback từ cột khác.
+	//
+	// LÝ DO (bug 2026-11-15 — lỗi 500 tab Quảng cáo):
+	// PostgreSQL resolve `GROUP BY campaign_name` theo **TÊN CỘT THẬT** của
+	// bảng (`analytics_sessions.campaign_name`), KHÔNG phải output alias. Trong
+	// khi đó SELECT lại là:
+	//     COALESCE(NULLIF(campaign_name,''), NULLIF(utm_campaign,''), 'none')
+	// ⇒ `utm_campaign` không nằm trong GROUP BY ⇒
+	//     ERROR 42803: column "analytics_sessions.utm_campaign" must appear
+	//     in the GROUP BY clause or be used in an aggregate function
+	//
+	// ⇒ CTE tính SẴN giá trị hiển thị rồi GROUP BY trên cột của CTE
+	//   (tên không trùng cột thật) ⇒ hợp lệ với PostgreSQL.
 	query := fmt.Sprintf(`
+		WITH base AS (
+			SELECT
+				COALESCE(NULLIF(campaign_name, ''), NULLIF(utm_campaign, ''), 'none') AS grp_campaign,
+				COALESCE(NULLIF(adset_name, ''), NULLIF(utm_content, ''), 'none')    AS grp_adset,
+				COALESCE(NULLIF(ad_name, ''), NULLIF(utm_term, ''), 'none')         AS grp_ad,
+				visitor_id,
+				visible_seconds,
+				scroll_depth_50,
+				converted_lead,
+				fbclid,
+				fbc,
+				fbp
+			FROM analytics_sessions
+			%s
+		)
 		SELECT
-			COALESCE(NULLIF(campaign_name, ''), NULLIF(utm_campaign, ''), 'none')  AS campaign_name,
-			COALESCE(NULLIF(adset_name, ''), NULLIF(utm_content, ''), 'none')     AS adset_name,
-			COALESCE(NULLIF(ad_name, ''), NULLIF(utm_term, ''), 'none')          AS ad_name,
+			grp_campaign                                               AS campaign_name,
+			grp_adset                                                  AS adset_name,
+			grp_ad                                                     AS ad_name,
 			COUNT(*)::int                                              AS sessions,
 			COUNT(DISTINCT visitor_id)::int                            AS unique_visitors,
 			COUNT(*) FILTER (WHERE visible_seconds < 5)::int           AS fast_bounce,
@@ -848,9 +877,8 @@ func (s *Store) GetReportAdHierarchy(f ReportFilter, limit int) ([]map[string]in
 			CASE WHEN COUNT(*) > 0
 				THEN ROUND((COUNT(*) FILTER (WHERE fbclid != '' OR fbc != '' OR fbp != '')::numeric / COUNT(*)::numeric) * 100, 2)::float
 				ELSE 0 END                                              AS capi_match_rate
-		FROM analytics_sessions
-		%s
-		GROUP BY campaign_name, adset_name, ad_name
+		FROM base
+		GROUP BY grp_campaign, grp_adset, grp_ad
 		ORDER BY sessions DESC
 		LIMIT %d;
 	`, whereClause, limit)
@@ -1582,7 +1610,7 @@ func (s *Store) GetReportSecurity(f ReportFilter) (map[string]interface{}, error
 			COUNT(*) FILTER (WHERE is_bot)::int                    AS bot_sessions,
 			COUNT(*) FILTER (WHERE NOT is_bot)::int                AS human_sessions,
 			COALESCE(AVG(bot_score) FILTER (WHERE is_bot), 0)::float AS avg_bot_score,
-			MAX(bot_score)::int                                    AS max_bot_score
+			COALESCE(MAX(bot_score), 0)::int                         AS max_bot_score
 		FROM analytics_sessions
 		%s;
 	`, whereClause)

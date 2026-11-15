@@ -33,6 +33,8 @@
 11. **Mọi query analytics phải truyền đủ bộ lọc** `landing_id`/`nguon`/`from_date`/`to_date`/`days`/`from_hour`/`to_hour` → `buildAnalyticsWhereClauseFullRange()`. Bộ lọc giờ hỗ trợ **quay vòng qua nửa đêm** (22h→06h).
 12. **Tracking tách theo landing** — `tracker.js` namespace hoá cookie/localStorage theo `landing_id`. Landing mới phải khai báo `data-landing-id` + `data-nguon` trùng `config.json`.
 13. **Proof-of-Work** — TTL 10 phút, dung sai clock skew 60 giây, hash = `SHA256(challenge_id + ":" + salt + ":" + solution)`. Client gọi `ensureChallengeReady()` trước submit + disable nút ngay khi click.
+    - ⚠️ **Cặp (challenge, solution) phải luôn khớp 1-1** (bug 2026-11-15): dùng `challengeState = { challenge, solution }` (1 biến duy nhất) + `challengeFetchPromise` (single-flight) + `verifyPowSolution()`/`ensurePowPairValid()` tự kiểm trước khi gửi. Server có lớp phục hồi `healMismatchedSolution()` (quét challenge đã phát trong 3 phút) — chống bot không bị nới lỏng.
+    - Sửa `tracker.js` ⇒ chạy `node scripts/sync-static-mirror.js` (7 bản mirror; `frontend/admin/js/tracker.js` là nguồn chuẩn).
 14. **CAPI không chặn luồng chính** — lỗi gửi sự kiện Meta chỉ ghi log `facebook_capi_logs`, không fail `POST /api/leads` / `POST /api/leads/update`. PII băm SHA-256 (SĐT theo **E.164**: `0912345678` → `+84912345678`); `client_ip_address`/`client_user_agent`/`fbc`/`fbp` gửi rõ.
 15. **Pipeline CRM 10 trạng thái** — định nghĩa tập trung tại `backend/models/lead_status.go`; frontend gọi `GET /api/facebook-ads/lead-statuses` để render động (Kanban 10 cột), không hardcode.
     - `moi` → `da_goi` → `ket_ban_zalo` → `da_hoc_buoi_chia_se` (miễn phí) → `da_hoc_chuyen_sau` (≈6.000.000đ) → `da_mua_hang` (kết)

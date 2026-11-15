@@ -176,7 +176,135 @@ func TestVerifyChallengeMissingParams(t *testing.T) {
 	}
 }
 
-// TestVerifyChallengeParallelSameSession — mô phỏng đúng tình huống production:
+// TestVerifyChallengeHealMismatchedSolution — regression test cho bug 2026-11-15:
+// lead thật #65 (0368942836 / "Luc van pao") bị ghi vào `spam_quarantine` với
+// lý do "Lỗi Proof-of-Work" (`pow_invalid`).
+//
+// BẰNG CHỨNG: HMAC của challenge khớp (challenge do server thật phát), nhưng
+// SHA256(challenge_id:salt:solution) KHÔNG bắt đầu bằng "000" ⇒ lời giải thuộc
+// về challenge KHÁC ⇒ race condition client (challenge A + solution B).
+//
+// ⇒ SERVER phải tự phục hồi: quét các challenge nó đã phát, tìm challenge thật
+// sở hữu lời giải ⇒ coi như hợp lệ (client ĐÃ giải PoW đúng).
+//
+// KỲ VỌNG: PoW hợp lệ (OK) thay vì invalid_solution.
+func TestVerifyChallengeHealMismatchedSolution(t *testing.T) {
+	// Challenge A — client giải được (lời giải thật).
+	chA, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+	solA := solveForTest(t, chA.ChallengeID, chA.Salt, 3)
+
+	// Challenge B — client KHAI BÁO nhưng lời giải gửi lên là của challenge A.
+	chB, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+
+	res := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, chB.Signature, solA,
+		"sess_heal|vis_heal|0368942836|104.28.199.125")
+	if !res.OK {
+		t.Fatalf("server phải tự phục hồi PoW (race condition client), nhận code=%s reason=%s", res.Code, res.Reason)
+	}
+	if res.EffectiveChallengeID != chA.ChallengeID {
+		t.Fatalf("EffectiveChallengeID phải là challenge thật (%s), nhận %s", chA.ChallengeID, res.EffectiveChallengeID)
+	}
+}
+
+// TestVerifyChallengeHealDoesNotAcceptGarbage — lớp phục hồi KHÔNG được nới lỏng
+// chống bot: lời giải bất kỳ (không thuộc challenge nào server đã phát) vẫn
+// phải bị từ chối.
+func TestVerifyChallengeHealDoesNotAcceptGarbage(t *testing.T) {
+	ch, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+
+	// Lời giải ngẫu nhiên — không thuộc challenge nào server đã phát.
+	res := VerifyChallenge(ch.ChallengeID, ch.Salt, 3, ch.ExpiresAt, ch.Signature, "42424242",
+		"sess_garbage|vis_garbage|0368942836|104.28.199.125")
+	if res.OK || res.Code != PowCodeInvalidSolution {
+		t.Fatalf("lời giải rác phải bị từ chối (invalid_solution), nhận code=%s reason=%s", res.Code, res.Reason)
+	}
+}
+
+// TestVerifyChallengeHealStillBlocksReplay — sau khi phục hồi, cơ chế chống
+// replay vẫn phải hoạt động: gửi lại cùng cặp (challenge B + solution A) từ
+// phiên KHÁC ⇒ replay ⇒ bị ghi vào vùng cách ly.
+func TestVerifyChallengeHealStillBlocksReplay(t *testing.T) {
+	chA, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+	solA := solveForTest(t, chA.ChallengeID, chA.Salt, 3)
+
+	chB, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+
+	// Phiên 1 ⇒ OK (được phục hồi).
+	res1 := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, chB.Signature, solA, "sess_R1|v1|0368942836|1.1.1.1")
+	if !res1.OK {
+		t.Fatalf("lần 1 phải OK, nhận code=%s reason=%s", res1.Code, res1.Reason)
+	}
+
+	// Phiên 2 (khác) ⇒ replay ⇒ bị chặn.
+	res2 := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, chB.Signature, solA, "sess_R2|v2|0999888777|2.2.2.2")
+	if res2.OK || res2.Code != PowCodeReplay {
+		t.Fatalf("lần 2 từ phiên khác phải là replay, nhận code=%s reason=%s", res2.Code, res2.Reason)
+	}
+}
+
+// TestVerifyChallengeDuplicateSubmitAfterHeal — sau khi phục hồi, request trùng
+// lặp từ CÙNG phiên đăng ký vẫn phải là duplicate_submit (KHÔNG phải spam) ⇒
+// lead thật không bị ghi vào vùng cách ly.
+func TestVerifyChallengeDuplicateSubmitAfterHeal(t *testing.T) {
+	chA, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+	solA := solveForTest(t, chA.ChallengeID, chA.Salt, 3)
+
+	chB, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+	fp := "sess_DUP|v_DUP|0368942836|104.28.199.125"
+
+	res1 := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, chB.Signature, solA, fp)
+	if !res1.OK {
+		t.Fatalf("lần 1 phải OK, nhận code=%s reason=%s", res1.Code, res1.Reason)
+	}
+
+	res2 := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, chB.Signature, solA, fp)
+	if res2.OK || res2.Code != PowCodeDuplicateSubmit {
+		t.Fatalf("lần 2 cùng phiên phải là duplicate_submit, nhận code=%s reason=%s", res2.Code, res2.Reason)
+	}
+}
+
+// TestVerifyChallengeHealBadSignatureStillRejected — lớp phục hồi KHÔNG được
+// bỏ qua bước kiểm tra HMAC: client sửa tham số challenge ⇒ vẫn bị từ chối.
+func TestVerifyChallengeHealBadSignatureStillRejected(t *testing.T) {
+	chA, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+	solA := solveForTest(t, chA.ChallengeID, chA.Salt, 3)
+
+	chB, err := GenerateChallenge(3)
+	if err != nil {
+		t.Fatalf("GenerateChallenge lỗi: %v", err)
+	}
+
+	// Chữ ký sai ⇒ bad_signature (KHÔNG được phục hồi).
+	res := VerifyChallenge(chB.ChallengeID, chB.Salt, 3, chB.ExpiresAt, "deadbeef", solA,
+		"sess_badsig|v|0368942836|104.28.199.125")
+	if res.OK || res.Code != PowCodeBadSignature {
+		t.Fatalf("chữ ký sai phải bị từ chối (bad_signature), nhận code=%s reason=%s", res.Code, res.Reason)
+	}
+}
 // 3 request CÙNG LÚC tới (capture listener + onsubmit + tracker interceptor)
 // với CÙNG payload (cùng challenge_id + challenge_solution + cùng phiên).
 //

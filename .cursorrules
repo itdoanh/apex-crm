@@ -24,11 +24,15 @@
 11. Query analytics phải đủ bộ lọc `from_date`/`to_date`/`days`/`from_hour`/`to_hour` (hỗ trợ quay vòng qua nửa đêm 22h→06h)
 12. Tracking tách theo `landing_id` (cookie/localStorage namespace + `data-landing-id`)
 13. PoW: TTL 10′ · clock skew 60s · `SHA256(id:salt:solution)` · client disable nút ngay khi click
-14. CAPI không chặn luồng chính — lỗi Meta chỉ ghi log `facebook_capi_logs` · PII băm SHA-256, IP/UA/fbc/fbp gửi rõ
-15. Pipeline CRM 10 trạng thái — nguồn: `backend/models/lead_status.go` · UI gọi `GET /api/facebook-ads/lead-statuses` (động)
-16. URL Meta Ads: `utm_campaign`=`campaign.id` · `utm_content`=`adset.id` · `utm_term`=`ad.id` (KHÔNG theo Google Ads)
-17. Danh mục trường Google Sheets: 1 nguồn duy nhất `backend/integrations/googlesheets/fields.go` — frontend nạp từ `GET /api/integrations/sheets/defaults`, KHÔNG hardcode
-18. Cột chuẩn mới không tự áp dụng cho config cũ — Admin bấm "Bổ sung Cột" (thêm vào CUỐI, không phá cột cũ) · đổi trạng thái CRM cập nhật dòng Sheet qua `BatchUpdate` (không append)
+    - ⚠️ Cặp (challenge, solution) **phải khớp 1-1**: `challengeState = { challenge, solution }` (1 biến) + `challengeFetchPromise` (single-flight) + `verifyPowSolution()` trước khi gửi. Tách 2 biến ⇒ race condition ⇒ lead thật bị cách ly "Lỗi Proof-of-Work" (bug 2026-11-15).
+    - Server có lớp phục hồi `healMismatchedSolution()` — chống bot KHÔNG bị nới lỏng.
+    - Sửa `tracker.js` ⇒ chạy `node scripts/sync-static-mirror.js` (7 bản mirror).
+14. `GROUP BY` + output alias: PostgreSQL resolve theo **TÊN CỘT THẬT** trước ⇒ `COALESCE` fallback sang cột khác phải bọc CTE + group trên alias "sạch" (tránh lỗi 42803 → HTTP 500). Aggregate có thể NULL → bọc `COALESCE(MAX(...), 0)`.
+15. CAPI không chặn luồng chính — lỗi Meta chỉ ghi log `facebook_capi_logs` · PII băm SHA-256, IP/UA/fbc/fbp gửi rõ
+16. Pipeline CRM 10 trạng thái — nguồn: `backend/models/lead_status.go` · UI gọi `GET /api/facebook-ads/lead-statuses` (động)
+17. URL Meta Ads: `utm_campaign`=`campaign.id` · `utm_content`=`adset.id` · `utm_term`=`ad.id` (KHÔNG theo Google Ads)
+18. Danh mục trường Google Sheets: 1 nguồn duy nhất `backend/integrations/googlesheets/fields.go` — frontend nạp từ `GET /api/integrations/sheets/defaults`, KHÔNG hardcode
+19. Cột chuẩn mới không tự áp dụng cho config cũ — Admin bấm "Bổ sung Cột" (thêm vào CUỐI, không phá cột cũ) · đổi trạng thái CRM cập nhật dòng Sheet qua `BatchUpdate` (không append)
 
 ## Production
 

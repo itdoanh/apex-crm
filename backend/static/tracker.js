@@ -582,9 +582,45 @@
     // 3. THEO DÕI TƯƠNG TÁC BIỂU MẪU & ANTI-SPAM DEFENSE
     // ============================================================
     let formFirstInteractionTimestamp = 0;
-    let currentChallenge = null;
-    let currentChallengeSolution = null;
     let isSolvingChallenge = false;
+
+    // ⚠️ PoW PHẢI GẮN CHẶT VỚI CHALLENGE (fix bug 2026-11-15)
+    //
+    // BỐI CẢNH: lead thật bị ghi vào `spam_quarantine` với lý do
+    // "Lỗi Proof-of-Work" (pow_invalid) dù payload đầy đủ.
+    //
+    // NGUYÊN NHÂN — RACE CONDITION giữa `currentChallenge` và
+    // `currentChallengeSolution`:
+    //
+    //   `ensureChallengeReady()` được gọi SONG SONG từ nhiều nơi
+    //   (autofill, focusin, input, change, submit). Mỗi lần gọi:
+    //     1. fetch challenge MỚI  (A, B, C...)
+    //     2. currentChallenge = <challenge vừa fetch>   ← ghi đè
+    //     3. currentChallengeSolution = null            ← xoá
+    //     4. await solveProofOfWork(challenge)          ← YIELD (15-30ms)
+    //     5. currentChallengeSolution = <lời giải>      ← ghi đè
+    //
+    //   Nếu lần gọi A giải CHẬM hơn lần gọi B (mạng chập chờn), thứ tự
+    //   ghi sẽ là: B xong trước (cur=B, sol=solB) → A xong sau (cur=B,
+    //   sol=solA) ⇒ payload gửi đi có `challenge_id` của B nhưng
+    //   `challenge_solution` của A ⇒ server băm
+    //   SHA256(B_salt:solA) ⇒ KHÔNG khớp ⇒ lead THẬT bị ghi vào vùng
+    //   cách ly.
+    //
+    // CÁCH SỬA:
+    //   1. Gom MỌI lời gọi song song về 1 promise dùng chung
+    //      (`challengeFetchPromise`) ⇒ chỉ có 1 challenge tồn tại tại 1 thời điểm.
+    //   2. Lưu cặp (challenge, solution) vào 1 biến duy nhất `challengeState`
+    //      ⇒ không bao giờ có tình trạng challenge A + solution B.
+    //   3. Khi giải xong, kiểm tra lại challenge có còn là challenge đang
+    //      dùng không — nếu không thì bỏ kết quả (tránh ghi đè).
+    //
+    // ⇒ Lời giải và challenge luôn khớp 1-1 ⇒ PoW hợp lệ 100%.
+
+    // challengeState giữ CẶP (challenge, solution) — luôn khớp 1-1.
+    let challengeState = { challenge: null, solution: '' };
+    // challengeFetchPromise dùng để gom các lời gọi song song về 1 request.
+    let challengeFetchPromise = null;
 
     function getChallengeEndpoint() {
         if (window.APEX_CHALLENGE_URL) return window.APEX_CHALLENGE_URL;
@@ -614,11 +650,70 @@
         return '';
     }
 
+    // verifyPowSolution kiểm tra lại cặp (challenge, solution) phía client trước
+    // khi gửi — lớp phòng thủ CUỐI CÙNG chống "Lỗi Proof-of-Work" nhầm.
+    //
+    // LÝ DO: nếu vì lý do nào đó challenge và solution lệch nhau (race
+    // condition, cache cũ, script bị sửa), server sẽ ghi lead THẬT vào vùng
+    // cách ly. ⇒ Tự kiểm tra trước, lệch thì giải lại thay vì gửi đi.
+    async function verifyPowSolution(challenge, solution) {
+        if (!challenge || !challenge.challenge_id || !challenge.salt || !solution) {
+            return false;
+        }
+        try {
+            const prefix = '0'.repeat(challenge.difficulty || 3);
+            const data = new TextEncoder().encode(
+                challenge.challenge_id + ':' + challenge.salt + ':' + solution
+            );
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+            return hashHex.startsWith(prefix);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // ensurePowPairValid đảm bảo cặp (challenge, solution) trong `challengeState`
+    // thực sự khớp — nếu không thì giải lại challenge hiện tại.
+    //
+    // ⚠️ Fix bug 2026-11-15 (lead thật bị ghi vào vùng cách ly
+    //    "Lỗi Proof-of-Work" do race condition challenge/solution).
+    async function ensurePowPairValid() {
+        var st = challengeState;
+        if (!st.challenge) return null;
+
+        if (st.solution && await verifyPowSolution(st.challenge, st.solution)) {
+            return st.challenge;
+        }
+
+        // Lệch (hoặc chưa có lời giải) ⇒ giải lại CHÍNH challenge hiện tại.
+        // ⚠️ Không fetch challenge mới ở đây — giữ nguyên challenge để
+        // challenge/solution luôn khớp.
+        var solution = await solveProofOfWork(st.challenge);
+        if (solution && await verifyPowSolution(st.challenge, solution)) {
+            st.solution = solution;
+            return st.challenge;
+        }
+
+        // Không giải được ⇒ vô hiệu hoá cặp hiện tại để lần gọi sau fetch mới.
+        challengeState = { challenge: null, solution: '' };
+        return null;
+    }
+
     async function solveChallengeInBackground() {
-        if (!currentChallenge || isSolvingChallenge) return;
+        if (!challengeState.challenge || isSolvingChallenge) return;
         isSolvingChallenge = true;
         try {
-            currentChallengeSolution = await solveProofOfWork(currentChallenge);
+            // Giữ tham chiếu challenge đang giải để đối chiếu sau.
+            const target = challengeState.challenge;
+            const solution = await solveProofOfWork(target);
+            // ⛔ Chỉ ghi khi challenge CHƯA bị thay thế trong lúc đang giải.
+            // Nếu bị thay thế ⇒ lời giải này không còn khớp challenge đang dùng
+            // ⇒ bỏ qua (tránh ghép nhầm challenge A + solution B).
+            if (challengeState.challenge === target) {
+                challengeState.solution = solution;
+            }
         } catch (_) {
         } finally {
             isSolvingChallenge = false;
@@ -634,42 +729,75 @@
     //
     // ⇒ Luôn kiểm tra thời hạn thực tế TRƯỚC khi gửi. Nếu sắp hết hạn (< 90s)
     //   hoặc đã hết hạn ⇒ lấy challenge MỚI và giải PoW ngay tại thời điểm submit.
+    //
+    // ⚠️ BUG ĐÃ SỬA (2026-11-15): race condition ⇒ challenge A + solution B.
+    // Xem giải thích chi tiết ở khối `challengeState` phía trên.
+    // ⇒ Gom mọi lời gọi song song về 1 promise dùng chung + luôn giữ cặp
+    //   (challenge, solution) trong 1 biến duy nhất.
     const CHALLENGE_SAFETY_MARGIN = 90; // giây
+
+    // fetchAndSolveChallenge thực hiện 1 vòng: lấy challenge mới → giải PoW →
+    // ghi vào `challengeState` (cặp luôn khớp 1-1).
+    async function fetchAndSolveChallenge() {
+        const res = await fetch(getChallengeEndpoint() + '?difficulty=3', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (!data || !data.success || !data.data) throw new Error('payload không hợp lệ');
+
+        const challenge = data.data;
+        // Ghi challenge TRƯỚC khi giải ⇒ nếu có lời gọi song song, chúng
+        // đều thấy cùng 1 challenge ⇒ không sinh request thừa.
+        challengeState.challenge = challenge;
+        challengeState.solution = '';
+
+        const solution = await solveProofOfWork(challenge);
+        // ⛔ Chỉ ghi lời giải nếu challenge CHƯA bị thay thế trong lúc giải.
+        if (challengeState.challenge === challenge) {
+            challengeState.solution = solution;
+        }
+        return challenge;
+    }
 
     async function ensureChallengeReady(forceRefresh) {
         var nowSec = Date.now() / 1000;
-        var valid = currentChallenge &&
-            currentChallenge.expires_at > (nowSec + CHALLENGE_SAFETY_MARGIN) &&
-            currentChallengeSolution;
+        var state = challengeState;
+        var valid = state.challenge &&
+            state.challenge.expires_at > (nowSec + CHALLENGE_SAFETY_MARGIN) &&
+            state.solution;
 
         if (valid && !forceRefresh) {
-            return currentChallenge;
+            return state.challenge;
         }
 
-        // Challenge cũ đã hết hạn hoặc chưa có lời giải ⇒ lấy mới.
+        // ⛔ Gom các lời gọi SONG SONG về 1 promise dùng chung.
+        // Nếu không, mỗi lời gọi sẽ fetch 1 challenge riêng ⇒ race condition
+        // ⇒ lead thật bị ghi vào vùng cách ly "Lỗi Proof-of-Work".
+        if (!challengeFetchPromise) {
+            challengeFetchPromise = fetchAndSolveChallenge()
+                .catch(function (err) { throw err; })
+                .finally(function () {
+                    // Cho phép lần gọi kế tiếp fetch challenge mới.
+                    challengeFetchPromise = null;
+                });
+        }
+
         try {
-            const res = await fetch(getChallengeEndpoint() + '?difficulty=3', { cache: 'no-store' });
-            if (res.ok) {
-                const data = await res.json();
-                if (data && data.success && data.data) {
-                    currentChallenge = data.data;
-                    currentChallengeSolution = null;
-                    // Giải PoW ngay (bất đồng bộ) — thường chỉ 15-30ms.
-                    currentChallengeSolution = await solveProofOfWork(currentChallenge);
-                    return currentChallenge;
+            await challengeFetchPromise;
+        } catch (_) {
+            // Không lấy được challenge mới nhưng challenge cũ vẫn còn hiệu lực
+            // ⇒ dùng lại (server có dung sai clock skew 60s).
+            var st = challengeState;
+            if (st.challenge && st.challenge.expires_at > nowSec) {
+                if (!st.solution) {
+                    st.solution = await solveProofOfWork(st.challenge);
                 }
+                return st.challenge;
             }
-        } catch (_) {}
-
-        // Không lấy được challenge mới nhưng challenge cũ vẫn còn hiệu lực
-        // ⇒ dùng lại (server có dung sai clock skew 60s).
-        if (currentChallenge && currentChallenge.expires_at > nowSec) {
-            if (!currentChallengeSolution) {
-                currentChallengeSolution = await solveProofOfWork(currentChallenge);
-            }
-            return currentChallenge;
+            return null;
         }
-        return null;
+
+        var finalState = challengeState;
+        return finalState.challenge || null;
     }
 
     // Tự động khởi động giải Proof-of-Work ngầm trong background sau 1s tải trang
@@ -1667,13 +1795,25 @@
         // Đảm bảo thử thách Proof-of-Work đã được giải (tính SHA-256 ngầm)
         //
         // ⚠️ SỬA BUG MẤT LEAD (2026-11-12): trước đây chỉ giải PoW khi
-        // `currentChallengeSolution` rỗng. Nếu challenge đã hết hạn (khách ở
-        // trang > TTL) ⇒ server trả lỗi "hết hạn" ⇒ lead thật bị mất.
+        // lời giải rỗng. Nếu challenge đã hết hạn (khách ở trang > TTL) ⇒
+        // server trả lỗi "hết hạn" ⇒ lead thật bị mất.
         // ⇒ LUÔN gọi ensureChallengeReady() trước khi gửi để lấy challenge
         //   còn hiệu lực & giải lại ngay tại thời điểm bấm nút.
+        //
+        // ⚠️ SỬA BUG NHẦM "Lỗi Proof-of-Work" (2026-11-15): sau khi await,
+        //   phải đọc lại CẶP (challenge, solution) từ `challengeState` — biến
+        //   này được bảo đảm luôn khớp 1-1 (xem `challengeState`).
         formSubmitAttempts++;
         try {
             await ensureChallengeReady(false);
+        } catch (_) {}
+
+        // ⛔ LỚP PHÒNG THỦ CUỐI: tự băm lại SHA256(challenge:salt:solution)
+        // để xác nhận cặp PoW thực sự khớp TRƯỚC khi gửi. Nếu lệch ⇒
+        // giải lại (không gửi payload hỏng ⇒ không mất lead & không bị ghi
+        // vào vùng cách ly "Lỗi Proof-of-Work").
+        try {
+            await ensurePowPairValid();
         } catch (_) {}
 
         const urlParams = getUrlParams();
@@ -1771,12 +1911,16 @@
             terms_confirm_bot: honeypotCheck,
             user_email_verify: honeypotEmail,
             company_website_url: honeypotUrl,
-            challenge_id: currentChallenge ? currentChallenge.challenge_id : '',
-            challenge_salt: currentChallenge ? currentChallenge.salt : '',
-            challenge_difficulty: currentChallenge ? currentChallenge.difficulty : 3,
-            challenge_expires_at: currentChallenge ? currentChallenge.expires_at : 0,
-            challenge_signature: currentChallenge ? currentChallenge.signature : '',
-            challenge_solution: currentChallengeSolution || ''
+            // ⚠️ PoW: lấy NGUYÊN CẶP (challenge, solution) từ `challengeState`
+            // ⇒ challenge và solution LUÔN khớp 1-1 (fix bug 2026-11-15:
+            // race condition khiến lead thật bị ghi vào vùng cách ly
+            // "Lỗi Proof-of-Work" vì challenge A + solution B).
+            challenge_id: challengeState.challenge ? challengeState.challenge.challenge_id : '',
+            challenge_salt: challengeState.challenge ? challengeState.challenge.salt : '',
+            challenge_difficulty: challengeState.challenge ? challengeState.challenge.difficulty : 3,
+            challenge_expires_at: challengeState.challenge ? challengeState.challenge.expires_at : 0,
+            challenge_signature: challengeState.challenge ? challengeState.challenge.signature : '',
+            challenge_solution: challengeState.solution || ''
         };
 
         const endpoint = getBackendEndpoint();

@@ -298,7 +298,7 @@ func (s *Store) GetBotAnalytics(f AnalyticsFilter, limit int) (map[string]interf
 			COUNT(*) FILTER (WHERE is_bot)::int AS bot_sessions,
 			COUNT(*) FILTER (WHERE NOT is_bot)::int AS human_sessions,
 			COALESCE(AVG(bot_score), 0)::float AS avg_bot_score,
-			MAX(bot_score)::int AS max_bot_score
+			COALESCE(MAX(bot_score), 0)::int   AS max_bot_score
 		FROM analytics_sessions
 		%s;
 	`, whereClause)

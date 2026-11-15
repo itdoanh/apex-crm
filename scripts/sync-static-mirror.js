@@ -68,6 +68,11 @@ const TRACKER_COPIES = [
   path.join('frontend', 'landing', 'tracker.js'),
   'tracker.js',
   path.join(DST, 'tracker.js'),
+  // ⚠️ `backend/tracker.js` — bản mirror thứ 7. Backend chạy với working
+  // directory = `backend/` ⇒ Edge Router có thể serve file này cho request
+  // `/tracker.js` (khi route gốc không có prefix). Nếu không sync ⇒ landing
+  // chạy bản cũ ⇒ mất fix PoW race condition (bug 2026-11-15).
+  path.join('backend', 'tracker.js'),
 ];
 
 if (fs.existsSync(TRACKER_SRC)) {
