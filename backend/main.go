@@ -124,6 +124,21 @@ func main() {
 		log.Printf("[WARN] Không thể chuẩn hoá landing_id trong config.json: %v", err)
 	}
 
+	// ⚠️ Sửa chữa ĐỊNH DANH landing bị chồng chéo (fix 2026-11-15).
+	//
+	//   Sau khi nhân bản landing, bản sao có thể mang theo `nguon_default`,
+	//   `config.json` và `data-landing-id` của landing NGUỒN ⇒ mọi view/lead
+	//   của bản sao bị ghi về landing nguồn ⇒ thống kê chồng chéo, không tách
+	//   được. (Trường hợp thực tế: `xu_huong_1` nhân bản từ `doanh_chung`.)
+	//
+	//   Hàm này idempotent: chạy lại nhiều lần cũng an toàn, chỉ sửa dữ liệu
+	//   ĐỊNH DANH — KHÔNG đụng nội dung, KHÔNG xoá lead, KHÔNG đụng Sheets.
+	if n, err := store.RepairLandingIdentity(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể sửa chữa định danh landing chồng chéo: %v", err)
+	} else if n > 0 {
+		log.Printf("[INFO] Đã sửa chữa %d bản ghi định danh landing bị chồng chéo", n)
+	}
+
 	// Sửa typo Meta Pixel `f._bq=n` → `f._fbq=n` trong HTML của các landing.
 	// Typos này làm Meta báo "Multiple pixels with conflicting versions"
 	// ⇒ PageView bị đếm sai/lặp, ảnh hưởng tối ưu ngân sách Meta Ads.
@@ -205,6 +220,8 @@ func main() {
 	mux.HandleFunc("/api/landings/deploy", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeployLanding)))
 	mux.HandleFunc("/api/landings/toggle", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleToggleActive)))
 	mux.HandleFunc("/api/landings/duplicate", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDuplicateLanding)))
+	mux.HandleFunc("/api/landings/identity/report", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleLandingIdentityReport)))
+	mux.HandleFunc("/api/landings/identity/repair", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleLandingIdentityRepair)))
 	mux.HandleFunc("/api/landings/delete", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleDeleteLanding)))
 	mux.HandleFunc("/api/landings/files", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleListFiles)))
 	mux.HandleFunc("/api/landings/file/save", leadHandler.CORSMiddleware(authHandler.RequireAdminAuth(landingHandler.HandleSaveFile)))
