@@ -451,11 +451,27 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 		SessionID: p.SessionID,
 	}
 	lc.Tracking = map[string]interface{}{
-		"fbc":   p.Fbc,
-		"fbp":   p.Fbp,
-		"fbclid": p.Fbclid,
+		"fbc":               p.Fbc,
+		"fbp":               p.Fbp,
+		"fbclid":            p.Fbclid,
+		"utm_source":        p.UTMSource,
+		"utm_medium":        p.UTMMedium,
+		"utm_campaign":      p.UTMCampaign,
+		"utm_content":       p.UTMContent,
+		"utm_term":          p.UTMTerm,
+		"referrer":          p.Referrer,
+		"site_source_name":  p.UTMSource,
+		"entry_url":         p.EntryURL,
 	}
 
+	// ─── GATE: chỉ gửi PageView cho traffic từ Facebook ───────────────
+	// Landing không có pixel browser ⇒ server bắn PageView để thu thập lượt
+	// hiển thị. Nhưng traffic organic / Google Ads thì KHÔNG có lượt nhấp
+	// Meta để khớp ⇒ gửi lên Meta chỉ làm nhiễu chỉ số quảng cáo.
+	//
+	// ⚠️ Gate trong dispatcher (`SendPageViewEvent`) đã đọc config
+	// `only_facebook_traffic` ⇒ không gate ở đây để tránh chặn nhầm khi
+	// admin tắt gate.
 	res := h.capiDispatcher.SendPageViewEvent(lc)
 	if res != nil && res.Error != "" {
 		fmt.Printf("[CAPI] Lỗi gửi sự kiện PageView (landing %s): %s\n", p.LandingID, res.Error)
@@ -463,6 +479,19 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 }
 
 // landingHasMetaPixel kiểm tra landing có cấu hình Meta Pixel hay không.
+//
+// ⚠️ SỬA 2026-11-15 (chống đếm trùng PageView):
+//
+// Trước đây hàm này CHỈ đọc `settings.facebook_pixel_id` ⇒ landing có
+// pixel hardcode trong HTML (landing export từ LadiPage) vẫn bị coi là
+// "không có pixel" ⇒ server vẫn bắn PageView ⇒ Meta đếm 2 lần (browser
+// `fbq('track','PageView')` + server CAPI) mà KHÔNG có `event_id` chung.
+//
+// ⇒ Nay kiểm tra CẢ 2 nguồn:
+//   1. `settings.facebook_pixel_id` (pixel do backend cấu hình)
+//   2. `code_html` — có `fbq('init'...)` hoặc nạp `fbevents.js`
+//
+// ⇒ Landing nào đã có pixel browser ⇒ KHÔNG bắn PageView server-side.
 func (h *AnalyticsHandler) landingHasMetaPixel(landingID string) bool {
 	if h.landingCache == nil || landingID == "" {
 		return false
@@ -474,7 +503,28 @@ func (h *AnalyticsHandler) landingHasMetaPixel(landingID string) bool {
 	if v, ok := p.Settings["facebook_pixel_id"].(string); ok && v != "" {
 		return true
 	}
+	// Pixel hardcode trong HTML của landing.
+	if htmlHasMetaPixelCode(p.CodeHTML) {
+		return true
+	}
 	return false
+}
+
+// htmlHasMetaPixelCode phát hiện Meta Pixel đã hardcode trong HTML.
+//
+// Nhận diện:
+//   - `fbq('init', '<pixel>')`  /  `fbq("init", ...)`
+//   - nạp `fbevents.js` (file thư viện Meta Pixel)
+func htmlHasMetaPixelCode(html string) bool {
+	if html == "" {
+		return false
+	}
+	h := strings.ToLower(html)
+	return strings.Contains(h, "fbevents.js") ||
+		strings.Contains(h, "fbq('init'") ||
+		strings.Contains(h, "fbq(\"init\"") ||
+		strings.Contains(h, "fbq('track'") ||
+		strings.Contains(h, "fbq(\"track\"")
 }
 
 // applyMetaMacrosFromURL bổ sung các macro Meta Ads còn thiếu từ query string.

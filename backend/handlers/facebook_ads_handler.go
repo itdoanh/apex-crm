@@ -92,7 +92,9 @@ func (h *FacebookAdsHandler) HandleSaveConfig(w http.ResponseWriter, r *http.Req
 	// Lấy cấu hình hiện tại để biết token cũ (trường hợp Admin UI gửi lại
 	// token đã che, hoặc bỏ trống trường token khi chỉ muốn đổi cờ bật/tắt).
 	var existingToken, existingGatewayKey string
-	if prev, err := h.store.GetFacebookCAPIConfig(in.LandingID); err == nil && prev != nil {
+	var prev *models.FacebookCAPIConfig
+	if p, err := h.store.GetFacebookCAPIConfig(in.LandingID); err == nil && p != nil {
+		prev = p
 		existingToken = prev.AccessToken
 		existingGatewayKey = prev.GatewayAccessKey
 	}
@@ -123,6 +125,19 @@ func (h *FacebookAdsHandler) HandleSaveConfig(w http.ResponseWriter, r *http.Req
 	if in.CourseValue <= 0 {
 		in.CourseValue = 6000000
 	}
+	// ⚠️ `only_facebook_traffic` mặc định TRUE (chỉ gửi lead từ Facebook).
+	//
+	// Dùng con trỏ để phân biệt "admin gửi false" với "admin không gửi field"
+	// (trường hợp sau phải giữ giá trị cũ trong DB, không ghi đè).
+	onlyFB := true
+	switch {
+	case in.OnlyFacebookTraffic != nil:
+		onlyFB = *in.OnlyFacebookTraffic
+	case prev != nil:
+		// Admin không gửi field ⇒ giữ nguyên giá trị đang lưu.
+		onlyFB = prev.OnlyFacebookTraffic
+	}
+	in.OnlyFacebookTraffic = &onlyFB
 
 	cfg, err := h.store.UpsertFacebookCAPIConfig(in)
 	if err != nil {

@@ -25,16 +25,16 @@
    ============================================================== */
 
 const APEX_STATUS_FALLBACK = [
-    { key: 'moi', label: 'Mới tiếp nhận', short: 'Mới', icon: '📥', stage: 'new', color: 'sky', badge: 'bg-sky-950 text-sky-400 border-sky-800', has_value: false },
-    { key: 'da_goi', label: 'Đã gọi điện', short: 'Đã gọi', icon: '📞', stage: 'contacted', color: 'amber', badge: 'bg-amber-950 text-amber-400 border-amber-800', has_value: false },
-    { key: 'ket_ban_zalo', label: 'Đã kết bạn Zalo', short: 'Zalo', icon: '💬', stage: 'contacted', color: 'blue', badge: 'bg-blue-950 text-blue-400 border-blue-800', has_value: false },
-    { key: 'da_hoc_buoi_chia_se', label: 'Đã học buổi chia sẻ', short: 'Chia sẻ', icon: '💻', stage: 'free', color: 'purple', badge: 'bg-purple-950 text-purple-400 border-purple-800', has_value: false },
-    { key: 'da_hoc_chuyen_sau', label: 'Đã học chuyên sâu', short: 'Chuyên sâu', icon: '📘', stage: 'paid', color: 'indigo', badge: 'bg-indigo-950 text-indigo-400 border-indigo-800', has_value: true, capi_event: 'Subscribe' },
-    { key: 'da_mua_hang', label: 'Khách hàng đã mua hàng', short: 'Đã mua', icon: '🏆', stage: 'won', color: 'emerald', badge: 'bg-emerald-950 text-emerald-400 border-emerald-800', has_value: true, capi_event: 'Purchase' },
-    { key: 'da_hoc_truoc_do', label: 'Đã học trước đó rồi', short: 'Học trước', icon: '🔁', stage: 'lost', color: 'slate', badge: 'bg-slate-950 text-slate-400 border-slate-800', has_value: false },
-    { key: 'khong_quan_tam', label: 'Không quan tâm', short: 'Không QT', icon: '🙅', stage: 'lost', color: 'orange', badge: 'bg-orange-950 text-orange-400 border-orange-800', has_value: false },
-    { key: 'spam_khong_lien_lac', label: 'Spam / Không liên lạc được', short: 'Spam', icon: '🚫', stage: 'lost', color: 'rose', badge: 'bg-rose-950 text-rose-400 border-rose-800', has_value: false },
-    { key: 'huy', label: 'Hủy / Sai số', short: 'Hủy', icon: '❌', stage: 'lost', color: 'zinc', badge: 'bg-zinc-950 text-zinc-400 border-zinc-800', has_value: false },
+    { key: 'moi', label: 'Mới tiếp nhận', short: 'Mới', icon: '📥', stage: 'new', color: 'sky', badge: 'bg-sky-950 text-sky-400 border-sky-800', has_value: false, capi_event: 'Lead' },
+    { key: 'da_goi', label: 'Đã gọi điện', short: 'Đã gọi', icon: '📞', stage: 'contacted', color: 'amber', badge: 'bg-amber-950 text-amber-400 border-amber-800', has_value: false, capi_event: 'Contact' },
+    { key: 'ket_ban_zalo', label: 'Đã kết bạn Zalo', short: 'Zalo', icon: '💬', stage: 'contacted', color: 'blue', badge: 'bg-blue-950 text-blue-400 border-blue-800', has_value: false, capi_event: '' },
+    { key: 'da_hoc_buoi_chia_se', label: 'Đã học buổi chia sẻ', short: 'Chia sẻ', icon: '💻', stage: 'free', color: 'purple', badge: 'bg-purple-950 text-purple-400 border-purple-800', has_value: false, capi_event: 'StartTrial' },
+    { key: 'da_hoc_chuyen_sau', label: 'Đã học chuyên sâu', short: 'Chuyên sâu', icon: '📘', stage: 'paid', color: 'indigo', badge: 'bg-indigo-950 text-indigo-400 border-indigo-800', has_value: true, capi_event: 'Subscribe', capi_has_value: true },
+    { key: 'da_mua_hang', label: 'Khách hàng đã mua hàng', short: 'Đã mua', icon: '🏆', stage: 'won', color: 'emerald', badge: 'bg-emerald-950 text-emerald-400 border-emerald-800', has_value: true, capi_event: 'Purchase', capi_has_value: true },
+    { key: 'da_hoc_truoc_do', label: 'Đã học trước đó rồi', short: 'Học trước', icon: '🔁', stage: 'lost', color: 'slate', badge: 'bg-slate-950 text-slate-400 border-slate-800', has_value: false, capi_event: '' },
+    { key: 'khong_quan_tam', label: 'Không quan tâm', short: 'Không QT', icon: '🙅', stage: 'lost', color: 'orange', badge: 'bg-orange-950 text-orange-400 border-orange-800', has_value: false, capi_event: '' },
+    { key: 'spam_khong_lien_lac', label: 'Spam / Không liên lạc được', short: 'Spam', icon: '🚫', stage: 'lost', color: 'rose', badge: 'bg-rose-950 text-rose-400 border-rose-800', has_value: false, capi_event: '' },
+    { key: 'huy', label: 'Hủy / Sai số', short: 'Hủy', icon: '❌', stage: 'lost', color: 'zinc', badge: 'bg-zinc-950 text-zinc-400 border-zinc-800', has_value: false, capi_event: '' },
 ];
 
 // Danh sách trạng thái đang dùng (sẽ được thay bằng dữ liệu từ backend).
@@ -114,6 +114,7 @@ async function loadLeadStatuses() {
                     badge: s.badge || 'bg-slate-950 text-slate-400 border-slate-800',
                     has_value: !!s.has_value,
                     capi_event: s.capi_event || '',
+                    capi_has_value: !!s.capi_has_value,
                 }));
             }
         }

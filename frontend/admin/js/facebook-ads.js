@@ -271,6 +271,7 @@ function fbAdsEditConfig(landingId) {
     document.getElementById('fbAdsFormSendLead').checked = !!cfg.send_lead;
     document.getElementById('fbAdsFormSendPurchase').checked = !!cfg.send_purchase;
     document.getElementById('fbAdsFormSendCRM').checked = !!cfg.send_crm_sync;
+    document.getElementById('fbAdsFormOnlyFB').checked = cfg.only_facebook_traffic !== false;
 
     document.getElementById('fbAdsFormValue').value = cfg.course_value || 6000000;
     document.getElementById('fbAdsFormCurrency').value = cfg.currency || 'VND';
@@ -307,6 +308,7 @@ function fbAdsResetForm() {
     document.getElementById('fbAdsFormSendLead').checked = true;
     document.getElementById('fbAdsFormSendPurchase').checked = true;
     document.getElementById('fbAdsFormSendCRM').checked = true;
+    document.getElementById('fbAdsFormOnlyFB').checked = true;
     document.getElementById('fbAdsFormValue').value = 6000000;
     document.getElementById('fbAdsFormCurrency').value = 'VND';
     document.getElementById('fbAdsFormHashEmail').checked = true;
@@ -339,6 +341,7 @@ async function fbAdsSaveConfig() {
         send_lead: document.getElementById('fbAdsFormSendLead').checked,
         send_purchase: document.getElementById('fbAdsFormSendPurchase').checked,
         send_crm_sync: document.getElementById('fbAdsFormSendCRM').checked,
+        only_facebook_traffic: document.getElementById('fbAdsFormOnlyFB').checked,
         course_value: parseFloat(document.getElementById('fbAdsFormValue').value) || 6000000,
         currency: document.getElementById('fbAdsFormCurrency').value.trim() || 'VND',
         hash_email: document.getElementById('fbAdsFormHashEmail').checked,
