@@ -73,6 +73,15 @@ ssh Administrator@103.124.95.232 -p 22899
 Môi trường test cô lập bằng: DB riêng + `APEX_DISABLE_EXTERNAL_SYNC=true` + Caddy định tuyến theo HOST.
 Chi tiết: `docs/DEPLOYMENT.md` mục 1.0.
 
+**Local chạy song song 2 môi trường** (khớp 100% server) — Docker `apex-postgres` có cả
+`apex_leads` + `apex_leads_test`:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1           # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+
+
 ## Quy ước
 
 - Ngôn ngữ trao đổi: **tiếng Việt**

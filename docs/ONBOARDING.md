@@ -37,17 +37,25 @@ Checklist cho người **mới** tham gia dự án, và cho AI agent lần đầ
 git clone https://github.com/itdoanh/apex-crm.git
 cd apex-crm
 
-# 2. Cấu hình
-cp .env.example .env
-#   Sửa DB_PASSWORD nếu cần
+# 2. Bật PostgreSQL trong Docker (tự tạo sẵn CẢ 2 database:
+#    apex_leads + apex_leads_test)
+docker compose up -d postgres
 
-# 3. Tạo database
-psql -U postgres -c "CREATE DATABASE apex_leads;"
-
-# 4. Chạy backend
-cd backend
-go run main.go
+# 3. Chạy backend môi trường local (script tự sinh file .env)
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\local\run_local.ps1 -Build
+#    Hoặc thủ công:
+#    cp .env.example .env   (rồi sửa DB_PASSWORD nếu cần)
+#    cd backend && go run main.go
 ```
+
+> ℹ️ **Local chạy song song 2 môi trường được** (khớp 100% với server):
+> ```powershell
+> # môi trường local → DB apex_leads,       port 8080
+> powershell -File deploy\local\run_local.ps1
+> # môi trường test  → DB apex_leads_test,  port 8081
+> powershell -File deploy\local\run_local.ps1 -Env test
+> ```
+
 
 ### Truy cập
 

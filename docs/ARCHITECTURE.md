@@ -254,6 +254,27 @@ Chi tiết: `docs/SECURITY.md`.
 | **Test** | `test` | `apex_leads_test` | `8081` | `C:\apex-test` (branch `test`) | `test.hanghoaphaisinh.net` | ❌ TẮT |
 | **Production** | `production` | `apex_leads` (native `C:\pgsql`) | `8080` | `C:\apex` (branch `main`) | `crm.hanghoaphaisinh.net` | ✅ BẬT |
 
+> ℹ️ Môi trường **local** cũng có **2 database** trong Docker (`apex_leads` +
+> `apex_leads_test`) ⇒ có thể chạy song song 2 instance local giống hệt server.
+> Script: `deploy/local/run_local.ps1`. Chi tiết: `docs/DEPLOYMENT.md` mục 1.0.4.1.
+
+### 8.1.1. Sơ đồ đồng bộ 3 môi trường
+
+```
+   LOCAL (C:\code\apex_moi\landing)               SERVER (103.124.95.232)
+   ┌───────────────────────────────┐              ┌──────────────────────────────────────┐
+   │ Docker postgres               │              │ Caddy (1 tiến trình, 2 site block)    │
+   │  ├ apex_leads      (:local)    │              │   ├ crm.hanghoaphaisinh.net → :8080   │
+   │  └ apex_leads_test (:test)     │              │   └ test.hanghoaphaisinh.net → :8081  │
+   │                                │              │        │              │               │
+   │ apex-server.exe :8080 (:local) │              │        ▼              ▼               │
+   │ apex-server.exe :8081 (:test)  │              │  :8080 (main)   :8081 (test)        │
+   └───────────────────────────────┘              │  apex_leads    apex_leads_test       │
+                                                  │  ✅ CAPI       ❌ TẮT               │
+                                                  │  ✅ Sheets     ❌ TẮT               │
+                                                  └──────────────────────────────────────┘
+```
+
 ### 8.2. Cơ chế cô lập
 
 Môi trường `test` được cô lập khỏi production bằng **3 lớp**:

@@ -113,6 +113,15 @@ Môi trường test **cô lập** bằng 3 lớp:
 Script: `deploy/windows/setup_test_env.ps1` · `deploy_test.ps1` · `deploy_prod.ps1`.
 Mẫu env: `deploy/windows/env.test.example` · `env.production.example` · `.env.example`.
 
+**Local chạy song song 2 môi trường** (khớp 100% server) — Docker `apex-postgres`
+chứa cả `apex_leads` lẫn `apex_leads_test`:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1          # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+
+
 ---
 
 ## 5. Bất biến kỹ thuật (KHÔNG được phá)

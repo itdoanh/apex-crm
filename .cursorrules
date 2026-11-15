@@ -52,6 +52,15 @@ Không sửa file trực tiếp trên server. Chi tiết: `docs/DEPLOYMENT.md` m
 Môi trường test cô lập bằng: DB riêng + `APEX_DISABLE_EXTERNAL_SYNC=true` + Caddy định tuyến theo HOST.
 Chi tiết: `docs/DEPLOYMENT.md` mục 1.0 · `docs/ARCHITECTURE.md` mục 8.
 
+**Chạy local (khớp 100% server)** — Docker `apex-postgres` chứa cả 2 DB:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1            # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test   # :test  → DB apex_leads_test, :8081
+```
+> ⚠️ Mọi file `.ps1` trong repo BẮT BUỘC có **UTF-8 BOM** (PowerShell 5.1 trên
+> server đọc file không BOM bằng ANSI ⇒ lỗi parse tiếng Việt).
+
 ## Commit
 
 `feat(scope):` / `fix(scope):` / `chore(scope):` — tiếng Việt.

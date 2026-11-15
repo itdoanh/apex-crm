@@ -34,6 +34,42 @@ LOCAL → git push origin test → SERVER TEST (deploy_test.ps1) → test OK
 Script: `deploy/windows/setup_test_env.ps1` · `deploy_test.ps1` · `deploy_prod.ps1`.
 Mẫu env: `deploy/windows/env.test.example` · `env.production.example`.
 
+### 0.1. Môi trường LOCAL (máy dev)
+
+| Hạng mục | Giá trị |
+|---|---|
+| Code | `C:\code\apex_moi\landing` |
+| DB | Docker — container `apex-postgres` (port 5432) |
+| Database | `apex_leads` (`:local`) · `apex_leads_test` (`:test`) |
+| Port | `8080` (local) · `8081` (test) |
+| Admin | `http://localhost:8080/ads` |
+
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1           # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+
+> ⚠️ **Biến môi trường session CÓ THỂ ghi đè `.env`** — `config.Load()` chỉ nạp
+> biến chưa tồn tại trong môi trường. Kiểm tra:
+> `Get-ChildItem Env: | Where-Object { $_.Name -match "APEX|DB_|PORT" }`
+> → nếu thấy `DB_NAME`/`PORT`/`APEX_ENV` thì xoá (`Remove-Item Env:\DB_NAME`) hoặc
+> gỡ khỏi User/Machine scope.
+
+> ⚠️ **Mọi file `.ps1` trong repo BẮT BUỘC có UTF-8 BOM.** PowerShell 5.1 trên
+> Windows Server 2025 đọc file không BOM bằng ANSI/Windows-1252 ⇒ tiếng Việt bị méo
+> ⇒ lỗi parse `The string is missing the terminator: '`.
+> `.gitattributes` đã đặt `*.ps1 text eol=crlf` (KHÔNG dùng
+> `working-tree-encoding` vì nó chỉ áp dụng khi file được re-checkout).
+> Khi tạo file `.ps1` mới trên local:
+> ```powershell
+> $p = "deploy\local\script.ps1"
+> $t = [System.IO.File]::ReadAllText($p)
+> [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding $true))
+> ```
+> Kiểm tra BOM: `[System.IO.File]::ReadAllBytes($p)[0..2] -join ","` ⇒ phải ra `239,187,191`.
+
+
 ---
 
 ## 1. Production facts (không được sai)
@@ -282,6 +318,8 @@ Domain mới → trỏ A record hoặc đổi NS → đăng ký trong CRM → SS
 | `deploy/windows/deploy_test.ps1` | Windows | ✅ **Deploy branch `test`** → môi trường test |
 | `deploy/windows/deploy_prod.ps1` | Windows | ✅ **Deploy branch `main`** → production (có kiểm tra merge) |
 | `deploy/windows/start_all.bat` / `stop_all.bat` / `restart_all.bat` | Windows | ✅ Tự phát hiện Task Scheduler vs Windows Service |
+| `deploy/local/run_local.ps1` | Windows | ✅ **Chạy backend ở máy dev** (`:local` / `:test`) — tự sinh `.env`, tự tạo DB |
+| `deploy/docker/init/01-create-test-db.sql` | Docker | ✅ Tạo `apex_leads_test` lần đầu khởi động container |
 | `deploy/scripts/deploy.sh` | Linux | ✅ OK |
 | `deploy/systemd/apex.service` | Linux | ✅ OK |
 

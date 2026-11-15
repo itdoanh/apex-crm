@@ -104,6 +104,56 @@ Nguồn: `backend/config/config.go`.
 | `deploy/windows/env.test.example` | Mẫu `.env` cho môi trường test |
 | `deploy/windows/env.production.example` | Mẫu `.env` cho production |
 | `deploy/windows/Caddyfile` | Caddyfile (đã thêm site block `test.hanghoaphaisinh.net` → 8081) |
+| `deploy/local/run_local.ps1` | Chạy backend ở máy dev (môi trường `local` hoặc `test`) — tự sinh `.env`, tự tạo DB |
+| `deploy/docker/init/01-create-test-db.sql` | Init script Docker — tạo `apex_leads_test` lần đầu |
+| `.gitattributes` | Ép line-ending + giữ UTF-8 BOM cho `.ps1` (PowerShell 5.1 cần BOM) |
+
+### 1.0.4.1. Môi trường LOCAL (máy dev)
+
+| Hạng mục | Giá trị |
+|---|---|
+| Code | `C:\code\apex_moi\landing` (branch `test` khi đang phát triển) |
+| DB | PostgreSQL trong Docker — container `apex-postgres` (port 5432) |
+| Database | `apex_leads` (môi trường `local`) · `apex_leads_test` (môi trường `test`) |
+| Port | `8080` (local) · `8081` (test) |
+| Admin | `http://localhost:8080/ads` |
+
+**Chạy:**
+
+```powershell
+# 1. Bật PostgreSQL Docker (tạo sẵn CẢ 2 database)
+docker compose up -d postgres
+
+# 2. Chạy backend môi trường local (DB apex_leads, port 8080)
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\local\run_local.ps1 -Build
+
+# 3. (Tùy chọn) Chạy song song môi trường test ở local (DB apex_leads_test, port 8081)
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\local\run_local.ps1 -Env test
+```
+
+Script `run_local.ps1` sẽ:
+1. Kiểm tra container `apex-postgres` đang chạy, tạo DB nếu thiếu.
+2. **Sinh lại file `.env`** ở thư mục gốc (UTF-8 **không** BOM — Go đọc `.env`
+   bằng `bufio` nên BOM sẽ hỏng key đầu tiên).
+3. Build binary (nếu `-Build`) và chạy `apex-server.exe` với `WD = backend\`
+   (bắt buộc — static files dùng đường dẫn tương đối `../frontend/landing`).
+
+> ⚠️ **Cả `local` và `test` đều TẮT đồng bộ ra ngoài** (`APEX_DISABLE_EXTERNAL_SYNC=true`)
+> ⇒ lead thử ở local **không** ghi vào Google Sheets production và **không** gửi
+> Meta CAPI (không làm nhiễu KPI doanh thu thật).
+
+> ⚠️ **Biến môi trường trong session shell CÓ THỂ ghi đè `.env`.** `config.Load()`
+> chỉ nạp biến từ `.env` khi biến đó **chưa có** trong môi trường. Nếu anh có
+> đặt `DB_NAME`/`PORT`/`APEX_ENV` ở cấp User/Machine ⇒ file `.env` bị bỏ qua.
+> Kiểm tra: `Get-ChildItem Env: | Where-Object { $_.Name -match "APEX|DB_|PORT" }`
+> → nếu thấy, xoá bằng `Remove-Item Env:\DB_NAME` hoặc gỡ khỏi User/Machine.
+>
+> ⚠️ **Xoá `apex-server.exe` cũ khi build lại** (Windows giữ handle tới file đang chạy):
+> ```powershell
+> Get-Process -Name apex-server -ErrorAction SilentlyContinue | Stop-Process -Force
+> Remove-Item backend\apex-server.exe -Force -ErrorAction SilentlyContinue
+> ```
+
 
 ### 1.0.5. Dựng môi trường test lần đầu (trên server)
 

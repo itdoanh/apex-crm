@@ -64,6 +64,15 @@ Quản lý: Task Scheduler (Apex_Backend_Server, Apex_Caddy_Server) — KHÔNG p
 Môi trường test cô lập bằng: DB riêng + `APEX_DISABLE_EXTERNAL_SYNC=true` + Caddy định tuyến theo HOST.
 Chi tiết: `docs/DEPLOYMENT.md` mục 1.0 · `docs/ARCHITECTURE.md` mục 8.
 
+**Chạy local (khớp 100% server)** — Docker `apex-postgres` chứa cả 2 DB:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1           # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+> ⚠️ Mọi file `.ps1` trong repo BẮT BUỘC có **UTF-8 BOM** (PowerShell 5.1 trên
+> server đọc file không BOM bằng ANSI ⇒ lỗi parse tiếng Việt).
+
 🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi phải qua git để rollback được.
 
 ## Quy ước commit
@@ -115,5 +124,6 @@ Co-authored-by: Cursor <cursoragent@cursor.com>
 ```bash
 cd backend && build.bat          # build Windows
 cd backend && build_linux.bat    # build Linux
-cd backend && go run main.go     # chạy local
+powershell -File deploy\local\run_local.ps1            # chạy local (:local, :8080)
+powershell -File deploy\local\run_local.ps1 -Env test   # chạy local (:test,  :8081)
 ```
