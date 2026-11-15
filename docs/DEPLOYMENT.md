@@ -8,12 +8,12 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 
 ```
 1. Sửa code ở LOCAL (C:\code\apex_moi\landing)
-2. Test local (go build + go vet)
+2. Test local (go build + go vet + go test)
 3. git commit + git push
-4. SSH vào server
-5. cd C:\apex && git pull
-6. Build binary  ← xem mục 3.1 (server KHÔNG có Go toolchain)
-7. Restart Task Scheduler:
+4. Build binary ở LOCAL  ← server KHÔNG có Go toolchain (xem mục 1.1)
+5. Upload binary lên server (scp → C:/Windows/Temp/apex-server-new.exe)
+6. SSH vào server: cd C:\apex && git pull
+7. Swap binary + restart Task Scheduler:
    schtasks /End /TN "Apex_Backend_Server"
    schtasks /Run /TN "Apex_Backend_Server"
 8. Verify: curl http://127.0.0.1:8080/health
@@ -26,37 +26,63 @@ Production: **Windows Server 2025 Datacenter** tại `103.124.95.232`.
 
 ## 1.1. Build binary — server KHÔNG có Go toolchain
 
-⚠️ **Production server KHÔNG cài Go.** Đã kiểm tra 2026-11-04: không có `C:\Go`,
-không có `C:\Program Files\Go`, `go.exe` không tồn tại trên toàn hệ thống.
+⚠️ **Production server KHÔNG cài Go.** Đã kiểm tra lại 2026-11-15: không có `C:\Go`,
+không có `C:\Program Files\Go`, `where go` không tìm thấy, `PATH` máy (registry
+`HKLM\...\Session Manager\Environment`) chỉ có:
+`C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd`
 
 ⇒ **Phải build ở LOCAL rồi upload binary:**
 
 ```powershell
 # LOCAL
 cd C:\code\apex_moi\landing\backend
+$env:GOOS="windows"; $env:GOARCH="amd64"; $env:GOMAXPROCS="1"; $env:GOGC="25"
 go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
-# → apex-server.exe (~22 MB)
+# → apex-server.exe (~23 MB)
+```
 
-# Upload
+```powershell
+# Upload — GHI ĐÈ biến `$Target` bằng đường dẫn KHÔNG có dấu `:` trước tên file.
+# ⚠️ Worker `apex.ps1` dùng `:` làm dấu phân tách PUT ⇒ đường dẫn `C:\...` bị
+#    cắt sai. Dùng `scp` trực tiếp cho đường dẫn local có `:`.
 scp -i C:\Users\doanh\.ssh\id_ed25519 -P 22899 `
-    backend\apex-server.exe `
-    Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe
+    -o BatchMode=yes -o StrictHostKeyChecking=no `
+    "C:\code\apex_moi\landing\backend\apex-server.exe" `
+    "Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe"
 ```
 
 ```powershell
 # SERVER — swap + restart
-Stop-ScheduledTask -TaskName "Apex_Backend_Server"
-Get-Process -Name "apex-server" | Stop-Process -Force
+schtasks /End /TN "Apex_Backend_Server"
+Start-Sleep -Seconds 4
+Get-Process -Name "apex-server" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 3
 Copy-Item C:\apex\backend\apex-server.exe C:\apex\backend\apex-server.exe.bak_<timestamp>
 Copy-Item C:\Windows\Temp\apex-server-new.exe C:\apex\backend\apex-server.exe -Force
-Start-ScheduledTask -TaskName "Apex_Backend_Server"
+schtasks /Run /TN "Apex_Backend_Server"
 ```
+
+> 💡 **Nên rename binary cũ trước khi copy** (thay vì chỉ copy):
+> ```powershell
+> Rename-Item C:\apex\backend\apex-server.exe "apex-server.exe.old_<timestamp>" -Force
+> ```
+> Windows có thể giữ handle tới file đang chạy ⇒ `Copy-Item -Force` đôi lúc báo
+> "file đang được sử dụng". Rename luôn thành công và giữ lại bản backup.
 
 > 🚨 **Không chạy `build.bat` qua SSH.** Script có lệnh `pause` ở cuối ⇒ sẽ treo
 > phiên SSH vô thời hạn chờ nhấn phím. Dùng `go build` trực tiếp ở local.
 
 > ℹ️ Nếu muốn build ngay trên server, cài Go 1.26.3+ trước rồi thêm vào PATH.
 > Hiện chưa làm vì mỗi lần deploy đều build ở local nhanh và không rủi ro hơn.
+
+> ✅ **Verify binary đúng phiên bản** (tránh deploy nhầm bản cũ):
+> ```powershell
+> # LOCAL
+> (Get-FileHash C:\code\apex_moi\landing\backend\apex-server.exe -Algorithm SHA256).Hash
+> # SERVER (chạy qua apex.ps1 "PS1:...")
+> (Get-FileHash C:\apex\backend\apex-server.exe -Algorithm SHA256).Hash
+> ```
+> Hai giá trị phải **giống hệt**.
 
 ### 1.2. Deploy static files (admin UI) — phải copy vào **2 vị trí**
 
@@ -183,7 +209,7 @@ Internet
 | Thành phần | Đường dẫn | Quản lý |
 |---|---|---|
 | Mã nguồn | `C:\apex` (git clone) | `git pull` |
-| Binary | `C:\apex\backend\apex-server.exe` | `build.bat` |
+| Binary | `C:\apex\backend\apex-server.exe` | **build ở LOCAL** rồi upload + swap (mục 1.1) |
 | Caddy | `C:\caddy\caddy.exe` + `Caddyfile` | Task `Apex_Caddy_Server` |
 | PostgreSQL | `C:\pgsql` (native, 844MB) | Windows Service `postgresql-x64-16` |
 | Log Caddy | `C:\caddy\logs\` | rotation 10MB × 3 |
@@ -567,7 +593,10 @@ C:\pgsql\bin\pg_restore.exe -U postgres -h localhost -d apex_leads --clean --if-
 cd C:\apex
 git log --oneline -5
 git reset --hard <commit-hash>
-cd backend && build.bat
+REM ⚠️ Server KHÔNG có Go ⇒ rollback binary phải copy từ file .bak đã lưu,
+REM hoặc build lại ở LOCAL rồi upload (xem mục 1.1).
+dir C:\apex\backend\apex-server.exe.bak_*
+copy C:\apex\backend\apex-server.exe.bak_<timestamp> C:\apex\backend\apex-server.exe -Force
 schtasks /End /TN "Apex_Backend_Server" && schtasks /Run /TN "Apex_Backend_Server"
 ```
 

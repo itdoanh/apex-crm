@@ -49,9 +49,12 @@ Quy tắc chi tiết cho AI agent nằm ở `.cursor/rules/` — chúng được
 ## 3. Lệnh thường dùng
 
 ```bash
-# Build backend (Windows)
+# Build backend (Windows) — chạy ở LOCAL, server KHÔNG có Go
 cd backend && build.bat              # → apex-backend.exe
 cd backend && build_linux.bat        # → apex-server (Linux binary)
+
+# Build chuẩn cho production (khuyến nghị — có -trimpath + -ldflags)
+cd backend && go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
 
 # Chạy local
 cd backend && go run main.go         # http://localhost:8080
@@ -75,8 +78,12 @@ python backend/tests/test_full_suite.py
 | Quản lý tiến trình | **Task Scheduler** (`Apex_Backend_Server`, `Apex_Caddy_Server`) — KHÔNG phải NSSM |
 | Backend listen | `:8080` · Caddy `:80/:443` |
 
-> 🚨 **Quy tắc vàng:** Sửa code ở local → commit → push → pull trên server → build → restart task.
+> 🚨 **Quy tắc vàng:** Sửa code ở local → test → commit → push → **build binary ở LOCAL**
+> (⚠️ **server KHÔNG có Go toolchain** — đã kiểm tra 2026-11-15: không `C:\Go`,
+> không `C:\Program Files\Go`, `where go` không ra) → `scp` binary lên server →
+> pull code trên server → swap binary → restart task.
 > **TUYỆT ĐỐI KHÔNG sửa file trực tiếp trên server** bằng tay (trừ khi là emergency hotfix, và phải ghi lại).
+> Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 
 ---
 

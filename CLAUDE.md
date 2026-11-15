@@ -51,7 +51,8 @@ ssh Administrator@103.124.95.232 -p 22899
 ```
 - Code: `C:\apex` · Binary: `C:\apex\backend\apex-server.exe`
 - Quản lý tiến trình: **Task Scheduler** (`Apex_Backend_Server`, `Apex_Caddy_Server`) — **KHÔNG phải** NSSM
-- Deploy: sửa local → test → commit → push → `git pull` server → build → restart task → verify `/health`
+- Deploy: sửa local → test → commit → push → **build binary ở LOCAL** → `scp` lên server → `git pull` server → swap binary → restart task → verify `/health`
+- ⚠️ **Server KHÔNG có Go toolchain** (đã kiểm tra 2026-11-15) ⇒ **không** chạy `build.bat` / `go build` trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 - 🚨 **Không sửa file trực tiếp trên server** — mọi thay đổi qua git để rollback được
 
 ## Quy ước

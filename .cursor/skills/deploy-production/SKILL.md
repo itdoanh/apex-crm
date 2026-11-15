@@ -51,10 +51,14 @@ Bước 6 — Verify:  /health + log Caddy
 
 ### Bước 1 — Build & test local
 
+> 🚨 **Server KHÔNG có Go toolchain** (đã kiểm tra 2026-11-15: không `C:\Go`,
+> không `C:\Program Files\Go`, `where go` không ra). **Phải build ở LOCAL.**
+
 ```powershell
 cd c:\code\apex_moi\landing\backend
-.\build.bat
-.\build_linux.bat    # nếu server chạy Linux
+$env:GOOS="windows"; $env:GOARCH="amd64"; $env:GOMAXPROCS="1"; $env:GOGC="25"
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+go vet ./...
 ```
 
 ### Bước 2 — Commit & push
@@ -71,14 +75,33 @@ git push
 Format: `feat(scope):` / `fix(scope):` / `chore(scope):`
 Scope: `studio` `landings` `domains` `security` `leads` `sheets` `admin` `deploy`
 
-### Bước 3-5 — Server
+### Bước 3 — Upload binary lên server
+
+> ⚠️ Đường dẫn local có dấu `:` (`C:\...`) **không** dùng được với worker
+> `apex.ps1` (nó phân tách bằng `:`). Dùng `scp` trực tiếp.
+
+```powershell
+scp -i C:\Users\doanh\.ssh\id_ed25519 -P 22899 `
+    -o BatchMode=yes -o StrictHostKeyChecking=no `
+    "C:\code\apex_moi\landing\backend\apex-server.exe" `
+    "Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe"
+```
+
+### Bước 4-5 — Server: pull + swap + restart
 
 ```cmd
 cd C:\apex
 git pull
-cd backend
-build.bat
+```
+
+```powershell
+# Swap (chạy qua apex.ps1 "PS1:<file>")
 schtasks /End /TN "Apex_Backend_Server"
+Start-Sleep -Seconds 4
+Get-Process -Name "apex-server" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 3
+Rename-Item C:\apex\backend\apex-server.exe "apex-server.exe.old_<ts>" -Force
+Copy-Item C:\Windows\Temp\apex-server-new.exe C:\apex\backend\apex-server.exe -Force
 schtasks /Run /TN "Apex_Backend_Server"
 ```
 
@@ -100,6 +123,9 @@ powershell -NoProfile -Command "Select-String -Path C:\caddy\logs\caddy.log -Pat
 
 | Bẫy | Hậu quả | Cách tránh |
 |---|---|---|
+| **Chạy `build.bat` / `go build` trên server** | Server KHÔNG có Go ⇒ build fail, có khi treo vì `pause` | Build ở LOCAL rồi scp binary lên |
+| **PUT qua worker `apex.ps1` với path có `:`** | `scp` bị cắt path → "stat local \"C\": No such file" | Dùng `scp` trực tiếp cho path local |
+| **Copy binary cũ đè khi process đang giữ handle** | "file đang được sử dụng" | `Rename-Item` binary cũ trước rồi `Copy-Item` mới |
 | Working directory sai | Static files 404 → landing chết | Task Scheduler WD phải là `C:\apex\backend` |
 | Copy thiếu `frontend/` | Toàn bộ landing/CSS/JS 404 | Deploy luôn cả `frontend/` |
 | Restart nhầm Task | Không restart được | Task đúng: `Apex_Backend_Server`, `Apex_Caddy_Server` |
@@ -129,11 +155,17 @@ Script thu thập: tiến trình · port · Task Scheduler + Working Directory �
 
 ## Rollback
 
+> ⚠️ Server KHÔNG có Go ⇒ **không** `build.bat` trên server.
+> Rollback bằng cách copy lại file `.bak` (đã lưu ở mỗi lần deploy) hoặc
+> build lại ở LOCAL rồi upload.
+
 ```cmd
 cd C:\apex
 git log --oneline -5
 git reset --hard <commit-hash>
-cd backend && build.bat
+REM copy lại binary backup
+dir C:\apex\backend\apex-server.exe.bak_*
+copy C:\apex\backend\apex-server.exe.bak_<timestamp> C:\apex\backend\apex-server.exe -Force
 schtasks /End /TN "Apex_Backend_Server" && schtasks /Run /TN "Apex_Backend_Server"
 ```
 

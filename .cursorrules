@@ -31,7 +31,8 @@
 ## Production
 
 `ssh Administrator@103.124.95.232 -p 22899` · code `C:\apex` · Task Scheduler (không phải NSSM).
-Deploy qua git. Không sửa file trực tiếp trên server.
+Deploy qua git. **Server KHÔNG có Go toolchain** ⇒ build binary ở LOCAL rồi `scp` lên server,
+swap + restart task. Không sửa file trực tiếp trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 
 ## Commit
 

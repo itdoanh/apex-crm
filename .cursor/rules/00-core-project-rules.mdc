@@ -45,7 +45,9 @@ Code: C:\apex (git clone)   Binary: C:\apex\backend\apex-server.exe
 Quản lý: Task Scheduler (Apex_Backend_Server, Apex_Caddy_Server) — KHÔNG phải NSSM
 ```
 
-**Quy trình deploy bắt buộc:** sửa local → test → commit → push → `git pull` trên server → build → restart task → verify `/health`.
+**Quy trình deploy bắt buộc:** sửa local → test → commit → push → **build binary ở LOCAL** → `scp` lên server → `git pull` trên server → swap binary → restart task → verify `/health`.
+
+⚠️ **Server KHÔNG có Go toolchain** (đã kiểm tra 2026-11-15) ⇒ **KHÔNG** chạy `build.bat` / `go build` trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 
 🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi phải qua git để rollback được.
 

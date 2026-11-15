@@ -49,31 +49,50 @@ Cũng vậy: deploy chỉ copy thư mục `backend/` mà không copy `frontend/`
 ```
 1. Sửa + test ở LOCAL
 2. git commit + git push
-3. SSH vào server
-4. cd C:\apex && git pull
-5. BUILD BINARY Ở LOCAL rồi upload (server KHÔNG có Go — xem mục 3.1)
-6. Swap binary + restart task
-7. Verify: curl http://127.0.0.1:8080/health
-8. Kiểm tra log Caddy không có 502 mới
+3. BUILD BINARY Ở LOCAL rồi upload (server KHÔNG có Go — xem mục 3.1)
+4. SSH vào server: cd C:\apex && git pull
+5. Swap binary + restart task
+6. Verify: curl http://127.0.0.1:8080/health
+7. Kiểm tra log Caddy không có 502 mới
 ```
 
 🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi qua git để rollback được.
 
 ### 3.1. Server KHÔNG có Go toolchain
 
-Đã kiểm tra 2026-11-04: không có `C:\Go`, không có `C:\Program Files\Go`, `go.exe`
-không tồn tại trên toàn hệ thống server. ⇒ **Build ở LOCAL rồi `scp` binary lên.**
+Đã kiểm tra lại 2026-11-15: không có `C:\Go`, không có `C:\Program Files\Go`,
+`where go` không tìm thấy, `PATH` máy (registry `HKLM\...\Session Manager\Environment`)
+chỉ có `C:\Windows\system32;C:\Windows;...;C:\Program Files\Git\cmd` ⇒ **Build ở LOCAL rồi `scp` binary lên.**
 
 ```powershell
 # LOCAL
 cd C:\code\apex_moi\landing\backend
+$env:GOOS="windows"; $env:GOARCH="amd64"; $env:GOMAXPROCS="1"; $env:GOGC="25"
 go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
 
-# Upload
+# Upload — ⚠️ đường dẫn local có `:` KHÔNG dùng được với worker `apex.ps1`
+# (nó phân tách PUT bằng `:`) ⇒ dùng scp trực tiếp.
 scp -i C:\Users\doanh\.ssh\id_ed25519 -P 22899 `
-    backend\apex-server.exe `
-    Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe
+    -o BatchMode=yes -o StrictHostKeyChecking=no `
+    "C:\code\apex_moi\landing\backend\apex-server.exe" `
+    "Administrator@103.124.95.232:C:/Windows/Temp/apex-server-new.exe"
 ```
+
+```powershell
+# SERVER — swap + restart
+schtasks /End /TN "Apex_Backend_Server"
+Start-Sleep -Seconds 4
+Get-Process -Name "apex-server" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 3
+Rename-Item C:\apex\backend\apex-server.exe "apex-server.exe.old_<ts>" -Force
+Copy-Item C:\Windows\Temp\apex-server-new.exe C:\apex\backend\apex-server.exe -Force
+schtasks /Run /TN "Apex_Backend_Server"
+```
+
+> 💡 **Rename binary cũ trước khi copy** — Windows giữ handle tới file đang chạy ⇒
+> `Copy-Item -Force` đôi lúc báo "file đang được sử dụng". Rename luôn thành công.
+
+> ✅ **Verify binary đúng phiên bản** (so SHA256 local vs server) — tránh deploy nhầm bản cũ.
 
 > 🚨 **KHÔNG chạy `build.bat` qua SSH** — script có `pause` ở cuối sẽ treo phiên SSH
 > vô thời hạn. Dùng `go build` trực tiếp ở local.
