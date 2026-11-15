@@ -529,6 +529,23 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	country := geo.Country
 	isp := geo.ISP
 
+	// 📌 MÃ QUỐC GIA ISO-2 (2026-11-15 — nâng EMQ Meta CAPI):
+	//
+	// Meta so khớp `country` bằng mã ISO-2 ("vn"), KHÔNG phải tên tiếng
+	// Việt ("Việt Nam"). Hệ thống lưu `country` dạng "Việt Nam" (để hiển thị
+	// cho admin) ⇒ phải lưu thêm mã ISO-2 riêng để CAPI băm đúng.
+	//
+	// Tương tự, `region_name` là tỉnh/bang GỐC từ GeoIP ("Hà Nội"), còn
+	// `region` là VÙNG KINH TẾ ("Miền Bắc") — Meta `st` cần tỉnh/bang.
+	countryCode := geo.CountryCode
+	if countryCode == "" {
+		countryCode = "VN"
+	}
+	regionName := geo.RegionName
+	if regionName == "" {
+		regionName = city
+	}
+
 	// 8. LỚP PHÂN TÍCH NGUỒN QUẢNG CÁO & VỊ TRÍ PHÂN PHỐI CHI TIẾT (AD PLACEMENT)
 	entryURL := extractFirstString(rawData, "entry_url", "url")
 	if entryURL == "" {
@@ -584,6 +601,8 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	rawData["city"] = city
 	rawData["region"] = region
 	rawData["country"] = country
+	rawData["country_code"] = countryCode
+	rawData["region_name"] = regionName
 	rawData["isp"] = isp
 	rawData["ad_platform"] = adInfo.Platform
 	rawData["ad_placement"] = adInfo.Placement
@@ -868,6 +887,41 @@ func (h *LeadHandler) buildCAPILeadContext(lead *models.Lead, rawData map[string
 		}
 	}
 
+	// 📌 ĐỊA LÝ THEO CHUẨN META (2026-11-15 — nâng EMQ):
+	//
+	//   - `country` : ISO-2 ("vn"). Ưu tiên `tracking.country_code` (đã lưu
+	//     lúc tạo lead), fallback `lead.Country` (tiếng Việt) sẽ được chuẩn
+	//     hoá trong `BuildCountryISO`.
+	//   - `st`      : tỉnh/bang. Ưu tiên `tracking.region_name` (tỉnh gốc từ
+	//     GeoIP), fallback `lead.Region` (vùng kinh tế — sẽ bị bỏ qua vì
+	//     Meta không có khái niệm vùng).
+	country := ""
+	if v, ok := tracking["country_code"]; ok && v != nil {
+		country = strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
+	if country == "" {
+		country = lead.Country
+	}
+
+	state := ""
+	if v, ok := tracking["region_name"]; ok && v != nil {
+		state = strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
+	if state == "" {
+		state = lead.Region
+	}
+
+	// 📌 IP/UA gốc: nếu chưa có trong context thì lấy từ tracking (đã lưu
+	// lúc lead tạo). Nhờ vậy sự kiện CRM sync về sau vẫn có IP + UA ⇒
+	// Meta dùng để khớp ⇒ EMQ tăng.
+	ip := strings.TrimSpace(clientIP)
+	if ip == "" {
+		ip = trackingString(tracking, "server_ip", "ip_address", "client_ip")
+	}
+	if ua == "" {
+		ua = trackingString(tracking, "server_user_agent", "user_agent", "client_user_agent")
+	}
+
 	return &facebook.LeadContext{
 		LeadID:    lead.ID,
 		LandingID: lead.LandingID,
@@ -876,27 +930,44 @@ func (h *LeadHandler) buildCAPILeadContext(lead *models.Lead, rawData map[string
 		FullName:  fullName,
 		Email:     email,
 		City:      lead.City,
-		Region:    lead.Region,
-		Country:   lead.Country,
+		Region:    state,
+		Country:   country,
 		ISP:       lead.ISP,
 		URL:       lead.URL,
 		Tracking:  tracking,
-		ClientIP:  clientIP,
+		ClientIP:  ip,
 		UserAgent: ua,
 		EventID:   eventID,
 	}
 }
 
+// trackingString đọc 1 key trong tracking dạng chuỗi (helper cho handler).
+func trackingString(tracking map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := tracking[k]; ok && v != nil {
+			s := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if s != "" && s != "<nil>" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // dispatchCAPICRMSync gửi sự kiện chuyển đổi khi sales đổi trạng thái CRM.
 //
 // Được gọi trong goroutine riêng từ HandleUpdateLead.
+//
+// 📌 ÁNH XẠ (2026-11-15): moi→Lead · da_goi→Contact · da_hoc_buoi_chia_se→
+// StartTrial · da_hoc_chuyen_sau→Subscribe · da_mua_hang→Purchase.
+//
+// ⚠️ Chỉ gửi cho lead đến từ Facebook (kiểm tra trong dispatcher).
 func (h *LeadHandler) dispatchCAPICRMSync(leadID uint64, trangThai string) {
 	if h.capiDispatcher == nil {
 		return
 	}
-	// Chỉ các trạng thái gắn giá trị tiền mới sinh sự kiện Meta.
-	hasValue, _ := models.LeadStatusValue(trangThai)
-	if !hasValue {
+	// Trạng thái không sinh sự kiện Meta (ket_ban_zalo, spam, huy…) → bỏ qua.
+	if _, _, ok := models.LeadStatusCAPIEvent(trangThai); !ok {
 		return
 	}
 
@@ -906,10 +977,9 @@ func (h *LeadHandler) dispatchCAPICRMSync(leadID uint64, trangThai string) {
 		return
 	}
 
+	// buildCAPILeadContext tự lấy IP/UA gốc từ tracking (đã lưu lúc tạo lead)
+	// ⇒ sự kiện CRM sync vẫn có đủ PII để Meta so khớp.
 	lc := h.buildCAPILeadContext(lead, nil, "")
-	// IP/UA gốc đã lưu trong tracking từ lúc lead được tạo.
-	lc.ClientIP = lc.TrackingString("server_ip", "ip_address")
-	lc.UserAgent = lc.TrackingString("server_user_agent", "user_agent")
 
 	res := h.capiDispatcher.SendCRMSyncEvent(lc, trangThai)
 	if res != nil && res.Error != "" {

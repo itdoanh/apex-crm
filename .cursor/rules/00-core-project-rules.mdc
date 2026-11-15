@@ -27,6 +27,16 @@ alwaysApply: true
 6. **Static files dùng đường dẫn tương đối** `../frontend/landing`, `../frontend/admin`. Backend **phải** chạy với working directory là `C:\apex\backend`.
 7. **`/api/internal/check-domain`** phải trả `200` cho domain đã đăng ký, `403` cho domain lạ — Caddy dùng endpoint này để quyết định cấp SSL hay không.
 8. **`backend/static/` là MIRROR của `frontend/admin/`.** Sửa UI ở `frontend/admin/` rồi copy sang `backend/static/`. Không sửa trực tiếp trong `backend/static/`.
+9. **Meta CAPI chỉ gửi cho lead từ Facebook** (`only_facebook_traffic`, mặc định `TRUE`) —
+   `backend/integrations/facebook/attribution.go` (`DetectFacebookTraffic`): bằng chứng `fbc` →
+   `fbclid` → `site_source_name`/`utm_source` Meta → referrer Meta + `utm_medium=paid` → `fbp`.
+   Lead organic / Google Ads / TikTok / truy cập thẳng ⇒ **skip**.
+10. **Ánh xạ CRM → sự kiện Meta** (`backend/models/lead_status.go`): `moi`→`Lead` ·
+    `da_goi`→`Contact` · `da_hoc_buoi_chia_se`→`StartTrial` · `da_hoc_chuyen_sau`→`Subscribe` ·
+    `da_mua_hang`→`Purchase`. Trạng thái còn lại **không** bắn.
+11. **Chuẩn PII Meta** (quyết định điểm EMQ): `country` = ISO-2 (`vn`) · `ct` = bỏ dấu
+    (`ha noi`) · `st` = tỉnh thật, **bỏ qua vùng kinh tế** (`Miền Bắc`) · `ph` = E.164.
+    IP/UA gốc của sự kiện CRM sync lấy từ `tracking.server_ip` / `tracking.server_user_agent`.
 
 ## Nguyên tắc bảo mật
 

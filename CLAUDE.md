@@ -37,8 +37,18 @@
 15. **Pipeline CRM 10 trạng thái** — định nghĩa tập trung tại `backend/models/lead_status.go`; frontend gọi `GET /api/facebook-ads/lead-statuses` để render động (Kanban 10 cột), không hardcode.
     - `moi` → `da_goi` → `ket_ban_zalo` → `da_hoc_buoi_chia_se` (miễn phí) → `da_hoc_chuyen_sau` (≈6.000.000đ) → `da_mua_hang` (kết)
     - Kết thúc không mua: `da_hoc_truoc_do` · `khong_quan_tam` · `spam_khong_lien_lac` · `huy`
-    - Tương thích ngược: `tiem_nang`/`da_vao_zoom` → `da_hoc_buoi_chia_se`, `chot` → `da_mua_hang`
-    - CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`
+ - Tương thích ngược: `tiem_nang`/`da_vao_zoom` → `da_hoc_buoi_chia_se`, `chot` → `da_mua_hang`
+ - **Ánh xạ CRM → Meta CAPI** (tự bắn khi đổi trạng thái): `moi`→`Lead` (dùng lại `event_id` gốc
+   ⇒ dedup với `fbq`) · `da_goi`→`Contact` · `da_hoc_buoi_chia_se`→`StartTrial` ·
+   `da_hoc_chuyen_sau`→`Subscribe` (+value) · `da_mua_hang`→`Purchase` (+value).
+   Các trạng thái còn lại (`ket_ban_zalo`, kết thúc không mua) **không** bắn.
+ - **CAPI chỉ gửi cho lead từ Facebook** (`only_facebook_traffic`, mặc định `TRUE`) —
+   `backend/integrations/facebook/attribution.go` (`DetectFacebookTraffic`): `fbc` → `fbclid` →
+   `site_source_name`/`utm_source` Meta → referrer Meta + `utm_medium=paid` → `fbp`.
+ - **Chuẩn PII Meta** (nâng EMQ): `country` ISO-2 (`vn`), `ct` bỏ dấu (`ha noi`),
+   `st` = tỉnh thật (bỎ QUA vùng kinh tế "Miền Bắc"), `ph` E.164. Sự kiện CRM sync
+   fallback IP/UA gốc từ `tracking.server_ip` / `tracking.server_user_agent`.
+ - CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase`
 16. **Ánh xạ URL Meta Ads** — `utm_campaign` = `campaign.id`, `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị. KHÔNG theo quy ước Google Ads.
 17. **Dedupe browser ↔ server** — `eventID` là **tham số thứ 4** của `fbq('track', …)`: `fbq('track','Lead',{ content_name:'…' },{ eventID: <cùng event_id> })`. Đặt trong object tham số 3 ⇒ Meta không đọc được ⇒ đếm đôi.
 18. **Dataset Quality v27.0** — `web` trả về là **MẢNG** (mỗi phần tử = 1 `event_name` kèm chỉ số riêng); `dataset_id` là tham số **bắt buộc**; `agent_name` tuỳ chọn.

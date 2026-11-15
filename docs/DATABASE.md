@@ -619,6 +619,10 @@ CREATE TABLE IF NOT EXISTS facebook_capi_configs (
     send_lead          BOOLEAN NOT NULL DEFAULT TRUE,
     send_purchase      BOOLEAN NOT NULL DEFAULT TRUE,
     send_crm_sync      BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Chỉ gửi CAPI cho lead đến từ Facebook/Instagram (2026-11-15).
+    -- TRUE (mặc định) ⇒ lead organic / Google Ads / TikTok / truy cập
+    -- thẳng bị BỎ QUA (không có lượt nhấp Meta để so khớp).
+    only_facebook_traffic BOOLEAN NOT NULL DEFAULT TRUE,
     course_value       DOUBLE PRECISION NOT NULL DEFAULT 6000000,
     currency           VARCHAR(10) NOT NULL DEFAULT 'VND',
     hash_email         BOOLEAN NOT NULL DEFAULT TRUE,
@@ -637,6 +641,10 @@ CREATE TABLE IF NOT EXISTS facebook_capi_configs (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_facebook_capi_configs_landing
     ON facebook_capi_configs (landing_id);
+
+-- Migration (bảng đã tồn tại thì CREATE TABLE IF NOT EXISTS KHÔNG thêm cột):
+ALTER TABLE facebook_capi_configs
+    ADD COLUMN IF NOT EXISTS only_facebook_traffic BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS facebook_capi_logs (
     id             BIGSERIAL PRIMARY KEY,
@@ -672,6 +680,41 @@ Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_even
   `POST /api/analytics/track` trong 1 phiên (pageview, heartbeat, exit, scroll…) ⇒ không
   dedup thì 1 lượt xem bị đếm 5–10 lần trên Meta Ads Manager.
   `HasFacebookCAPISessionEvent(session_id, event_name)` kiểm tra đã gửi chưa (cửa sổ 24h).
+
+### 8.6. Ánh xạ trạng thái CRM → sự kiện Meta CAPI (2026-11-15)
+
+Định nghĩa tập trung: `backend/models/lead_status.go` (`LeadStatusDefs.CAPIEvent`).
+
+| Trạng thái CRM | Sự kiện Meta | Kèm `value` |
+|---|---|---|
+| `moi` | `Lead` | ❌ (dùng lại `event_id` gốc ⇒ dedup với `fbq`) |
+| `da_goi` | `Contact` | ❌ |
+| `da_hoc_buoi_chia_se` | `StartTrial` | ❌ |
+| `da_hoc_chuyen_sau` | `Subscribe` | ✅ `course_value` (6.000.000đ) |
+| `da_mua_hang` | `Purchase` | ✅ `course_value` (6.000.000đ) |
+| `ket_ban_zalo`, `da_hoc_truoc_do`, `khong_quan_tam`, `spam_khong_lien_lac`, `huy` | *(không bắn)* | — |
+
+**Gate chỉ gửi cho traffic Facebook** (`only_facebook_traffic`, mặc định `TRUE`):
+`DetectFacebookTraffic()` trong `backend/integrations/facebook/attribution.go` kiểm tra
+theo thứ tự mạnh → yếu: `fbc` → `fbclid`/`meta_click_id` → `site_source_name`/`utm_source`
+∈ tập nguồn Meta → referrer Meta + `utm_medium=paid` → `fbp`.
+
+**Chuẩn hoá PII theo chuẩn Meta** (quyết định trực tiếp điểm EMQ):
+
+| Trường | Quy tắc | Ví dụ |
+|---|---|---|
+| `country` | ISO-2 lowercase | `"Việt Nam"` → `vn` |
+| `ct` | bỏ dấu + lowercase | `"Hà Nội"` → `ha noi` |
+| `st` | bỏ dấu + lowercase; **bỏ qua vùng kinh tế** | `"Miền Bắc"` → *(bỏ trống)* |
+| `ph` | E.164 | `0912345678` → `+84912345678` |
+| `client_ip_address`, `client_user_agent`, `fbc`, `fbp` | **không băm**, gửi rõ | — |
+
+`st` lấy từ `tracking.region_name` (tỉnh gốc từ GeoIP), fallback `lead.region`
+(vùng kinh tế ⇒ bị loại). `country` lấy từ `tracking.country_code`.
+
+**IP/UA gốc cho sự kiện CRM sync**: `buildCAPILeadContext` fallback về
+`tracking.server_ip` / `tracking.server_user_agent` (đã lưu lúc tạo lead) ⇒ sự kiện
+đổi trạng thái vẫn có IP + UA để Meta so khớp.
 
 ---
 

@@ -45,6 +45,7 @@ func (s *Store) queryFacebookCAPIConfig(ctx context.Context, landingID string) (
 		SELECT id, landing_id, is_active, pixel_id, access_token, api_version,
 		       gateway_enabled, gateway_endpoint, gateway_access_key,
 		       send_page_view, send_lead, send_purchase, send_crm_sync,
+		       only_facebook_traffic,
 		       course_value, currency,
 		       hash_email, hash_phone, hash_name, hash_address, hash_external_id,
 		       hash_city, hash_state, hash_zip, hash_country, send_user_data,
@@ -58,6 +59,7 @@ func (s *Store) queryFacebookCAPIConfig(ctx context.Context, landingID string) (
 		&c.ID, &c.LandingID, &c.IsActive, &c.PixelID, &c.AccessToken, &c.APIVersion,
 		&c.GatewayEnabled, &c.GatewayEndpoint, &c.GatewayAccessKey,
 		&c.SendPageView, &c.SendLead, &c.SendPurchase, &c.SendCRMSync,
+		&c.OnlyFacebookTraffic,
 		&c.CourseValue, &c.Currency,
 		&c.HashEmail, &c.HashPhone, &c.HashName, &c.HashAddress, &c.HashExternalID,
 		&c.HashCity, &c.HashState, &c.HashZip, &c.HashCountry, &c.SendUserData,
@@ -82,6 +84,7 @@ func (s *Store) ListFacebookCAPIConfigs() ([]models.FacebookCAPIConfig, error) {
 		SELECT id, landing_id, is_active, pixel_id, access_token, api_version,
 		       gateway_enabled, gateway_endpoint, gateway_access_key,
 		       send_page_view, send_lead, send_purchase, send_crm_sync,
+		       only_facebook_traffic,
 		       course_value, currency,
 		       hash_email, hash_phone, hash_name, hash_address, hash_external_id,
 		       hash_city, hash_state, hash_zip, hash_country, send_user_data,
@@ -103,6 +106,7 @@ func (s *Store) ListFacebookCAPIConfigs() ([]models.FacebookCAPIConfig, error) {
 			&c.ID, &c.LandingID, &c.IsActive, &c.PixelID, &c.AccessToken, &c.APIVersion,
 			&c.GatewayEnabled, &c.GatewayEndpoint, &c.GatewayAccessKey,
 			&c.SendPageView, &c.SendLead, &c.SendPurchase, &c.SendCRMSync,
+			&c.OnlyFacebookTraffic,
 			&c.CourseValue, &c.Currency,
 			&c.HashEmail, &c.HashPhone, &c.HashName, &c.HashAddress, &c.HashExternalID,
 			&c.HashCity, &c.HashState, &c.HashZip, &c.HashCountry, &c.SendUserData,
@@ -141,12 +145,18 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 	if courseValue <= 0 {
 		courseValue = 6000000
 	}
+	// `only_facebook_traffic` mặc định TRUE (chỉ gửi lead từ Facebook).
+	onlyFB := true
+	if in.OnlyFacebookTraffic != nil {
+		onlyFB = *in.OnlyFacebookTraffic
+	}
 
 	const q = `
 		INSERT INTO facebook_capi_configs (
 			landing_id, is_active, pixel_id, access_token, api_version,
 			gateway_enabled, gateway_endpoint, gateway_access_key,
 			send_page_view, send_lead, send_purchase, send_crm_sync,
+			only_facebook_traffic,
 			course_value, currency,
 			hash_email, hash_phone, hash_name, hash_address, hash_external_id,
 			hash_city, hash_state, hash_zip, hash_country, send_user_data,
@@ -156,7 +166,7 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 			CASE WHEN $4 = '' THEN '' ELSE $4 END,
 			$5, $6, $7,
 			CASE WHEN $8 = '' THEN '' ELSE $8 END,
-			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
 			NOW(), NOW()
 		)
 		ON CONFLICT (landing_id) DO UPDATE SET
@@ -177,6 +187,7 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 			send_lead = EXCLUDED.send_lead,
 			send_purchase = EXCLUDED.send_purchase,
 			send_crm_sync = EXCLUDED.send_crm_sync,
+			only_facebook_traffic = EXCLUDED.only_facebook_traffic,
 			course_value = EXCLUDED.course_value,
 			currency = EXCLUDED.currency,
 			hash_email = EXCLUDED.hash_email,
@@ -197,6 +208,7 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 		in.LandingID, isActive, in.PixelID, in.AccessToken, apiVersion,
 		in.GatewayEnabled, in.GatewayEndpoint, in.GatewayAccessKey,
 		in.SendPageView, in.SendLead, in.SendPurchase, in.SendCRMSync,
+		onlyFB,
 		courseValue, currency,
 		in.HashEmail, in.HashPhone, in.HashName, in.HashAddress, in.HashExternalID,
 		in.HashCity, in.HashState, in.HashZip, in.HashCountry, in.SendUserData,

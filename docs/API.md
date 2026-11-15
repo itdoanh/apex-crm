@@ -831,6 +831,7 @@ Account + ánh xạ cột. Đặc điểm:
   "send_lead": true,
   "send_purchase": true,
   "send_crm_sync": true,
+  "only_facebook_traffic": true,
   "course_value": 6000000,
   "currency": "VND",
   "send_user_data": true,
@@ -843,14 +844,40 @@ Account + ánh xạ cột. Đặc điểm:
 - `landing_id = ""` ⇒ cấu hình **mặc định**, áp dụng cho mọi landing chưa có config riêng.
 - Token gửi lên có thể là dạng đã mask (`EAAG****abcd`) → backend giữ nguyên token cũ trong DB.
   Muốn đổi token thì gửi giá trị đầy đủ.
+- `only_facebook_traffic` (mặc định `TRUE`) ⇒ **chỉ gửi CAPI cho lead đến từ
+  Facebook/Instagram**. Lead organic / Google Ads / TikTok / truy cập thẳng bị bỏ qua
+  (không có lượt nhấp Meta để so khớp ⇒ gửi lên chỉ làm nhiễu chỉ số quảng cáo).
+  Nếu admin **không** gửi field này ⇒ backend giữ nguyên giá trị đang lưu trong DB.
 - Ghi DB xong **phải** `Reload()` cache → handler đã gọi sẵn.
 
-> 🐛 **Regression 2026-11-15**: câu `INSERT` của `facebook_capi_configs` thiếu tham số
-> `$24` (`send_user_data`) ⇒ Postgres trả *"INSERT has more target columns than
-> expressions"* ⇒ `POST /api/facebook-ads/config` trả **HTTP 500**.
-> Đã sửa tại `backend/db/facebook_ads.go` (`UpsertFacebookCAPIConfig`) và thêm
-> regression test `backend/db/facebook_ads_upsert_test.go` +
-> `backend/handlers/facebook_ads_handler_test.go`.
+#### Ánh xạ trạng thái CRM → sự kiện Meta (2026-11-15)
+
+Khi sales đổi trạng thái lead trong CRM, backend tự bắn sự kiện tương ứng
+(`triggered_by = crm_status_change`):
+
+| Trạng thái CRM | Sự kiện Meta | `custom_data.value` |
+|---|---|---|
+| `moi` | `Lead` | ❌ — dùng lại `event_id` gốc ⇒ dedup với `fbq` |
+| `da_goi` | `Contact` | ❌ |
+| `da_hoc_buoi_chia_se` | `StartTrial` | ❌ |
+| `da_hoc_chuyen_sau` | `Subscribe` | ✅ `course_value` (6.000.000đ) |
+| `da_mua_hang` | `Purchase` | ✅ `course_value` (6.000.000đ) |
+| `ket_ban_zalo`, `da_hoc_truoc_do`, `khong_quan_tam`, `spam_khong_lien_lac`, `huy` | *(không bắn)* | — |
+
+Nguồn định nghĩa: `backend/models/lead_status.go` (`LeadStatusDefs.CAPIEvent`).
+
+#### Gate traffic Facebook
+
+`DetectFacebookTraffic()` (`backend/integrations/facebook/attribution.go`) kiểm tra
+theo thứ tự mạnh → yếu:
+
+1. `fbc` (cookie `_fbc`) — bằng chứng định danh lượt nhấp Meta ★
+2. `fbclid` / `meta_click_id` — click ID trong URL
+3. `site_source_name` / `utm_source` ∈ {`fb`,`ig`,`msg`,`an`,`facebook`,`instagram`,…}
+4. Referrer thuộc domain Meta + `utm_medium` ∈ {`paid`,`cpc`,`ads`}
+5. `fbp` (cookie `_fbp`) — bằng chứng yếu nhất (cuối cùng)
+
+Không có bằng chứng nào ⇒ sự kiện bị **skip** (ghi log `facebook_capi_logs.status='skipped'`).
 
 #### Chuẩn băm PII (theo Meta Conversions API)
 
@@ -858,8 +885,11 @@ Account + ánh xạ cột. Đặc điểm:
 |---|---|
 | `em` | trim + lowercase |
 | `ph` | **E.164** — số VN 10 số `0912345678` ⇒ `+84912345678` |
-| `fn` / `ln` / `ct` / `st` / `zp` | trim + lowercase + gộp khoảng trắng |
-| `country` | trim + lowercase, bỏ tiền tố `vn-` / `vi-` |
+| `fn` / `ln` | trim + lowercase + gộp khoảng trắng |
+| `ct` | bỏ dấu tiếng Việt + lowercase (`"Hà Nội"` ⇒ `ha noi`) |
+| `st` | bỏ dấu + lowercase; **bỏ qua vùng kinh tế** (`"Miền Bắc"` ⇒ *trống*) |
+| `zp` | trim + lowercase + gộp khoảng trắng |
+| `country` | **ISO-2** lowercase (`"Việt Nam"` ⇒ `vn`) |
 | `external_id` | chuẩn hoá như số điện thoại, hash thẳng |
 
 **KHÔNG băm** (Meta yêu cầu gửi rõ): `client_ip_address` · `client_user_agent` ·
@@ -868,6 +898,11 @@ Account + ánh xạ cột. Đặc điểm:
 > 📌 Chuẩn E.164 cho `ph` giúp khoá so khớp `ph` có hiệu quả cao hơn trong
 > Advanced Matching ⇒ EMQ tốt hơn. Số dạng local `0912345678` bị Meta tính là
 > khoá khác với `+84912345678` ⇒ không khớp được với dữ liệu Meta.
+>
+> 📌 `country` ISO-2 + `ct` bỏ dấu + `st` là tỉnh thật (không phải vùng kinh tế)
+> là 3 nguyên nhân chính khiến EMQ chỉ ~5-6/10 (2026-11-15). Sự kiện CRM sync
+> còn fallback IP/UA gốc từ `tracking.server_ip` / `tracking.server_user_agent`
+> ⇒ có đủ dữ liệu để Meta so khớp.
 
 ### 9.2.2. `POST /api/facebook-ads/parse-url`
 

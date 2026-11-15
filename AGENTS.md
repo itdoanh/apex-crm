@@ -186,6 +186,16 @@ kèm kết thúc không mua: `da_hoc_truoc_do` · `khong_quan_tam` · `spam_khon
 
 - `da_hoc_buoi_chia_se` = bước **miễn phí**; `da_hoc_chuyen_sau` = **≈6.000.000đ**; `da_mua_hang` = chuyển đổi cuối.
 - Giá trị cũ tự chuẩn hoá: `tiem_nang`/`da_vao_zoom` → `da_hoc_buoi_chia_se`, `chot` → `da_mua_hang`.
+- **Ánh xạ CRM → Meta CAPI** (tự bắn khi sales đổi trạng thái):
+  `moi`→`Lead` (dùng lại `event_id` gốc ⇒ dedup với `fbq`) · `da_goi`→`Contact` ·
+  `da_hoc_buoi_chia_se`→`StartTrial` · `da_hoc_chuyen_sau`→`Subscribe` (+value) ·
+  `da_mua_hang`→`Purchase` (+value). Các trạng thái còn lại **không** bắn.
+- **CAPI chỉ gửi cho lead từ Facebook** (`only_facebook_traffic`, mặc định `TRUE`):
+  `DetectFacebookTraffic()` trong `backend/integrations/facebook/attribution.go` — bằng chứng
+  `fbc` → `fbclid` → `site_source_name`/`utm_source` Meta → referrer Meta + `utm_medium=paid` → `fbp`.
+- **Chuẩn PII Meta (quyết định điểm EMQ)**: `country` = ISO-2 (`vn`), `ct` = bỏ dấu
+  (`ha noi`), `st` = tỉnh thật (BỎ QUA vùng kinh tế "Miền Bắc"), `ph` = E.164.
+  IP/UA gốc cho sự kiện CRM sync fallback từ `tracking.server_ip`/`server_user_agent`.
 - CAPI: `da_hoc_chuyen_sau` → `Subscribe`, `da_mua_hang` → `Purchase` (kèm `value` = `course_value`).
 - **Ánh xạ URL Meta Ads KHÔNG theo Google Ads**: `utm_campaign` = `campaign.id`,
   `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị.

@@ -489,6 +489,10 @@ func (s *Store) initSchema(ctx context.Context) error {
 		send_lead BOOLEAN NOT NULL DEFAULT TRUE,
 		send_purchase BOOLEAN NOT NULL DEFAULT TRUE,
 		send_crm_sync BOOLEAN NOT NULL DEFAULT TRUE,
+		-- ─── Chỉ gửi CAPI cho lead đến từ Facebook (2026-11-15) ──────
+		-- TRUE (mặc định) ⇒ bỏ qua lead từ organic / Google Ads / TikTok…
+		-- (không có lượt nhấp Meta để khớp ⇒ chỉ làm nhiễu chỉ số).
+		only_facebook_traffic BOOLEAN NOT NULL DEFAULT TRUE,
 		course_value DOUBLE PRECISION NOT NULL DEFAULT 6000000,
 		currency VARCHAR(10) NOT NULL DEFAULT 'VND',
 		hash_email BOOLEAN NOT NULL DEFAULT TRUE,
@@ -508,6 +512,13 @@ func (s *Store) initSchema(ctx context.Context) error {
 	-- Mỗi landing chỉ có 1 cấu hình (cấu hình mặc định dùng landing_id = '').
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_facebook_capi_configs_landing
 		ON facebook_capi_configs (landing_id);
+
+	-- Migration thêm cột only_facebook_traffic (2026-11-15).
+	--
+	-- ⚠️ CREATE TABLE IF NOT EXISTS KHÔNG thêm cột cho bảng đã tồn tại ⇒
+	-- phải có ALTER riêng.
+	ALTER TABLE facebook_capi_configs
+		ADD COLUMN IF NOT EXISTS only_facebook_traffic BOOLEAN NOT NULL DEFAULT TRUE;
 
 	-- Log gửi sự kiện lên Meta: dùng để đối soát & chẩn đoán lỗi CAPI.
 	CREATE TABLE IF NOT EXISTS facebook_capi_logs (

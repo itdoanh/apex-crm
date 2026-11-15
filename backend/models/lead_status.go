@@ -73,7 +73,14 @@ type LeadStatusDef struct {
 	// HasValue = trạng thái gắn với giá trị tiền thật (dùng cho CAPI Purchase).
 	HasValue bool `json:"has_value"`
 	// CAPIEvent là tên sự kiện Meta nếu trạng thái này sinh ra chuyển đổi.
+	//
+	// ⚠️ Rỗng ⇒ trạng thái này KHÔNG sinh sự kiện Meta (ví dụ `ket_ban_zalo`:
+	// đã kết bạn Zalo nhưng chưa phải chuyển đổi có giá trị).
 	CAPIEvent string `json:"capi_event,omitempty"`
+	// CAPIHasValue = sự kiện này cần gửi kèm `custom_data.value`
+	// (Subscribe / Purchase có giá trị tiền thật; Lead / Contact / StartTrial
+	// thì không).
+	CAPIHasValue bool `json:"capi_has_value,omitempty"`
 }
 
 // LeadStatusOrder là thứ tự hiển thị trên Kanban (trái → phải).
@@ -91,14 +98,30 @@ var LeadStatusOrder = []string{
 }
 
 // LeadStatusDefs là danh sách đầy đủ các trạng thái hợp lệ.
+//
+// 📌 ÁNH XẠ CRM → META CAPI (yêu cầu anh itdoanh 2026-11-15):
+//
+//	Sự kiện Meta được bắn tự động mỗi khi sales đổi trạng thái lead:
+//
+//	  moi                 → Lead          (form đăng ký — cũng bắn lúc submit)
+//	  da_goi              → Contact       (đã gọi điện)
+//	  ket_ban_zalo        → (không bắn)  — kết bạn Zalo chưa phải chuyển đổi
+//	  da_hoc_buoi_chia_se → StartTrial    (đã học buổi chia sẻ ⇒ bắt đầu dùng thử)
+//	  da_hoc_chuyen_sau   → Subscribe     (đã học chuyên sâu, ≈6.000.000đ)
+//	  da_mua_hang         → Purchase      (khách đã mua hàng — chuyển đổi cuối)
+//	  (các trạng thái kết thúc không mua → không bắn)
+//
+// ⚠️ `SendCRMSync` trong cấu hình CAPI điều khiển TOÀN BỘ nhóm này.
 var LeadStatusDefs = []LeadStatusDef{
 	{
 		Key: StatusMoi, Label: "Mới tiếp nhận", Short: "Mới", Icon: "📥",
 		Stage: "new", Color: "sky", Badge: "bg-sky-950 text-sky-400 border-sky-800",
+		CAPIEvent: "Lead",
 	},
 	{
 		Key: StatusDaGoi, Label: "Đã gọi điện", Short: "Đã gọi", Icon: "📞",
 		Stage: "contacted", Color: "amber", Badge: "bg-amber-950 text-amber-400 border-amber-800",
+		CAPIEvent: "Contact",
 	},
 	{
 		Key: StatusKetBanZalo, Label: "Đã kết bạn Zalo", Short: "Zalo", Icon: "💬",
@@ -107,16 +130,17 @@ var LeadStatusDefs = []LeadStatusDef{
 	{
 		Key: StatusDaHocBuoiChiaSe, Label: "Đã học buổi chia sẻ", Short: "Chia sẻ", Icon: "💻",
 		Stage: "free", Color: "purple", Badge: "bg-purple-950 text-purple-400 border-purple-800",
+		CAPIEvent: "StartTrial",
 	},
 	{
 		Key: StatusDaHocChuyenSau, Label: "Đã học chuyên sâu", Short: "Chuyên sâu", Icon: "📘",
 		Stage: "paid", Color: "indigo", Badge: "bg-indigo-950 text-indigo-400 border-indigo-800",
-		HasValue: true, CAPIEvent: "Subscribe",
+		HasValue: true, CAPIEvent: "Subscribe", CAPIHasValue: true,
 	},
 	{
 		Key: StatusDaMuaHang, Label: "Khách hàng đã mua hàng", Short: "Đã mua", Icon: "🏆",
 		Stage: "won", Color: "emerald", Badge: "bg-emerald-950 text-emerald-400 border-emerald-800",
-		HasValue: true, CAPIEvent: "Purchase",
+		HasValue: true, CAPIEvent: "Purchase", CAPIHasValue: true,
 	},
 	{
 		Key: StatusDaHocTruocDo, Label: "Đã học trước đó rồi", Short: "Học trước", Icon: "🔁",
@@ -196,12 +220,32 @@ func GetLeadStatus(key string) (LeadStatusDef, bool) {
 }
 
 // LeadStatusValue là trạng thái gắn giá trị tiền thật (dùng cho CAPI Purchase).
+//
+// ⚠️ HÀM NÀY GIỮ NGUYÊN HÀNH VI CŨ (chỉ trả về true cho trạng thái có
+// giá trị tiền) để không phá code đang gọi. Dùng `LeadStatusCAPIEvent`
+// cho logic đồng bộ CRM ⇄ CAPI mới.
 func LeadStatusValue(key string) (bool, string) {
 	d, ok := leadStatusMap[NormalizeLeadStatus(key)]
 	if !ok || !d.HasValue {
 		return false, ""
 	}
 	return true, d.CAPIEvent
+}
+
+// LeadStatusCAPIEvent trả về thông tin sự kiện Meta tương ứng với 1 trạng
+// thái CRM.
+//
+// Trả về ("", false) nếu trạng thái đó KHÔNG sinh sự kiện Meta (ví dụ
+// `ket_ban_zalo`, các trạng thái kết thúc không mua).
+//
+// hasValue = true ⇒ sự kiện cần gửi kèm `custom_data.value`
+// (Subscribe / Purchase).
+func LeadStatusCAPIEvent(key string) (eventName string, hasValue bool, ok bool) {
+	d, found := leadStatusMap[NormalizeLeadStatus(key)]
+	if !found || strings.TrimSpace(d.CAPIEvent) == "" {
+		return "", false, false
+	}
+	return d.CAPIEvent, d.CAPIHasValue, true
 }
 
 // ListLeadStatusDefs trả về toàn bộ định nghĩa trạng thái (cho API admin).
