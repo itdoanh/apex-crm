@@ -1073,6 +1073,28 @@
             }
         }
 
+        // Gửi trạng thái thiết bị preview (pc/mobile) + CSS ép PC styles
+        // xuống iframe preview. Đặt ở scope GLOBAL để inspector.js và
+        // refreshStudioPreview() gọi được (trước đây bị khai báo bên trong
+        // setStudioDevice() nên không ai gọi tới được).
+        function syncPreviewDeviceToIframe() {
+            const iframe = document.getElementById('csPreviewIframe');
+            if (!iframe || !iframe.contentWindow) return;
+            let pcForceCss = '';
+            try {
+                if (typeof astMapper !== 'undefined' && astMapper && typeof astMapper.buildPreviewPCForceCSS === 'function') {
+                    pcForceCss = astMapper.buildPreviewPCForceCSS();
+                }
+            } catch (e) {}
+            try {
+                iframe.contentWindow.postMessage({
+                    type: 'APEX_CMD_SET_PREVIEW_DEVICE',
+                    device: studioDeviceMode,
+                    pcForceCss: pcForceCss
+                }, '*');
+            } catch (e) {}
+        }
+
         function setStudioDevice(mode) {
             studioDeviceMode = (mode === 'mobile') ? 'mobile' : 'pc';
             const btnPC = document.getElementById('btnDevicePC');
@@ -1147,26 +1169,6 @@
                 // Đồng bộ thiết bị preview sang iframe (để PC/Mobile style scope
                 // đúng theo nút đang chọn, kể cả khi zoom làm viewport < 769px).
                 syncPreviewDeviceToIframe();
-            }
-
-            // Gửi trạng thái thiết bị preview (pc/mobile) + CSS ép PC styles
-            // xuống iframe preview.
-            function syncPreviewDeviceToIframe() {
-                const iframe = document.getElementById('csPreviewIframe');
-                if (!iframe || !iframe.contentWindow) return;
-                let pcForceCss = '';
-                try {
-                    if (typeof astMapper !== 'undefined' && astMapper && typeof astMapper.buildPreviewPCForceCSS === 'function') {
-                        pcForceCss = astMapper.buildPreviewPCForceCSS();
-                    }
-                } catch (e) {}
-                try {
-                    iframe.contentWindow.postMessage({
-                        type: 'APEX_CMD_SET_PREVIEW_DEVICE',
-                        device: studioDeviceMode,
-                        pcForceCss: pcForceCss
-                    }, '*');
-                } catch (e) {}
             }
 
             // Đồng bộ cập nhật lại Inspector theo đúng giao diện được chọn

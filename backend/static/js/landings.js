@@ -312,7 +312,11 @@
                     })
                 });
                 if (!res.ok) throw new Error('Không thể nhân bản');
-                alert('Đã nhân bản landing page thành công!');
+                const data = await res.json().catch(() => ({}));
+                const fileCount = typeof data.copied_files === 'number' ? data.copied_files : null;
+                alert(fileCount !== null
+                    ? `Đã nhân bản landing page thành công!\n\n${fileCount} tệp tin (HTML + CSS/JS/ảnh) đã được sao chép sang landing mới.`
+                    : 'Đã nhân bản landing page thành công!');
                 loadLandingPages();
             } catch (e) {
                 alert('Lỗi: ' + e.message);

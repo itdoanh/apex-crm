@@ -407,9 +407,11 @@
                 // Xem `getPreviewBaseHref()` để hiểu lý do.
                 const baseHref = this.getPreviewBaseHref();
                 const pcForceCSS = this.buildPreviewPCForceCSS();
-                const pcForceStyleBlock = pcForceCSS
-                    ? `\n<style id="__apex_preview_pc_force_styles__">\n${pcForceCSS}\n</style>\n`
-                    : '';
+                // LUÔN tạo style block (kể cả rỗng) để handler
+                // `APEX_CMD_SET_PREVIEW_DEVICE` luôn tìm thấy và cập nhật được.
+                // Nếu chỉ tạo khi có rule, thì lần đầu mở Studio (chưa chỉnh style)
+                // sẽ không có element ⇒ CSS ép PC không bao giờ được áp dụng.
+                const pcForceStyleBlock = `\n<style id="__apex_preview_pc_force_styles__">\n${pcForceCSS}\n</style>\n`;
                 return `\n<base href="${baseHref}">${pcForceStyleBlock}<script id="__APEX_BUILDER_HELPER_SCRIPT__">\n` +
                     `(function() {\n` +
                     `    window.__APEX_BUILDER_ACTIVE__ = true;\n` +
@@ -772,7 +774,12 @@
                     `            var dev = (m.device === 'mobile') ? 'mobile' : 'pc';\n` +
                     `            document.documentElement.setAttribute('data-apex-preview-device', dev);\n` +
                     `            var pf = document.getElementById('__apex_preview_pc_force_styles__');\n` +
-                    `            if (pf && typeof m.pcForceCss === 'string') { pf.textContent = m.pcForceCss; }\n` +
+                    `            if (!pf) {\n` +
+                    `                pf = document.createElement('style');\n` +
+                    `                pf.id = '__apex_preview_pc_force_styles__';\n` +
+                    `                (document.head || document.documentElement).appendChild(pf);\n` +
+                    `            }\n` +
+                    `            if (typeof m.pcForceCss === 'string') { pf.textContent = m.pcForceCss; }\n` +
                     `        }\n` +
                     `        if (m.type === 'APEX_CMD_UPDATE_STYLE_TEMP') {\n` +
                     `            var el = document.querySelector('[data-ve-id=\"' + m.nodeId + '\"]');\n` +

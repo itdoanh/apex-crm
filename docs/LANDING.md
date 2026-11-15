@@ -760,6 +760,22 @@ hợp lệ ⇒ `ListLandingFiles()` trả về rỗng ⇒ preview bản sao tr�
 > - Khi user Deploy, `HandleDeployLanding` gọi `SyncLandingFilesToDomain()` để
 >   đồng bộ cây file sang domain đích ⇒ không mất file.
 
+### 🔧 `syncPreviewDeviceToIframe()` phải ở scope GLOBAL (fix 2026-11-15)
+
+**Triệu chứng:** sửa style PC trong Inspector ⇒ không thấy thay đổi khi zoom
+làm viewport nội bộ < 769px. Attribute `data-apex-preview-device` không được set.
+
+**Nguyên nhân:** hàm `syncPreviewDeviceToIframe()` bị khai báo **bên trong**
+`setStudioDevice()` ⇒ không có scope global ⇒ `inspector.js` (`applyAstStyleChange`)
+và `refreshStudioPreview()` gọi `typeof syncPreviewDeviceToIframe === 'function'`
+luôn ra `false` ⇒ không sync device xuống iframe.
+
+> ✅ **Cách sửa:** chuyển hàm ra **scope global** (cùng cấp với `setStudioDevice`).
+
+**Bổ sung:** style block `#__apex_preview_pc_force_styles__` giờ **luôn được tạo**
+(kể cả rỗng) và handler `APEX_CMD_SET_PREVIEW_DEVICE` **tự tạo** element nếu thiếu
+⇒ CSS ép PC luôn áp dụng được ngay từ lần đầu mở Studio.
+
 ### ⚡ Throttle analytics ping (fix 2026-11-13)
 
 `ApexTracker.send(type, value)` (được landing gọi cho mọi tương tác: `click`,
