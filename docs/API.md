@@ -773,6 +773,13 @@ Account + ánh xạ cột. Đặc điểm:
   Muốn đổi token thì gửi giá trị đầy đủ.
 - Ghi DB xong **phải** `Reload()` cache → handler đã gọi sẵn.
 
+> 🐛 **Regression 2026-11-15**: câu `INSERT` của `facebook_capi_configs` thiếu tham số
+> `$24` (`send_user_data`) ⇒ Postgres trả *"INSERT has more target columns than
+> expressions"* ⇒ `POST /api/facebook-ads/config` trả **HTTP 500**.
+> Đã sửa tại `backend/db/facebook_ads.go` (`UpsertFacebookCAPIConfig`) và thêm
+> regression test `backend/db/facebook_ads_upsert_test.go` +
+> `backend/handlers/facebook_ads_handler_test.go`.
+
 #### Chuẩn băm PII (theo Meta Conversions API)
 
 | Thông số | Chuẩn hoá trước khi băm SHA-256 |

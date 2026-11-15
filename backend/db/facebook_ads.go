@@ -156,7 +156,7 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 			CASE WHEN $4 = '' THEN '' ELSE $4 END,
 			$5, $6, $7,
 			CASE WHEN $8 = '' THEN '' ELSE $8 END,
-			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
 			NOW(), NOW()
 		)
 		ON CONFLICT (landing_id) DO UPDATE SET
