@@ -41,7 +41,7 @@ func NewAnalyticsHandler(cfg *config.Config, store *db.Store, landingCache *cach
 		store:       store,
 		landingCache: landingCache,
 		rateLimiter: security.NewIPRateLimiter(rate.Limit(2.0), 60, 5*time.Minute), // 120 req/phút, burst 60
-		capiDispatcher: facebook.NewDispatcher(store),
+		capiDispatcher: facebook.NewDispatcherWithSync(store, cfg.IsExternalSyncEnabled()),
 	}
 }
 

@@ -15,6 +15,9 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - apex_postgres_data:/var/lib/postgresql/data
+      # Tạo sẵn database `apex_leads_test` ngay lần đầu khởi động container
+      # ⇒ local có đúng 2 DB, khớp server production + server test.
+      - ./deploy/docker/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-apex_leads}"]
       interval: 10s

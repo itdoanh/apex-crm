@@ -61,9 +61,51 @@ crm.hanghoaphaisinh.net {
 }
 
 # ------------------------------------------------------------------------------
-# 2. TOÀN BỘ TÊN MIỀN LANDING PAGE KHÁC (Tự động kích hoạt On-Demand TLS)
+# 2. MÔI TRƯỜNG TEST — test.hanghoaphaisinh.net → backend test (port 8081)
+# ------------------------------------------------------------------------------
+# ⚠️ Site block riêng cho host test. Block này dùng chung global `on_demand_tls`
+#    (ask 127.0.0.1:8080) — Caddy 2.8.4 KHÔNG hỗ trợ `on_demand { ask ... }`
+#    lồng trong site block.
+#    ⇒ Backend production trả 200 cho `test.hanghoaphaisinh.net` (đã có trong
+#      allow-list on-demand của production) ⇒ Caddy cấp SSL cho domain test.
+#
+# ⚠️ Định tuyến của domain test trong CRM quyết định landing nào được serve.
+#    Nếu domain test không có trong DB production ⇒ trả 404 (an toàn).
+# ------------------------------------------------------------------------------
+test.hanghoaphaisinh.net {
+    tls {
+        on_demand
+    }
+
+    log {
+        output file C:/caddy/logs/access_test.log {
+            roll_size 10mb
+            roll_keep 3
+            roll_keep_for 7d
+        }
+        format console
+    }
+
+    reverse_proxy 127.0.0.1:8081 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+
+        lb_try_duration 10s
+        lb_try_interval 500ms
+    }
+}
+
+# ------------------------------------------------------------------------------
+# 3. TOÀN BỘ TÊN MIỀN LANDING PAGE KHÁC (Tự động kích hoạt On-Demand TLS)
 # Áp dụng cho: dautuhanghoa.vn, *.hanghoaphaisinh.net, domain-khach.com,...
 # Bất kỳ domain nào trỏ A Record hoặc NameServer về server sẽ có HTTPS tức thì!
+# ⚠️ Site block cụ thể (mục 2) được ưu tiên hơn block catch-all này.
 # ------------------------------------------------------------------------------
 :443 {
     tls {

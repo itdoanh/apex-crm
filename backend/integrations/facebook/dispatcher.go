@@ -25,6 +25,11 @@ type Dispatcher struct {
 	// fallback là cấu hình từ biến môi trường (.env) — dùng khi DB chưa có
 	// cấu hình nào (landing_id cụ thể lẫn cấu hình mặc định).
 	fallback *models.FacebookCAPIConfig
+	// disabled = true ⇒ KHÔNG gửi sự kiện nào lên Meta.
+	//
+	// Dùng cho môi trường `test`: lead thử nghiệm không được làm nhiễu chỉ số
+	// Meta Ads thật (PageView / Lead / Purchase đều tính vào ngân sách quảng cáo).
+	disabled bool
 }
 
 // NewDispatcher tạo dispatcher mới.
@@ -34,6 +39,14 @@ func NewDispatcher(store *db.Store) *Dispatcher {
 		client:   NewClient(),
 		fallback: DefaultConfigFromEnv(),
 	}
+}
+
+// NewDispatcherWithSync tạo dispatcher và cho phép tắt hoàn toàn việc gửi sự
+// kiện ra ngoài (dùng cho môi trường test).
+func NewDispatcherWithSync(store *db.Store, externalSyncEnabled bool) *Dispatcher {
+	d := NewDispatcher(store)
+	d.disabled = !externalSyncEnabled
+	return d
 }
 
 // LeadContext là dữ liệu lead dùng để dựng sự kiện CAPI.
@@ -337,6 +350,13 @@ func DefaultConfigFromEnv() *models.FacebookCAPIConfig {
 
 // resolveConfig lấy cấu hình CAPI cho landing: ưu tiên DB → fallback .env.
 func (d *Dispatcher) resolveConfig(landingID string) (*models.FacebookCAPIConfig, error) {
+	// ⚠️ Môi trường test: KHÔNG gửi sự kiện lên Meta.
+	//
+	// Lý do: mọi sự kiện CAPI đều bị Meta ghi nhận vào báo cáo quảng cáo thật
+	// ⇒ lead thử nghiệm làm sai lệch chỉ số và tốn ngân sách quảng cáo.
+	if d.disabled {
+		return nil, nil
+	}
 	cfg, err := d.store.GetFacebookCAPIConfig(landingID)
 	if err != nil {
 		return nil, err

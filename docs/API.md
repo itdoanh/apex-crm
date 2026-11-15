@@ -403,6 +403,23 @@ Ghi `domain_routes` → **bắt buộc** gọi `domainCache.Reload()`.
 | Domain đã đăng ký | `200 OK` |
 | Domain lạ | `403 Forbidden` |
 
+> ⚠️ **Allow-list phụ thuộc môi trường** (`APEX_ENV` → `cfg.OnDemandAllowList`):
+>
+> | Môi trường | Domain được trả 200 |
+> |---|---|
+> | `production` | `crm.hanghoaphaisinh.net`, `hanghoaphaisinh.net`, `ns1/ns2.hanghoaphaisinh.net`, `test.hanghoaphaisinh.net` **+ mọi `*.hanghoaphaisinh.net`** (tương thích ngược với code cũ) |
+> | `test` | `test.hanghoaphaisinh.net`, `ns1/ns2.hanghoaphaisinh.net` (**không** dùng suffix matching) |
+> | `local` | `localhost`, `127.0.0.1` |
+>
+> `test.hanghoaphaisinh.net` được production cho phép **cố ý**: Caddy 2.8.4 chỉ có
+> MỘT global `on_demand_tls` dùng chung cho mọi site block (hỏi backend
+> production) ⇒ thiếu nó thì Caddy không cấp được chứng chỉ cho domain test.
+>
+> Ngoài ra, domain **đã đăng ký trong CRM** luôn được `200` (tra cứu RAM cache /
+> DB) — không phụ thuộc allow-list.
+>
+> Ghi đè bằng biến `APEX_ON_DEMAND_DOMAINS`.
+
 ---
 
 ## 6. Analytics — Admin

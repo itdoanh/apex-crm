@@ -10,6 +10,68 @@ Tài liệu đầy đủ: `docs/DEPLOYMENT.md`, `docs/RUNBOOK.md`.
 
 ---
 
+## 0. ⭐ 3 môi trường — LUÔN deploy qua TEST trước
+
+| | **LOCAL** | **TEST** | **PRODUCTION** |
+|---|---|---|---|
+| `APEX_ENV` | `local` | `test` | `production` |
+| Database | `apex_leads` (Docker) | `apex_leads_test` | `apex_leads` (native) |
+| Port | 8080 | **8081** | 8080 |
+| Code trên server | — | `C:\apex-test` (branch `test`) | `C:\apex` (branch `main`) |
+| Task Scheduler | — | `Apex_Backend_Server_Test` | `Apex_Backend_Server` |
+| Domain quản trị | `localhost` | `test.hanghoaphaisinh.net` | `crm.hanghoaphaisinh.net` |
+| Đồng bộ ra ngoài | ❌ TẮT | ❌ TẮT | ✅ BẬT |
+
+**Luồng chuẩn:**
+```
+LOCAL → git push origin test → SERVER TEST (deploy_test.ps1) → test OK
+      → git merge test → git push origin main → SERVER PROD (deploy_prod.ps1)
+```
+
+> 🚨 **Môi trường test KHÔNG được ghi dữ liệu ra ngoài.** Chặn bằng
+> `APEX_DISABLE_EXTERNAL_SYNC=true` ⇒ `cfg.IsExternalSyncEnabled()`.
+
+Script: `deploy/windows/setup_test_env.ps1` · `deploy_test.ps1` · `deploy_prod.ps1`.
+Mẫu env: `deploy/windows/env.test.example` · `env.production.example`.
+
+### 0.1. Môi trường LOCAL (máy dev)
+
+| Hạng mục | Giá trị |
+|---|---|
+| Code | `C:\code\apex_moi\landing` |
+| DB | Docker — container `apex-postgres` (port 5432) |
+| Database | `apex_leads` (`:local`) · `apex_leads_test` (`:test`) |
+| Port | `8080` (local) · `8081` (test) |
+| Admin | `http://localhost:8080/ads` |
+
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1           # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+
+> ⚠️ **Biến môi trường session CÓ THỂ ghi đè `.env`** — `config.Load()` chỉ nạp
+> biến chưa tồn tại trong môi trường. Kiểm tra:
+> `Get-ChildItem Env: | Where-Object { $_.Name -match "APEX|DB_|PORT" }`
+> → nếu thấy `DB_NAME`/`PORT`/`APEX_ENV` thì xoá (`Remove-Item Env:\DB_NAME`) hoặc
+> gỡ khỏi User/Machine scope.
+
+> ⚠️ **Mọi file `.ps1` trong repo BẮT BUỘC có UTF-8 BOM.** PowerShell 5.1 trên
+> Windows Server 2025 đọc file không BOM bằng ANSI/Windows-1252 ⇒ tiếng Việt bị méo
+> ⇒ lỗi parse `The string is missing the terminator: '`.
+> `.gitattributes` đã đặt `*.ps1 text eol=crlf` (KHÔNG dùng
+> `working-tree-encoding` vì nó chỉ áp dụng khi file được re-checkout).
+> Khi tạo file `.ps1` mới trên local:
+> ```powershell
+> $p = "deploy\local\script.ps1"
+> $t = [System.IO.File]::ReadAllText($p)
+> [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding $true))
+> ```
+> Kiểm tra BOM: `[System.IO.File]::ReadAllBytes($p)[0..2] -join ","` ⇒ phải ra `239,187,191`.
+
+
+---
+
 ## 1. Production facts (không được sai)
 
 | Hạng mục | Giá trị đúng |
@@ -24,6 +86,7 @@ Tài liệu đầy đủ: `docs/DEPLOYMENT.md`, `docs/RUNBOOK.md`.
 | **Quản lý tiến trình** | **Task Scheduler** — `Apex_Backend_Server`, `Apex_Caddy_Server` |
 | Backend working dir | `C:\apex\backend` (BẮT BUỘC) |
 | Admin CRM | `https://crm.hanghoaphaisinh.net/ads` |
+| **Go toolchain** | ✅ **ĐÃ CÓ** `C:\Program Files\Go\bin\go.exe` (Go 1.27.4, cài 2026-11-15) |
 
 > ⚠️ **Production chạy Task Scheduler, KHÔNG phải NSSM.** `deploy/windows/setup_services.ps1` đã đổi mặc định sang `-Method task` (khớp production) và action đã bọc `cmd /c ... >> logs\server.log 2>&1` để có log. Chỉ dùng `-Method nssm` khi thực sự muốn Windows Service — nếu chạy NSSM trên production sẽ tạo service trùng và xung đột port.
 
@@ -48,21 +111,31 @@ Cũng vậy: deploy chỉ copy thư mục `backend/` mà không copy `frontend/`
 
 ```
 1. Sửa + test ở LOCAL
-2. git commit + git push
-3. BUILD BINARY Ở LOCAL rồi upload (server KHÔNG có Go — xem mục 3.1)
-4. SSH vào server: cd C:\apex && git pull
-5. Swap binary + restart task
+2. git commit + git push origin test
+3. Deploy lên SERVER TEST (deploy_test.ps1) → kiểm thử đầy đủ
+4. Test OK → git checkout main && git merge test && git push origin main
+5. Deploy lên SERVER PROD (deploy_prod.ps1)
 6. Verify: curl http://127.0.0.1:8080/health
 7. Kiểm tra log Caddy không có 502 mới
 ```
 
 🚨 **Không sửa file trực tiếp trên server.** Mọi thay đổi qua git để rollback được.
 
-### 3.1. Server KHÔNG có Go toolchain
+### 3.1. Server ĐÃ CÓ Go toolchain (từ 2026-11-15)
 
-Đã kiểm tra lại 2026-11-15: không có `C:\Go`, không có `C:\Program Files\Go`,
-`where go` không tìm thấy, `PATH` máy (registry `HKLM\...\Session Manager\Environment`)
-chỉ có `C:\Windows\system32;C:\Windows;...;C:\Program Files\Git\cmd` ⇒ **Build ở LOCAL rồi `scp` binary lên.**
+`itdoanh` đã cài **Go 1.27.4** tại `C:\Program Files\Go\bin\go.exe`. Đã xác minh
+`go version` chạy được và tải được module dependency qua mạng.
+
+⇒ Có thể **build trực tiếp trên server** (khuyến nghị cho deploy hằng ngày):
+
+```powershell
+# SERVER
+cd C:\apex\backend
+$env:GOMAXPROCS = "1"; $env:GOGC = "25"
+go build -p 1 -ldflags="-s -w" -trimpath -o apex-server.exe .
+```
+
+Phương án dự phòng — build ở LOCAL rồi upload:
 
 ```powershell
 # LOCAL
@@ -95,7 +168,10 @@ schtasks /Run /TN "Apex_Backend_Server"
 > ✅ **Verify binary đúng phiên bản** (so SHA256 local vs server) — tránh deploy nhầm bản cũ.
 
 > 🚨 **KHÔNG chạy `build.bat` qua SSH** — script có `pause` ở cuối sẽ treo phiên SSH
-> vô thời hạn. Dùng `go build` trực tiếp ở local.
+> vô thời hạn. Dùng `go build` trực tiếp.
+
+> ⚠️ **Linker flag qua SSH phải bọc trong file `.ps1`** — `cmd.exe` xử lý sai dấu nháy
+> kép ⇒ lỗi `flag provided but not defined: -w\`. Xem `deploy_test.ps1` / `deploy_prod.ps1`.
 
 ### 3.2. Caddy trên production là 2.8.4
 
@@ -134,6 +210,7 @@ Log nằm ở `C:\apex\backend\logs\server.log` — xoay vòng bởi
 |---|---|---|
 | 80, 443 | Allow Any ✅ | Đã có |
 | 8080 | **Phải chặn từ internet** | ✅ Rule `Apex_Block_External_8080` (2026-11-04) |
+| 8081 | **Phải chặn từ internet** (backend test) | ⚠️ Cần tạo rule `Apex_Block_External_8081` |
 | 5432 | Chỉ localhost | ✅ Rule `Apex_Block_External_5432` |
 
 ```powershell
@@ -169,11 +246,25 @@ crm.hanghoaphaisinh.net {
     reverse_proxy 127.0.0.1:8080 { header_up Host {host}; ... }
 }
 
+# Môi trường TEST — site block riêng, ưu tiên hơn block catch-all
+test.hanghoaphaisinh.net {
+    tls { on_demand }
+    reverse_proxy 127.0.0.1:8081 { header_up Host {host}; ... }
+}
+
 :443 {
     tls { on_demand }
     reverse_proxy 127.0.0.1:8080 { ... }
 }
 ```
+
+> ⚠️ **Caddy 2.8.4 KHÔNG hỗ trợ `on_demand { ask ... }` lồng trong site block**
+> (lỗi `unknown subdirective: {`). Mọi site block dùng chung **MỘT** global
+> `on_demand_tls` → `ask http://127.0.0.1:8080/api/internal/check-domain`
+> (hỏi backend **production**).
+> ⇒ Backend production PHẢI trả 200 cho `test.hanghoaphaisinh.net` (đã có trong
+> `onDemandAllowListByEnv` → `EnvProduction`), nếu không Caddy không cấp được
+> chứng chỉ cho domain test.
 
 **Bắt buộc:** `header_up Host {host}` — backend dùng Host header để định tuyến multi-domain. Thiếu → mọi request về `/`.
 
@@ -199,6 +290,7 @@ reverse_proxy 127.0.0.1:8080 {
 
 ```
 A  crm   → 103.124.95.232
+A  test  → 103.124.95.232   (môi trường TEST — đã trỏ 2026-11-15)
 A  ns1   → 103.124.95.232
 A  ns2   → 103.124.95.232
 A  @     → 103.124.95.232
@@ -222,7 +314,12 @@ Domain mới → trỏ A record hoặc đổi NS → đăng ký trong CRM → SS
 | `deploy/windows/setup_firewall.ps1` | Windows | ✅ OK — port 8080 đã chặn |
 | `deploy/windows/cleanup_disk_space.ps1` | Windows | ✅ OK — có thêm xoay vòng `server.log` |
 | `deploy/windows/health_check.ps1` | Windows | ✅ **Script chẩn đoán tổng hợp** — dùng khi có sự cố |
+| `deploy/windows/setup_test_env.ps1` | Windows | ✅ **Dựng môi trường TEST** (DB + clone + `.env` + Task + build) |
+| `deploy/windows/deploy_test.ps1` | Windows | ✅ **Deploy branch `test`** → môi trường test |
+| `deploy/windows/deploy_prod.ps1` | Windows | ✅ **Deploy branch `main`** → production (có kiểm tra merge) |
 | `deploy/windows/start_all.bat` / `stop_all.bat` / `restart_all.bat` | Windows | ✅ Tự phát hiện Task Scheduler vs Windows Service |
+| `deploy/local/run_local.ps1` | Windows | ✅ **Chạy backend ở máy dev** (`:local` / `:test`) — tự sinh `.env`, tự tạo DB |
+| `deploy/docker/init/01-create-test-db.sql` | Docker | ✅ Tạo `apex_leads_test` lần đầu khởi động container |
 | `deploy/scripts/deploy.sh` | Linux | ✅ OK |
 | `deploy/systemd/apex.service` | Linux | ✅ OK |
 
@@ -251,6 +348,13 @@ powershell -c "Select-String -Path C:\caddy\logs\caddy.log -Pattern ERROR | Sele
 # 4. Domain mới vẫn cấp SSL được (backend sống → ask endpoint OK)
 curl "http://127.0.0.1:8080/api/internal/check-domain?domain=<domain-đã-đăng-ký>"
 # → 200
+
+# 5. (nếu có môi trường test) Backend test sống + đúng môi trường
+curl http://127.0.0.1:8081/health
+curl https://test.hanghoaphaisinh.net/health
 ```
 
 Nếu (4) trả 403 cho domain đã đăng ký ⇒ `domainCache` chưa reload ⇒ restart backend.
+
+Nếu (5) trả 200 nhưng `/ads` trả 404 ⇒ đang trúng host sai ⇒ kiểm tra
+`APEX_ADMIN_HOSTS` trong `C:\apex-test\.env` và `cfg.IsAdminHost()`.

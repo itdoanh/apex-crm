@@ -1,0 +1,44 @@
+# ==============================================================
+#  APEX FINTECH — Quy tắc xử lý line-ending & encoding cho Git
+# ==============================================================
+
+# ─── PowerShell scripts ────────────────────────────────────────
+# ⚠️ PowerShell 5.1 (Windows Server 2025) đọc file .ps1 KHÔNG có BOM bằng
+#    ANSI/Windows-1252 ⇒ chuỗi tiếng Việt bị méo thành ký tự điều khiển và
+#    script báo lỗi parse:
+#        "The string is missing the terminator: '"
+#        "Missing argument in parameter list"
+#
+#    ⇒ Mọi file .ps1 trong repo BẮT BUỘC có UTF-8 BOM (đã commit sẵn BOM).
+#    Git KHÔNG tự động strip BOM ⇒ BOM được giữ nguyên khi clone/pull.
+*.ps1 text eol=crlf
+
+# ─── Script chạy trên Linux (cần LF, KHÔNG được CRLF) ─────────
+*.sh   text eol=lf
+*.service text eol=lf
+
+# ─── File văn bản Windows ─────────────────────────────────────
+*.md   text eol=crlf
+*.yml  text eol=crlf
+*.yaml text eol=crlf
+*.json text eol=crlf
+*.html text eol=crlf
+*.css  text eol=crlf
+*.js   text eol=crlf
+*.sql  text eol=crlf
+*.go   text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# ─── File nhị phân ─────────────────────────────────────────────
+*.exe     binary
+*.dll     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
+*.zip     binary
+*.dump    binary

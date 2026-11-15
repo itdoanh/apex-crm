@@ -31,8 +31,35 @@
 ## Production
 
 `ssh Administrator@103.124.95.232 -p 22899` · code `C:\apex` · Task Scheduler (không phải NSSM).
-Deploy qua git. **Server KHÔNG có Go toolchain** ⇒ build binary ở LOCAL rồi `scp` lên server,
-swap + restart task. Không sửa file trực tiếp trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
+Deploy qua git. **Server ĐÃ có Go toolchain** (Go 1.27.4) ⇒ build trực tiếp trên server được,
+hoặc build ở LOCAL rồi `scp` lên server, swap + restart task.
+Không sửa file trực tiếp trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
+
+### Ba môi trường
+
+| | **LOCAL** | **TEST** | **PRODUCTION** |
+|---|---|---|---|
+| `APEX_ENV` | `local` | `test` | `production` |
+| Database | `apex_leads` (Docker) | `apex_leads_test` | `apex_leads` |
+| Port | `8080` | `8081` | `8080` |
+| Code trên server | — | `C:\apex-test` (branch `test`) | `C:\apex` (branch `main`) |
+| Task | — | `Apex_Backend_Server_Test` | `Apex_Backend_Server` |
+| Domain quản trị | `localhost` | `test.hanghoaphaisinh.net` | `crm.hanghoaphaisinh.net` |
+| Đồng bộ ngoài | ❌ | ❌ | ✅ CAPI + Sheets |
+
+**Luồng chuẩn:** `local → push branch test → deploy_test.ps1 → test OK → merge main → push main → deploy_prod.ps1`
+
+Môi trường test cô lập bằng: DB riêng + `APEX_DISABLE_EXTERNAL_SYNC=true` + Caddy định tuyến theo HOST.
+Chi tiết: `docs/DEPLOYMENT.md` mục 1.0 · `docs/ARCHITECTURE.md` mục 8.
+
+**Chạy local (khớp 100% server)** — Docker `apex-postgres` chứa cả 2 DB:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1            # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test   # :test  → DB apex_leads_test, :8081
+```
+> ⚠️ Mọi file `.ps1` trong repo BẮT BUỘC có **UTF-8 BOM** (PowerShell 5.1 trên
+> server đọc file không BOM bằng ANSI ⇒ lỗi parse tiếng Việt).
 
 ## Commit
 

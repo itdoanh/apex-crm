@@ -9,6 +9,73 @@ import (
 	"apex-backend/models"
 )
 
+// ─── Môi trường triển khai ──────────────────────────────────────────────
+//
+// Hệ thống chạy song song `production` và `test` trên CÙNG một server.
+// Mỗi môi trường có DB riêng ⇒ domain của môi trường phải được seed vào DB
+// riêng của môi trường đó.
+//
+// ⚠️ Domain của môi trường KHÁC không được seed vào DB này — nếu không,
+//    `domainCache.HasDomain()` sẽ trả true cho domain đó ⇒ Caddy của môi
+//    trường này có thể cấp SSL nhầm cho domain của môi trường kia.
+var environmentDomain = map[string]struct {
+	Domain           string
+	DefaultLandingID string
+	Notes            string
+}{
+	"test": {
+		Domain:           "test.hanghoaphaisinh.net",
+		DefaultLandingID: "mxv_080_online",
+		Notes:            "Môi trường TEST — dùng để up code và kiểm thử trước khi deploy production",
+	},
+}
+
+// SeedEnvironmentDomain tạo domain + route gốc cho môi trường đang chạy.
+//
+// Idempotent: nếu domain đã tồn tại thì chỉ bảo đảm route `/` tồn tại.
+//
+// ⚠️ Chỉ seed cho môi trường `test`. Production dùng domain thật được đăng ký
+//    thủ công trong CRM (Quản lý Tên Miền) — tự động seed có thể tạo route
+//    sai cho domain thật.
+func (s *Store) SeedEnvironmentDomain(ctx context.Context, environment string) error {
+	spec, ok := environmentDomain[strings.ToLower(strings.TrimSpace(environment))]
+	if !ok {
+		return nil
+	}
+
+	var domainID int
+	err := s.pool.QueryRow(ctx,
+		"SELECT id FROM domains WHERE domain = $1",
+		spec.Domain,
+	).Scan(&domainID)
+
+	if err != nil {
+		// Không tìm thấy ⇒ tạo mới.
+		err = s.pool.QueryRow(ctx, `
+			INSERT INTO domains (domain, ns1, ns2, target_ip, dns_status, ssl_status, default_landing_id, notes)
+			VALUES ($1, 'ns1.hanghoaphaisinh.net', 'ns2.hanghoaphaisinh.net', '103.124.95.232', 'active', 'active', $2, $3)
+			ON CONFLICT (domain) DO UPDATE SET updated_at = NOW()
+			RETURNING id;
+		`, spec.Domain, spec.DefaultLandingID, spec.Notes).Scan(&domainID)
+		if err != nil {
+			return fmt.Errorf("lỗi tạo domain môi trường '%s': %w", spec.Domain, err)
+		}
+	}
+
+	// Route gốc `/` → landing mặc định của môi trường.
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO domain_routes (domain_id, path_prefix, landing_id, is_active)
+		VALUES ($1, '/', $2, TRUE)
+		ON CONFLICT (domain_id, path_prefix) DO UPDATE
+			SET landing_id = EXCLUDED.landing_id, is_active = TRUE, deployed_at = NOW();
+	`, domainID, spec.DefaultLandingID)
+	if err != nil {
+		return fmt.Errorf("lỗi tạo route gốc cho domain môi trường '%s': %w", spec.Domain, err)
+	}
+
+	return nil
+}
+
 // SeedDefaultDomains tạo tên miền và định tuyến mẫu ban đầu nếu CSDL chưa có
 func (s *Store) SeedDefaultDomains(ctx context.Context) error {
 	var count int

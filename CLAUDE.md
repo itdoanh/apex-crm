@@ -51,9 +51,36 @@ ssh Administrator@103.124.95.232 -p 22899
 ```
 - Code: `C:\apex` · Binary: `C:\apex\backend\apex-server.exe`
 - Quản lý tiến trình: **Task Scheduler** (`Apex_Backend_Server`, `Apex_Caddy_Server`) — **KHÔNG phải** NSSM
-- Deploy: sửa local → test → commit → push → **build binary ở LOCAL** → `scp` lên server → `git pull` server → swap binary → restart task → verify `/health`
-- ⚠️ **Server KHÔNG có Go toolchain** (đã kiểm tra 2026-11-15) ⇒ **không** chạy `build.bat` / `go build` trên server. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
+- Deploy: sửa local → **test ở môi trường TEST** → merge `main` → deploy production
+- ⚠️ **Server ĐÃ có Go toolchain** (`C:\Program Files\Go\bin\go.exe`, Go 1.27.4, cài 2026-11-15) ⇒ **có thể build trực tiếp trên server**.
+  Vẫn có phương án dự phòng: build ở LOCAL rồi `scp` binary lên. Chi tiết: `docs/DEPLOYMENT.md` mục 1.1.
 - 🚨 **Không sửa file trực tiếp trên server** — mọi thay đổi qua git để rollback được
+
+### Ba môi trường
+
+| | **LOCAL** | **TEST** | **PRODUCTION** |
+|---|---|---|---|
+| `APEX_ENV` | `local` | `test` | `production` |
+| Database | `apex_leads` (Docker) | `apex_leads_test` | `apex_leads` |
+| Port | `8080` | `8081` | `8080` |
+| Code trên server | — | `C:\apex-test` (branch `test`) | `C:\apex` (branch `main`) |
+| Task | — | `Apex_Backend_Server_Test` | `Apex_Backend_Server` |
+| Domain quản trị | `localhost` | `test.hanghoaphaisinh.net` | `crm.hanghoaphaisinh.net` |
+| Đồng bộ ngoài | ❌ | ❌ | ✅ CAPI + Sheets |
+
+**Luồng chuẩn:** `local → git push origin test → deploy_test.ps1 → test OK → git merge test → git push origin main → deploy_prod.ps1`
+
+Môi trường test cô lập bằng: DB riêng + `APEX_DISABLE_EXTERNAL_SYNC=true` + Caddy định tuyến theo HOST.
+Chi tiết: `docs/DEPLOYMENT.md` mục 1.0.
+
+**Local chạy song song 2 môi trường** (khớp 100% server) — Docker `apex-postgres` có cả
+`apex_leads` + `apex_leads_test`:
+```powershell
+docker compose up -d postgres
+powershell -File deploy\local\run_local.ps1           # :local → DB apex_leads,      :8080
+powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads_test, :8081
+```
+
 
 ## Quy ước
 
