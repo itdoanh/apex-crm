@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Dựng môi trường TEST cho Apex Fintech trên Windows Server 2025.
 

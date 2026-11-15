@@ -84,6 +84,9 @@ test.hanghoaphaisinh.net {
 > chứng chỉ** cho domain test.
 >
 > Tách biệt vẫn đảm bảo vì Caddy định tuyến theo **HOST**, không theo cổng ask.
+>
+> ℹ️ Production giữ **suffix matching** `*.hanghoaphaisinh.net` (tương thích ngược
+> với code cũ) — môi trường `test` **không** dùng suffix matching.
 
 ### Cơ chế On-Demand TLS
 

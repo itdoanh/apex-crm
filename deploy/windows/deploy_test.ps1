@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploy code lên môi trường TEST trên Windows Server 2025.
 

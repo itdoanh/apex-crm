@@ -151,15 +151,16 @@ var adminHostsByEnv = map[string][]string{
 //    2026-11-15), endpoint `check-domain` của MỖI môi trường phải trả 200 cho
 //    đúng domain của môi trường đó. Danh sách này định nghĩa "đúng domain".
 //
-// ⇒ Domain của môi trường KHÁC (vd `test.hanghoaphaisinh.net` khi server
-//    production hỏi) sẽ bị từ chối ⇒ Caddy không cấp nhầm chứng chỉ.
+// ⇒ Môi trường `test` KHÔNG dùng suffix matching ⇒ backend test chỉ trả 200 cho
+//    đúng `test.hanghoaphaisinh.net` + `ns1/ns2` ⇒ không cấp nhầm chứng chỉ cho
+//    domain của production.
 //
-// ⚠️ NGOẠI LỆ: `test.hanghoaphaisinh.net` CỐ TÌNH nằm trong allow-list của
-//    production. Lý do: Caddy chỉ có MỘT global `on_demand_tls` (ask
-//    `http://127.0.0.1:8080/api/internal/check-domain`) dùng chung cho mọi site
-//    block — kể cả site block của môi trường test. Nếu production từ chối thì
-//    Caddy KHÔNG cấp được chứng chỉ cho domain test ⇒ test.hanghoaphaisinh.net
-//    không truy cập được qua HTTPS.
+// ⚠️ NGOẠI LỆ: production GIỮ suffix matching `*.hanghoaphaisinh.net` (tương thích
+//    ngược với code cũ trước 2026-11-15) — xem `IsOnDemandAllowed`.
+//
+//    Hệ quả: `test.hanghoaphaisinh.net` cũng được production cho phép ⇒ Caddy
+//    (dùng global `on_demand_tls` hỏi backend production) cấp được SSL cho domain
+//    test. Đây là CHỦ Ý — nếu không, test domain không truy cập được qua HTTPS.
 //
 //    Việc tách môi trường KHÔNG bị ảnh hưởng vì Caddy định tuyến theo HOST:
 //    site block `test.hanghoaphaisinh.net` → 127.0.0.1:8081 (backend test),
@@ -243,6 +244,12 @@ func (c *Config) IsAdminHost(host string) bool {
 // Endpoint `check-domain` của Caddy gọi hàm này. Vì Caddy 2.8.4 không hỗ trợ
 // `ask` riêng theo site block ⇒ mỗi môi trường chỉ trả 200 cho đúng danh sách
 // domain của mình ⇒ không cấp nhầm chứng chỉ cho domain của môi trường khác.
+//
+// ⚠️ Production giữ **tương thích ngược**: vẫn cho phép mọi subdomain
+// `*.hanghoaphaisinh.net` (hành vi của code cũ trước 2026-11-15). Nếu bỏ,
+// các landing domain dạng `lophoc.hanghoaphaisinh.net` chưa kịp khai báo trong
+// CRM sẽ mất SSL. Môi trường `test` KHÔNG dùng suffix matching ⇒ không cấp
+// nhầm chứng chỉ cho domain của production.
 func (c *Config) IsOnDemandAllowed(domain string) bool {
 	norm := normalizeHost(domain)
 	if norm == "" {
@@ -252,6 +259,10 @@ func (c *Config) IsOnDemandAllowed(domain string) bool {
 		if normalizeHost(d) == norm {
 			return true
 		}
+	}
+	// Tương thích ngược — chỉ áp dụng cho production.
+	if c.Environment == EnvProduction && strings.HasSuffix(norm, ".hanghoaphaisinh.net") {
+		return true
 	}
 	return false
 }
