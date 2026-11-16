@@ -752,6 +752,20 @@ Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_even
 
 - `landing_id = ''` ⇒ cấu hình **mặc định**, áp dụng cho mọi landing chưa có config riêng
   (`GetFacebookCAPIConfig` fallback từ landing_id → `''`).
+- ⚠️ **Dòng mặc định tắt/xoá được** (fix 2026-11-16) —
+  `POST /api/facebook-ads/config/toggle` và `config/delete` với `landing_id` **rỗng**
+  ⇒ tác động đúng dòng `landing_id = ''` (trước đây handler trả `400 "Thiếu landing_id"`
+  ⇒ Admin không tắt/xoá được cấu hình mặc định).
+  - `UPDATE`/`DELETE` luôn khớp **CHÍNH XÁC** `landing_id` ⇒ không bao giờ đụng
+    nhầm dòng của landing khác.
+  - Tắt dòng mặc định (`is_active = false`) ⇒ mọi landing **chưa** có config riêng
+    ngừng gửi CAPI; landing **đã** có config riêng không bị ảnh hưởng.
+  - Xoá dòng mặc định ⇒ các landing đó không còn config nào ⇒ ngừng gửi CAPI
+    (`facebook_capi_logs` **không** bị xoá ⇒ vẫn đối soát được).
+- `GetFacebookCAPIConfigExact(landingID)` — đọc **đúng dòng** (không fallback).
+  Dùng khi Admin lưu config riêng cho 1 landing mới: nếu fallback sang config
+  mặc định thì `existingToken` lấy nhầm token ⇒ validate "có token" pass ⇒ insert
+  dòng mới với `access_token` RỖNG ⇒ CAPI lúc chạy báo "thiếu Access Token".
 - `access_token` / `gateway_access_key` lưu **rõ** trong DB; API trả về client đã mask
   (`MaskAccessToken()`). Khi client gửi lại giá trị đã mask (`****`) ⇒ backend giữ token cũ.
 - `status = 'skipped'` ghi lại lý do bỏ qua (CAPI tắt, thiếu token, trạng thái không có giá trị…).
