@@ -146,6 +146,19 @@ func main() {
 		log.Printf("[WARN] Không thể sửa typo Meta Pixel trong HTML landing: %v", err)
 	}
 
+	// ⚠️ DEDUP PAGEVIEW PIXEL ↔ CAPI (fix 2026-11-16):
+	// Bổ sung `{ eventID: window.APEX_PV_EVENT_ID }` cho lệnh
+	// `fbq('track', 'PageView')` hardcode trong HTML landing đã lưu.
+	//
+	// Không có eventID chung ⇒ Meta tính 1 lượt xem thành 2 lượt PageView
+	// ⇒ sai lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+	//
+	// ⚠️ Backend cũng rewrite lúc render (`rewritePageViewWithEventID`) ⇒ HTML
+	// phục vụ luôn đúng. Hàm này sửa thêm DỮ LIỆU trong DB.
+	if err := store.RepairMetaPixelPageViewEventID(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể bổ sung eventID cho PageView trong HTML landing: %v", err)
+	}
+
 	// Đồng bộ `settings` giữa bản gốc (domain='') và bản theo domain của cùng
 	// page_id. Bản domain thường thiếu title/meta_description ⇒ landing chạy trên
 	// domain đích mất SEO. Chỉ điền khoá TRỐNG, không ghi đè giá trị đã có.

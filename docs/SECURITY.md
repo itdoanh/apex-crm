@@ -397,6 +397,36 @@ Chi tiết schema + cơ chế lọc: `docs/DATABASE.md` mục 2.
 
 ---
 
+## 6.1. Dedup PageView Pixel ↔ CAPI — `event_id` dùng chung (2026-11-16)
+
+Meta CHỈ gộp (deduplicate) sự kiện trình duyệt (`fbq`) với sự kiện máy chủ
+(Conversions API) khi cả hai dùng **CHUNG `event_id`** trong cửa sổ 48 giờ.
+
+⚠️ Nếu không đồng bộ ⇒ Meta tính **1 lượt vào trang thành 2 lượt PageView** ⇒ sai
+lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+
+| Tầng | Cơ chế |
+|---|---|
+| Server | `injectPageViewEventIDSnippet()` — sinh MỘT `window.APEX_PV_EVENT_ID` ở đầu `<head>` |
+| Server | `rewritePageViewWithEventID()` — ghi đè mọi `fbq('track','PageView')` hardcode trong HTML landing |
+| Client | `ensurePageViewEventId()` + `buildAnalyticsPayload()` — gửi `event_id` lên server |
+| Server | `dispatchCAPIPageView()` — landing có Pixel ⇒ chỉ bắn CAPI khi có `event_id` chung |
+
+⚠️ `eventID` là **tham số THỨ 4** của `fbq`:
+
+```js
+✅ fbq('track', 'PageView', {}, { eventID: pvEventId })
+❌ fbq('track', 'PageView', { eventID: pvEventId })
+```
+
+⇒ Landing có Pixel mà **thiếu** `event_id` ⇒ server **KHÔNG bắn** PageView
+server-side (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+
+Chi tiết: `docs/LANDING.md` mục "Dedup PageView" · `docs/API.md` mục 6 ·
+`docs/DATABASE.md` mục 5.7.
+
+---
+
 ## 7. GeoIP & Ad Placement
 
 **File:** `backend/security/geoip.go`, `backend/security/ad_placement.go`

@@ -688,6 +688,7 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
   "vpn_provider": "", "vpn_confidence": 0, "vpn_reason": "",
   "fbclid": "IwAR...", "fbc": "fb.1.1794189884.IwAR...", "fbp": "fb.1.1794189884.123456789",
   "igshid": "", "meta_click_id": "",
+  "event_id": "pv-8f2a1b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
   "is_bot": false, "bot_score": 0, "bot_reasons": "",
   "duration_seconds": 66, "max_scroll_percent": 99, "total_clicks": 3,
   "has_interacted_form": true, "converted_lead": false,
@@ -696,6 +697,21 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
   "events": [ { "time": 12, "type": "scroll", "target": "hero", "text": "..." } ]
 }
 ```
+
+> **`event_id` — dedup PageView Pixel ↔ CAPI (fix 2026-11-16)**
+>
+> `event_id` là khoá để Meta **gộp** sự kiện trình duyệt (`fbq`) với sự kiện máy
+> chủ (CAPI). Client sinh MỘT giá trị duy nhất cho 1 lần tải trang
+> (`window.APEX_PV_EVENT_ID`, prefix `pv-`), bắn Pixel với
+> `fbq('track','PageView',{},{eventID: pvEventId})` rồi gửi kèm giá trị này
+> lên server trong payload này.
+>
+> ⇒ Server truyền **nguyên văn** vào trường `event_id` của payload CAPI ⇒ Meta gộp
+> 2 sự kiện thành 1 ⇒ **1 lượt xem = 1 PageView** (không đếm trùng).
+>
+> ⚠️ Landing **có** Meta Pixel mà payload **không** có `event_id` ⇒ server **KHÔNG
+> bắn** PageView server-side (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+> Fallback: server đọc `analytics_sessions.pv_event_id` của phiên.
 
 > **Phễu biểu mẫu ở mức PHIÊN** (2026-11-13): `is_autofill`, `autofill_source`,
 > `fill_duration_ms`, `validation_passed`, `form_focus_ms` được gửi KÈM trong payload
