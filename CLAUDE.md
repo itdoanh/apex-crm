@@ -54,7 +54,7 @@
 16. **Ánh xạ URL Meta Ads** — `utm_campaign` = `campaign.id`, `utm_content` = `adset.id`, `utm_term` = `ad.id`; `campaign_name`/`adset_name`/`ad_name` là tên hiển thị. KHÔNG theo quy ước Google Ads.
 17. **Dedupe browser ↔ server** — `eventID` là **tham số thứ 4** của `fbq('track', …)`: `fbq('track','Lead',{ content_name:'…' },{ eventID: <cùng event_id> })`. Đặt trong object tham số 3 ⇒ Meta không đọc được ⇒ đếm đôi.
 18. **Dataset Quality v27.0** — `web` trả về là **MẢNG** (mỗi phần tử = 1 `event_name` kèm chỉ số riêng); `dataset_id` là tham số **bắt buộc**; `agent_name` tuỳ chọn.
-19. **Bật/tắt CAPI theo từng landing** — `POST /api/facebook-ads/config/toggle` (`landing_id` + `is_active`). Chỉ toggle được dòng có cấu hình riêng; **không** toggle cấu hình mặc định (`landing_id = ''`).
+19. **Bật/tắt CAPI theo từng landing** — `POST /api/facebook-ads/config/toggle` (`landing_id` + `is_active`). `landing_id` rỗng ⇒ toggle DÒNG CẤU HÌNH MẶC ĐỊNH (tắt ⇒ mọi landing CHƯA có cấu hình riêng ngừng gửi CAPI; landing đã có config riêng không bị ảnh hưởng). Query luôn khớp CHÍNH XÁC `landing_id` ⇒ không đụng nhầm dòng khác.
 20. **Danh mục trường Google Sheets có 1 nguồn duy nhất** — `backend/integrations/googlesheets/fields.go` (`leadFieldCatalog`, ~90 trường / 9 nhóm). Handler + frontend đều lấy từ đây (`GET /api/integrations/sheets/defaults`); frontend **không** hardcode danh sách trường.
 21. **Cột chuẩn mới không tự áp dụng cho config đã lưu** — Admin bấm "Bổ sung Cột" (`POST /api/integrations/sheets/configs/upgrade-mappings`): giữ nguyên cột cũ, thêm cột mới vào CUỐI, ghi tiêu đề mới vào dòng 1.
 22. **Đổi trạng thái CRM cập nhật lại dòng Sheet** (không append) — `syncLeadStatusToGoogleSheets()` tra `google_sheet_sync_logs.row_range` rồi `Values.BatchUpdate` đúng dòng. Ô rỗng ⇒ bỏ qua; `RAW` (không diễn giải `=` là công thức).
@@ -63,6 +63,7 @@
 25. **`tracker.js` KHÔNG fallback về template/ID rác** (fix 2026-11-16) — đã bỏ fallback `'mxv_080_online'` và `window.LadiPageScript.runtime.ladipage_id`. Chuỗi resolve duy nhất: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `'default_landing'`.
 26. **File `.html` tĩnh phải có landing context** (fix 2026-11-16) — bước 7 edge router (`backend/main.go`): không resolve được landing ⇒ **404**, không phục vụ HTML thô.
 27. **Thống kê landing tách human/bot** (fix 2026-11-16) — `ListLandingPages()` trả `views_count` (tổng) · `human_views_count` (`FILTER (WHERE NOT is_bot)`) · `bot_views_count`; CR% trong tab Quản lý Landing dùng `human_views_count` (khớp tab Trung Tâm Báo Cáo); `domains []string` lấy từ `domain_routes`.
+28. **CAPI mặc định tắt/xoá được** (fix 2026-11-16) — `POST /api/facebook-ads/config/toggle` & `config/delete` với `landing_id` rỗng ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH (`landing_id = ''`). Query khớp CHÍNH XÁC `landing_id` ⇒ không đụng nhầm dòng khác. Lưu cấu hình mới cho 1 landing riêng phải đọc token từ dòng RIÊNG (`GetFacebookCAPIConfigExact`), KHÔNG fallback token của config mặc định.
 
 ## Production
 

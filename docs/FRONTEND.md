@@ -680,12 +680,18 @@ Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (
 | `loadFacebookAdsLandings()` | Nạp `GET /api/landings` → `fbAdsLandings` (danh sách landing trong hệ thống) |
 | `renderFacebookAdsLandingOptions()` | Dựng option cho 3 dropdown: `fbAdsFormLanding`, `fbAdsLandingSelect`, `fbAdsLandingFilter` |
 | `fbAdsToggleConfig(landingId, wantActive)` | Gọi `POST /api/facebook-ads/config/toggle` → bật/tắt CAPI cho 1 landing |
+| `fbAdsDeleteConfig(landingId)` | Gọi `POST /api/facebook-ads/config/delete?landing_id=…` → xoá cấu hình |
 
 - Dropdown luôn có lựa chọn đầu tiên là **Mặc định** (`landing_id = ""`) — cấu hình
   fallback áp dụng cho mọi landing chưa có cấu hình riêng.
 - Option có badge `●` (đang bật) / `○` (đang tắt) để Admin thấy trạng thái ngay.
-- Nút **Bật/Tắt** trên bảng cấu hình **KHÔNG** hiển thị cho dòng "Mặc định" —
-  tắt nhầm cấu hình mặc định sẽ ảnh hưởng toàn hệ thống.
+- ⚠️ **Dòng "Mặc định" CÓ nút Bật/Tắt và Xoá** (fix 2026-11-16) — trước đây
+  backend trả `400 "Thiếu landing_id"` ⇒ Admin không tắt/xoá được cấu hình mặc định.
+  - Tắt dòng mặc định ⇒ mọi landing **chưa** có cấu hình riêng ngừng gửi CAPI.
+  - Xoá dòng mặc định ⇒ các landing đó không còn cấu hình nào ⇒ ngừng gửi CAPI.
+- `fbAdsToggleConfig` hỏi xác nhận (`confirm`) trước khi **tắt** dòng mặc định
+  (cảnh báo ảnh hưởng mọi landing chưa có cấu hình riêng).
+- `fbAdsDeleteConfig` hiển thị cảnh báo tương tự khi xoá dòng mặc định.
 - Khi render lại dropdown, lựa chọn đang dùng của Admin được giữ nguyên.
 
 ### Checkbox "Chỉ gửi khi lead đến từ Facebook / Meta"

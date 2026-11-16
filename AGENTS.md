@@ -147,6 +147,7 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
 16. **Route prefix phải khớp URL dạng `/<tên>.html`** (fix 2026-11-16) — `DomainCache.ResolveRoute` kiểm tra thêm `strings.TrimSuffix(cleanPath, ".html") == pfx` ⇒ `/chucmung.html` khớp route `/chucmung`. Không có ⇒ trang chúc mừng rơi xuống nhánh phục vụ file tĩnh từ đĩa ⇒ mất `data-landing-id` ⇒ tracker ghi nhầm landing.
 17. **`tracker.js` KHÔNG được fallback về template/ID rác** (fix 2026-11-16) — đã bỏ fallback `'mxv_080_online'` (template) và `window.LadiPageScript.runtime.ladipage_id`. Chuỗi resolve duy nhất: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `'default_landing'`. Thêm fallback mới = tạo landing ID rác ⇒ thống kê chồng chéo.
 18. **File `.html` tĩnh phải có landing context** (fix 2026-11-16) — bước 7 của edge router (`backend/main.go`): nếu không resolve được landing (qua `ResolveRoute(host,"/")` hoặc `ResolveChucMungRoute`) ⇒ **404**, KHÔNG phục vụ HTML thô.
+19. **CAPI mặc định phải TẮT/XOÁ được** (fix 2026-11-16) — `POST /api/facebook-ads/config/toggle` và `config/delete` với `landing_id` rỗng ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH (`landing_id = ''` trong `facebook_capi_configs`). Query luôn khớp **CHÍNH XÁC** `landing_id` ⇒ không xoá/toggle nhầm dòng của landing khác. Tắt dòng mặc định ⇒ mọi landing **chưa** có cấu hình riêng ngừng gửi CAPI. Lưu cấu hình RIÊNG cho 1 landing mới phải đọc token từ dòng riêng (`GetFacebookCAPIConfigExact`) — KHÔNG fallback token của config mặc định (sai ⇒ dòng mới có `access_token` rỗng ⇒ CAPI lúc chạy báo "thiếu Access Token").
 
 ---
 
@@ -179,8 +180,8 @@ Tất cả đều hỗ trợ `landing_id`, `nguon`, `from_date`, `to_date`, `day
 |---|---|
 | `GET /api/facebook-ads/configs` | Danh sách cấu hình CAPI (token đã mask) |
 | `GET/POST /api/facebook-ads/config` | Chi tiết / lưu cấu hình theo `landing_id` |
-| `POST /api/facebook-ads/config/delete` | Xoá cấu hình |
-| `POST /api/facebook-ads/config/toggle` | Bật/tắt nhanh CAPI theo `landing_id` |
+| `POST /api/facebook-ads/config/delete` | Xoá cấu hình (`landing_id` rỗng ⇒ xoá cấu hình **mặc định**) |
+| `POST /api/facebook-ads/config/toggle` | Bật/tắt nhanh CAPI theo `landing_id` (`landing_id` rỗng ⇒ toggle cấu hình **mặc định**) |
 | `POST /api/facebook-ads/test-event` | Gửi 1 sự kiện test (có `test_event_code`) |
 | `GET /api/facebook-ads/dataset-quality` | EMQ, coverage, dedupe, freshness, delay, value |
 | `GET /api/facebook-ads/logs` | Lịch sử gửi sự kiện CAPI |

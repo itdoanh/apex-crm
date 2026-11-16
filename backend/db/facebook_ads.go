@@ -40,6 +40,18 @@ func (s *Store) GetFacebookCAPIConfig(landingID string) (*models.FacebookCAPICon
 	return def, nil
 }
 
+// GetFacebookCAPIConfigExact lấy ĐÚNG dòng cấu hình của landing (KHÔNG fallback
+// sang cấu hình mặc định).
+//
+// Dùng cho Admin UI khi cần biết "landing này có dòng riêng trong DB hay chưa":
+//   - landing_id = "" ⇒ dòng cấu hình MẶC ĐỊNH (landing_id = '' trong DB).
+//   - không có dòng ⇒ trả nil, nil (chưa cấu hình, KHÔNG phải lỗi).
+func (s *Store) GetFacebookCAPIConfigExact(landingID string) (*models.FacebookCAPIConfig, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.queryFacebookCAPIConfig(ctx, landingID)
+}
+
 func (s *Store) queryFacebookCAPIConfig(ctx context.Context, landingID string) (*models.FacebookCAPIConfig, error) {
 	const q = `
 		SELECT id, landing_id, is_active, pixel_id, access_token, api_version,
@@ -225,21 +237,31 @@ func (s *Store) UpsertFacebookCAPIConfig(in models.FacebookCAPIConfigInput) (*mo
 }
 
 // DeleteFacebookCAPIConfig xoá cấu hình CAPI của 1 landing.
-func (s *Store) DeleteFacebookCAPIConfig(landingID string) error {
+//
+// ⚠️ `landingID = ""` ⇒ xoá đúng DÒNG CẤU HÌNH MẶC ĐỊNH (`landing_id = ''`),
+// KHÔNG phải xoá toàn bộ bảng. Truy vấn luôn khớp CHÍNH XÁC `landing_id` nên
+// không bao giờ xoá nhầm cấu hình của landing khác.
+func (s *Store) DeleteFacebookCAPIConfig(landingID string) (deleted int64, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := s.pool.Exec(ctx, `DELETE FROM facebook_capi_configs WHERE landing_id = $1`, landingID)
-	return err
+	ct, err := s.pool.Exec(ctx, `DELETE FROM facebook_capi_configs WHERE landing_id = $1`, landingID)
+	if err != nil {
+		return 0, err
+	}
+	return ct.RowsAffected(), nil
 }
 
 // ToggleFacebookCAPIConfig bật/tắt nhanh CAPI cho 1 landing mà không cần
 // gửi lại toàn bộ cấu hình (token, pixel, gateway…).
 //
-// ⚠️ Chỉ toggle dòng có `landing_id` đúng bằng tham số — KHÔNG đụng vào
-// cấu hình mặc định (landing_id = ''), vì đó là fallback áp dụng cho mọi
-// landing chưa có cấu hình riêng.
+// ⚠️ Truy vấn khớp CHÍNH XÁC `landing_id`:
+//   - `landingID = "abc"` ⇒ toggle dòng cấu hình riêng của landing `abc`.
+//   - `landingID = ""`   ⇒ toggle DÒNG CẤU HÌNH MẶC ĐỊNH (landing_id = '')
+//     — tắt dòng này ⇒ mọi landing CHƯA có cấu hình riêng cũng ngừng gửi
+//     CAPI (fallback về cấu hình mặc định ⇒ `is_active = false` ⇒ dispatcher
+//     bỏ qua). Landing ĐÃ có cấu hình riêng không bị ảnh hưởng.
 //
-// Trả về `found=false` nếu landing chưa có cấu hình riêng.
+// Trả về `found=false` nếu không có dòng nào khớp `landing_id`.
 func (s *Store) ToggleFacebookCAPIConfig(landingID string, isActive bool) (found bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

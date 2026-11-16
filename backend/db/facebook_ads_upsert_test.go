@@ -82,7 +82,7 @@ func TestUpsertFacebookCAPIConfigRoundTrip(t *testing.T) {
 	}
 
 	// Xoá dòng test.
-	if err := store.DeleteFacebookCAPIConfig(landingID); err != nil {
+	if _, err := store.DeleteFacebookCAPIConfig(landingID); err != nil {
 		t.Fatalf("xoá cấu hình test lỗi: %v", err)
 	}
 }
