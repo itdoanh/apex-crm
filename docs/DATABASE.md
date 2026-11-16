@@ -99,6 +99,16 @@ CREATE TABLE leads (
 > -- (tương tự cho name / ho_ten / customer_name)
 > ```
 >
+> **Dọn session** (migration `D2`, idempotent, chạy SAU `D1`) — gỡ cờ
+> `converted_lead` + xoá action `"converted"` trong timeline của các session gắn
+> lead test (biểu đồ analytics / CR% / phễu chuyển đổi):
+> ```sql
+> UPDATE analytics_sessions s SET converted_lead = FALSE
+> FROM leads l
+> WHERE s.lead_id = l.id AND COALESCE(l.is_test, FALSE) = TRUE
+>   AND s.converted_lead = TRUE;
+> ```
+>
 > ⚠️ Cơ chế lọc: `buildWhereClause()` (mặc định) **LOẠI** lead test;
 > `buildWhereClauseEx(..., includeTest=true)` **GIỮ** lead test (dùng cho
 > bảng CRM + export CSV).
