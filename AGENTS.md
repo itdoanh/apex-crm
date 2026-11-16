@@ -160,8 +160,10 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
       dãy liên tiếp ±1 **đều toàn bộ** (`0987654322` ❌ không chặn) · lặp mẫu 2/5 số ·
       lặp mẫu 3 số trong 9 số đầu.
     - Sửa `tracker.js` ⇒ `node scripts/sync-static-mirror.js` (7 bản mirror).
-21. **Lead test (tên chứa `(test)`) — tự đánh dấu `is_test`** (fix 2026-11-16) —
-    `leads.is_test BOOLEAN` (`security.IsTestLeadName()`, không phân biệt hoa thường).
+21. **Lead test (tên CHỨA chuỗi `test`) — tự đánh dấu `is_test`** (fix 2026-11-16, mở rộng 2026-11-16) —
+   `leads.is_test BOOLEAN` (`security.IsTestLeadName()` = `strings.Contains(strings.ToLower(name), "test")`).
+   - ⚠️ Trước đây chỉ khớp `"(test)"` CÓ NGOẶC ⇒ tên `"test 1"` bị bỏ sót ⇒ lead test VẪN tính vào thống kê (bug anh itdoanh, lead #425).
+   - Migration backfill (idempotent) trong `backend/db/db.go` (bước `D1`) đánh dấu lead cũ đã lỡ bị tính.
     - Bảng CRM + export CSV (cột "Lead Test") ⇒ **VẪN hiện** (badge "TEST").
     - Google Sheets ⇒ **VẪN đồng bộ bình thường** (field `is_test` ⇒ "Có"/"").
     - Biểu đồ / thống kê / CR% / phễu / `ListLandingPages` / `GetMetaCampaignBreakdown` ⇒

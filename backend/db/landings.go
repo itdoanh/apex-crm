@@ -419,7 +419,7 @@ func (s *Store) ListLandingPages() ([]models.LandingPage, error) {
 		LEFT JOIN (
 			SELECT landing_id, COUNT(*) as leads_count
 			FROM leads
-			-- ⚠️ Lead test (tên chứa "(test)") KHÔNG tính vào thống kê landing.
+			-- ⚠️ Lead test (tên chứa chuỗi "test") KHÔNG tính vào thống kê landing.
 			WHERE COALESCE(is_test, FALSE) = FALSE
 			GROUP BY landing_id
 		) l_stat ON l_stat.landing_id = lp.page_id

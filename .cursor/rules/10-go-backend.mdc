@@ -261,7 +261,13 @@ mux.HandleFunc("/api/admin/audit-logs",
 
 ### Cờ `is_test` (lead test) — lọc mặc định (thêm 2026-11-16)
 
-Cột `leads.is_test BOOLEAN` đánh dấu lead mà tên chứa `(test)`.
+Cột `leads.is_test BOOLEAN` đánh dấu lead mà tên CHỨA chuỗi `test`
+(`security.IsTestLeadName()` = `strings.Contains(strings.ToLower(name), "test")`).
+
+> ⚠️ Mở rộng 2026-11-16 — trước đây chỉ khớp `"(test)"` CÓ DẤU NGOẶC ⇒ tên
+> `"test 1"` bị bỏ sót ⇒ lead test vẫn tính vào thống kê. Migration backfill
+> (idempotent, bước `D1`) trong `backend/db/db.go` đánh dấu các lead cũ đã lỡ
+> bị tính.
 
 ```go
 // ✅ buildWhereClause() — mặc định LOẠI lead test khỏi thống kê/biểu đồ

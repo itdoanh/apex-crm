@@ -63,7 +63,11 @@ func TestIsJunkPhone_ShortOrInvalid(t *testing.T) {
 	}
 }
 
-// TestIsTestLeadName: nhận diện lead test theo marker "(test)".
+// TestIsTestLeadName: nhận diện lead test theo việc TÊN CHỨA chuỗi "test".
+//
+// ⚠️ Mở rộng 2026-11-16: trước đây chỉ khớp "(test)" CÓ DẤU NGOẶC ⇒ tên
+// "test 1" bị bỏ sót ⇒ lead test vẫn được tính vào thống kê (bug anh
+// itdoanh phát hiện). Nay bất kỳ tên nào chứa "test" đều là lead test.
 func TestIsTestLeadName(t *testing.T) {
 	yes := []string{
 		"Nguyễn Văn A (test)",
@@ -71,6 +75,14 @@ func TestIsTestLeadName(t *testing.T) {
 		"Test User (test)",
 		"John ( Test )",
 		"(test)",
+		"test",          // trọn vẹn
+		"test 1",        // không có ngoặc — bug cũ
+		"TEST",
+		"Test",
+		"Tester Nguyễn", // chứa "test"
+		"Phòng test",    // chứa "test"
+		"contest",       // chứa "test"
+		"  test  ",      // có khoảng trắng thừa
 	}
 	for _, n := range yes {
 		if !IsTestLeadName(n) {
@@ -80,10 +92,11 @@ func TestIsTestLeadName(t *testing.T) {
 
 	no := []string{
 		"",
+		"   ",
 		"Nguyễn Văn A",
-		"Tester Nguyễn",
-		"Phòng test",
-		"contest",
+		"Lý A sèo",
+		"Quan Vuvanquan",
+		"Trần Phương Thảo",
 	}
 	for _, n := range no {
 		if IsTestLeadName(n) {
