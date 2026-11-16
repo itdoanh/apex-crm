@@ -47,7 +47,8 @@ CREATE TABLE leads (
     isp             VARCHAR(100) NOT NULL DEFAULT '',
     ad_platform     VARCHAR(50)  NOT NULL DEFAULT '',
     ad_placement    VARCHAR(100) NOT NULL DEFAULT '',
-    url             VARCHAR(1000) NOT NULL DEFAULT ''
+    url             VARCHAR(1000) NOT NULL DEFAULT '',
+    is_test         BOOLEAN      NOT NULL DEFAULT FALSE
 );
 ```
 
@@ -61,6 +62,32 @@ CREATE TABLE leads (
 > ```sql
 > ALTER TABLE leads ADD COLUMN IF NOT EXISTS url VARCHAR(1000) NOT NULL DEFAULT '';
 > ```
+
+> ⭐ **Cột `is_test`** (thêm 2026-11-16) — cờ LEAD TEST.
+> Lead mà **tên chứa `(test)`** ⇒ tự động đánh dấu `is_test = TRUE`.
+>
+> | Nơi | Lead test |
+> |---|---|
+> | Bảng CRM (`GET /api/leads`) + export CSV | ✅ VẪN hiện (badge "TEST") |
+> | Google Sheets (`syncLeadToGoogleSheets`) | ✅ VẪN đồng bộ bình thường |
+> | Biểu đồ / thống kê (`GET /api/leads/stats`, `/api/crm/stats`) | ❌ KHÔNG tính |
+> | Thống kê landing (`ListLandingPages`) | ❌ KHÔNG tính |
+> | Break down chiến dịch Meta (`GET /api/facebook-ads/campaigns`) | ❌ KHÔNG tính |
+> | `analytics_sessions.converted_lead` (biểu đồ analytics / CR% / phễu) | ❌ KHÔNG đánh dấu |
+> | Meta Conversions API (CAPI) | ❌ KHÔNG bắn (không tốn tiền QC) |
+>
+> Nhận diện: `security.IsTestLeadName()` — không phân biệt hoa thường,
+> chuẩn hoá khoảng trắng trong ngoặc: `(test)` · `(TEST)` · `( Test )`.
+>
+> Migration tự động (idempotent) trong `backend/db/db.go`:
+> ```sql
+> ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
+> CREATE INDEX IF NOT EXISTS idx_leads_is_test ON leads (is_test);
+> ```
+>
+> ⚠️ Cơ chế lọc: `buildWhereClause()` (mặc định) **LOẠI** lead test;
+> `buildWhereClauseEx(..., includeTest=true)` **GIỮ** lead test (dùng cho
+> bảng CRM + export CSV).
 
 ### Trạng thái CRM (`trang_thai`)
 
@@ -135,6 +162,7 @@ idx_leads_region        ON leads (region)
 idx_leads_ad_platform   ON leads (ad_platform)
 idx_leads_ad_placement  ON leads (ad_placement)
 idx_leads_tracking_gin  ON leads USING gin (tracking)
+idx_leads_is_test       ON leads (is_test)
 ```
 
 ### Deduplication 24h

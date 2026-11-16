@@ -35,6 +35,9 @@ Xem [`AGENTS.md`](AGENTS.md) mục 5. Tóm tắt:
 | 6 | Backend chạy với working directory `C:\apex\backend` |
 | 7 | `/api/internal/check-domain` trả `200`/`403` đúng quy ước |
 | 8 | `backend/static/` là mirror của `frontend/admin/` |
+| 9 | Chặn SĐT rác: client chặn TRƯỚC khi gọi `fetch` (cookie + chuyển `chucmung.html`) ⇒ không tốn tiền QC |
+| 10 | Lead test (tên chứa `(test)`) ⇒ `is_test` ⇒ không tính biểu đồ/thống kê, không bắn CAPI, vẫn đồng bộ Sheet |
+| 11 | Duyệt số bị cách ly ⇒ vào CRM **và** đồng bộ Google Sheets theo cấu hình |
 
 ---
 

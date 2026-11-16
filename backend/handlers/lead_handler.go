@@ -530,6 +530,34 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	phone := cleanedPhone
 	carrier := security.GetCarrierName(phone)
 
+	// 6.1 LỚP PHÒNG THỦ BỔ SUNG — CHẶN SỐ ĐIỆN THOẠI "RÁC" (2026-11-16)
+	//
+	// BỐI CẢNH: người dùng cố tình nhập SĐT rác (vd "0987654321") chỉ để
+	// đốt tiền quảng cáo. Mỗi lượt gửi form ⇒ 1 lead ⇒ 1 sự kiện Meta CAPI
+	// ⇒ tốn tiền QC.
+	//
+	// ⇒ CLIENT (tracker.js) đã chặn trước (cookie + chuyển trang chúc mừng,
+	//   KHÔNG gửi payload lên server). Đây là LỚP PHỒNG THỦ THỨ 2 cho trường
+	//   hợp client bị bypass / script cố tình gửi thẳng lên API.
+	//
+	// ⚠️ Server KHÔNG tạo lead, KHÔNG bắn CAPI, KHÔNG ghi Google Sheets.
+	//   Trả 200 OK giả để bot KHÔNG nhận biết đã bị chặn (shadow ban) — tránh
+	//   việc bot tự thử lại với biến thể khác.
+	if isJunk, junkReason := security.IsJunkPhone(phone); isJunk {
+		fmt.Printf("[JUNK_PHONE] Chặn SĐT rác %s (landing=%s, ip=%s) — %s\n", phone, landingID, clientIP, junkReason)
+		// Ghi log vào vùng cách ly để admin theo dõi (KHÔNG tạo lead).
+		_ = h.store.SaveSpamQuarantine(clientIP, r.UserAgent(), landingID, nguon, phoneRaw, junkReason, bodyBytes)
+		security.TarpitSleep(1500, 2500)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Dữ liệu lead đã được ghi nhận thành công",
+			"id":      999999,
+		})
+		return
+	}
+
 	// 7. LỚP ĐỊNH VỊ ĐỊA LÝ & NHÀ MẠNG QUA IP THỰC TẾ
 	geo := security.ResolveIP(clientIP)
 	city := geo.City
@@ -645,9 +673,12 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Tự động liên kết Lead vào Session Analytics tương ứng
+	//
+	// ⚠️ Lead test (tên chứa "(test)") ⇒ KHÔNG đánh dấu converted_lead ⇒
+	// biểu đồ analytics / CR% / phễu chuyển đổi không tính lead test.
 	sessionID := extractFirstString(rawData, "session_id", "sessionId", "apex_session_id")
 	if sessionID != "" {
-		if err := h.store.AssociateLeadToSession(sessionID, phone, lead.ID); err != nil {
+		if err := h.store.AssociateLeadToSession(sessionID, phone, lead.ID, lead.IsTest); err != nil {
 			fmt.Printf("[WARN] Không thể liên kết lead %d với session %s: %v\n", lead.ID, sessionID, err)
 		}
 	}
@@ -675,8 +706,16 @@ func (h *LeadHandler) HandleSubmitLead(w http.ResponseWriter, r *http.Request) {
 	// ⚠️ Chỉ gửi khi lead MỚI (isNew): nếu khách double-click form thì client
 	// gửi nhiều request → dedup trả về cùng 1 lead ⇒ gửi nhiều sự kiện Lead
 	// sẽ làm sai chỉ số chuyển đổi và tăng Event Match Quality "trùng".
-	if isNew {
+	//
+	// ⚠️ LEAD TEST (2026-11-16): KHÔNG bắn CAPI cho lead test.
+	//    Lead test là lead do chính admin tạo để kiểm tra hệ thống ⇒ bắn CAPI
+	//    sẽ làm thổi phồng chỉ số chuyển đổi của Meta (tốn tiền QC) và làm
+	//    sai chỉ số trong tab Facebook Ads. Google Sheets VẪN đồng bộ bình
+	//    thường (xem phần syncLeadToGoogleSheets ở trên).
+	if isNew && !lead.IsTest {
 		go h.dispatchCAPILead(lead, rawData, clientIP)
+	} else if isNew && lead.IsTest {
+		fmt.Printf("[INFO] Lead #%d là LEAD TEST — bỏ qua Meta CAPI (vẫn đồng bộ Google Sheets)\n", lead.ID)
 	}
 
 	// Phản hồi thành công
@@ -993,6 +1032,12 @@ func (h *LeadHandler) dispatchCAPICRMSync(leadID uint64, trangThai string) {
 		return
 	}
 
+	// ⚠️ LEAD TEST (2026-11-16): không bắn sự kiện CRM cho lead test —
+	// tránh làm thổi phồng chỉ số chuyển đổi Meta (tốn tiền QC).
+	if lead.IsTest {
+		return
+	}
+
 	// buildCAPILeadContext tự lấy IP/UA gốc từ tracking (đã lưu lúc tạo lead)
 	// ⇒ sự kiện CRM sync vẫn có đủ PII để Meta so khớp.
 	lc := h.buildCAPILeadContext(lead, nil, "")
@@ -1115,6 +1160,7 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		"Thiết Bị",
 		"Tự Động Điền",
 		"UTM Campaign",
+		"Lead Test",
 		"Tracking Raw",
 	})
 
@@ -1157,6 +1203,12 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		var compactJSON bytes.Buffer
 		_ = json.Compact(&compactJSON, lead.Tracking)
 
+		// ⛔ Cờ LEAD TEST (2026-11-16) — lead tên chứa "(test)".
+		isTestCell := ""
+		if lead.IsTest {
+			isTestCell = "TEST"
+		}
+
 		_ = writer.Write([]string{
 			strconv.FormatUint(lead.ID, 10),
 			lead.CreatedAt,
@@ -1173,6 +1225,7 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 			dev,
 			isAf,
 			utmCamp,
+			isTestCell,
 			compactJSON.String(),
 		})
 	}
@@ -1277,6 +1330,50 @@ func (h *LeadHandler) HandleListQuarantine(w http.ResponseWriter, r *http.Reques
 		"total":   total,
 		"data":    items,
 	})
+}
+
+// HandleApproveQuarantine duyệt thủ công một lead bị chặn nhầm ⇒ đẩy thẳng
+// về CRM **và đồng bộ sang Google Sheets** theo cấu hình kết nối đang có.
+//
+// 📌 2026-11-16 (yêu cầu của anh itdoanh):
+//   "Hiện tại các số khi bị cách ly mà được duyệt chỉ vào CRM chứ chưa đồng
+//    bộ vào sheet nên khi được duyệt thì số đó cũng được đồng bộ vào sheet
+//    theo cấu hình kết nối nếu có."
+//
+// ⚠️ Handler này nằm ở `LeadHandler` (không phải `ReportHandler`) vì cần
+//   `syncLeadToGoogleSheets()` — hàm duy nhất biết tra cấu hình sheet theo
+//   landing + domain rồi append dòng vào đúng sheet được gán.
+func (h *LeadHandler) HandleApproveQuarantine(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"success": false, "error": "Chỉ chấp nhận POST"})
+		return
+	}
+
+	var body struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "Thiếu id hợp lệ"})
+		return
+	}
+
+	result, lead, rawData, err := h.store.ApproveQuarantineLead(body.ID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	// ─── Đồng bộ Google Sheets (yêu cầu 2026-11-16) ───
+	//
+	// Lead được duyệt thủ công từ vùng cách ly cũng PHẢI vào sheet như mọi
+	// lead khác (theo cấu hình `google_sheet_configs` + `google_sheet_sync_mode`
+	// của landing). Chạy goroutine riêng để không làm chậm response admin.
+	//
+	// ⚠️ `syncLeadToGoogleSheets` tự bỏ qua khi môi trường TEST
+	//    (`IsExternalSyncEnabled() == false`) ⇒ không ghi nhầm vào sheet thật.
+	go h.syncLeadToGoogleSheets(lead, rawData)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": result})
 }
 
 // syncLeadToGoogleSheets tự động đồng bộ một lead mới sang các Google Sheet được phân quyền riêng cho Landing Page

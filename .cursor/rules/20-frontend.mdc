@@ -133,6 +133,17 @@ Lead data đến từ **form công khai** → không bao giờ tin. Luôn escape
 const honeypots = ['website', 'fax_company_prefix', 'user_email_verify', 'company_website_url'];
 ```
 
+**Chặn SĐT rác — phải chặn TRƯỚC khi gọi `fetch` (fix 2026-11-16):**
+```javascript
+// ✅ ĐÚNG — trong sendLeadToBackend(), TRƯỚC disable nút / fetch
+if (blockJunkPhone(phone)) {
+    return { success: true, blocked: true };   // KHÔNG gọi server, KHÔNG bắn fbq Lead
+}
+```
+> ⚠️ Đặt SAU chỗ gọi `fetch` ⇒ request đã đi ⇒ **đã tốn tiền QC**.
+> Server có lớp phòng thủ thứ 2 nhưng lúc đó đã tốn 1 request.
+> Chi tiết: `docs/SECURITY.md` mục 6.1.
+
 **PoW — cặp phải khớp 1-1 (fix 2026-11-15):**
 ```javascript
 // ✅ ĐÚNG

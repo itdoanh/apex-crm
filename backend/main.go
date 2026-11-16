@@ -327,7 +327,9 @@ func main() {
 	mux.HandleFunc("/api/analytics/report/devices", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleDevices)))
 	mux.HandleFunc("/api/analytics/report/security", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleSecurity)))
 	mux.HandleFunc("/api/analytics/report/quarantine", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleQuarantine)))
-	mux.HandleFunc("/api/analytics/report/quarantine/approve", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleApproveQuarantine)))
+	// ⚠️ Duyệt cách ly → đẩy vào CRM + ĐỒNG BỘ GOOGLE SHEETS (2026-11-16).
+	// Dùng `leadHandler` (không phải `reportHandler`) vì cần `syncLeadToGoogleSheets`.
+	mux.HandleFunc("/api/analytics/report/quarantine/approve", leadHandler.CORSMiddleware(reportAuth(leadHandler.HandleApproveQuarantine)))
 	mux.HandleFunc("/api/analytics/report/journey", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleJourney)))
 	mux.HandleFunc("/api/analytics/report/filters", leadHandler.CORSMiddleware(reportAuth(reportHandler.HandleFilterOptions)))
 
