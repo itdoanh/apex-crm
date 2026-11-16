@@ -14,7 +14,7 @@ INSERT INTO landing_pages (page_id, domain, name, is_active, status, redirect_ur
 VALUES ('landing_cu', 'ads.giaodichhanghoatuonglai.com', 'Landing CU', true, 'published', '', 'landing_cu', '{}',
   '<!DOCTYPE html><html><head><title>CU</title><script src="tracker.js" data-landing-id="landing_cu"></script></head><body>CU</body></html>', NOW(), NOW());
 
--- 2) landing_232 (bản rename cũ — cùng nội dung, KHÔNG active)
+-- 2) landing_232 (BẢN NHÂN BẢN tạo 2026-11-11 — KHÔNG phải bản đổi tên)
 INSERT INTO landing_pages (page_id, domain, name, is_active, status, redirect_url, nguon_default, settings, code_html, created_at, updated_at)
 VALUES ('landing_232', 'lophoc.hanghoaphaisinh.net', 'Landing 232', false, 'published', '', 'landing_232', '{}',
   '<!DOCTYPE html><html><head><title>CU</title><script src="tracker.js" data-landing-id="landing_cu"></script></head><body>CU</body></html>', NOW(), NOW());
@@ -71,13 +71,16 @@ VALUES
  ('s5','v5','mxv_080_online','mxv_080_online','about:srcdoc',false,false, NOW(), NOW()),
  ('s6','v6','mxv_080_online','mxv_080_online','https://lophoc.hanghoaphaisinh.net/landing',false,false, NOW(), NOW()),
  ('s7','v7','6adc99f23115ac001247de00','6adc99f23115ac001247de00','https://ads.giaodichhanghoatuonglai.com/chucmung.html',false,false, NOW(), NOW()),
- ('s8','v8','landing_232','landing_232','https://ads.giaodichhanghoatuonglai.com/',false,true, NOW(), NOW()),
+ ('s8','v8','landing_232','landing_232','https://ads.giaodichhanghoatuonglai.com/chucmung.html',false,false, NOW(), NOW()),
  ('s9','v9','landing_cu','an','https://ads.giaodichhanghoatuonglai.com/landing',false,false, NOW(), NOW()),
- ('s10','v10','default_landing','default_landing','https://x.com/',false,false, NOW(), NOW());
+ ('s10','v10','default_landing','default_landing','https://x.com/',false,false, NOW(), NOW()),
+ ('s11','v11','landing_232','landing_232','https://lophoc.hanghoaphaisinh.net/',false,true, NOW(), NOW()),
+ ('s12','v12','landing_232','landing_232','',false,false, NOW(), NOW());
 
 INSERT INTO leads (thoi_gian, landing_id, nguon, so_dien_thoai, tracking, url)
 VALUES
  (NOW(), 'mxv_080_online','mxv_080_online','0900000001','{}','https://ads.giaodichhanghoatuonglai.com/landing?zarsrc=31'),
  (NOW(), 'mxv_080_online','mxv_080_online','0900000002','{}','https://ads.giaodichhanghoatuonglai.com/landing/ads.giaodichhanghoatuonglai.com/chucmung'),
  (NOW(), 'landing_232','landing_232','0900000003','{}','https://ads.giaodichhanghoatuonglai.com/'),
+ (NOW(), 'landing_232','landing_232','0900000005','{}','https://lophoc.hanghoaphaisinh.net/'),
  (NOW(), 'landing_cu','landing_cu','0900000004','{}','https://ads.giaodichhanghoatuonglai.com/landing');

@@ -83,26 +83,60 @@ INSERT INTO leads_backup_20261116
 --
 --   BẰNG CHỨNG: `landing_pages.code_html` của `landing_232` và `landing_cu`
 --   có CÙNG md5 (`31d23cbec24ad026aa03a3f3e794cf07`) và cùng độ dài (265594)
---   ⇒ `landing_cu` chính là bản ĐỔI TÊN của `landing_232`.
---   ⇒ 47 sessions + 5 leads của `landing_232` thuộc về `landing_cu`.
+--   ⇒ `landing_232` là bản NHÂN BẢN của `landing_cu` (copy nguyên si).
+--
+--   ⚠️ SỬA LẠI sau khi đối chiếu dữ liệu production thật (2026-11-16):
+--   `landing_232` KHÔNG phải bản đổi tên — nó được tạo **2026-11-11 16:56**
+--   (SAU `landing_cu` 2026-11-04 10:35) ⇒ đây là lần NHÂN BẢN từ CRM.
+--   ⇒ **KHÔNG được gộp vào `landing_cu`** (sẽ làm thống kê chồng chéo NGƯỢC lại).
+--
+--   Phân bổ thật của 47 sessions + 5 leads của `landing_232`:
+--     · 31 sessions `ads.giaodichhanghoatuonglai.com/chucmung*` (11-11 → 11-12)
+--         ⇒ trang chúc mừng ⇒ `landing_lznoew`
+--     · 14 sessions + 4 leads `lophoc.hanghoaphaisinh.net/` (route `/`)
+--         ⇒ `doanh_chung`
+--     · 1 session + 1 lead `ads.giaodichhanghoatuonglai.com/` (root)
+--         ⇒ `landing_232` (giữ nguyên — landing riêng, đang deploy route `/`)
+--     · 1 session URL rỗng ⇒ `default_landing`
 -- ─────────────────────────────────────────────────────────────
+
+-- (1a) `landing_232` trên `ads.../chucmung*` ⇒ `landing_lznoew`
 UPDATE analytics_sessions
-SET landing_id = 'landing_cu',
-    nguon      = 'landing_cu'
+SET landing_id = 'landing_lznoew',
+    nguon      = 'landing_lznoew'
 WHERE landing_id = 'landing_232'
-  AND EXISTS (
-      SELECT 1 FROM landing_pages lp
-      WHERE lp.page_id = 'landing_cu'
-  );
+  AND entry_url LIKE 'https://ads.giaodichhanghoatuonglai.com/chucmung%';
+
+-- (1b) `landing_232` trên `lophoc.hanghoaphaisinh.net` ⇒ `doanh_chung`
+UPDATE analytics_sessions
+SET landing_id = 'doanh_chung',
+    nguon      = 'doanh_chung'
+WHERE landing_id = 'landing_232'
+  AND entry_url LIKE 'https://lophoc.hanghoaphaisinh.net%';
+
+-- (1c) `landing_232` URL rỗng / about:srcdoc ⇒ `default_landing`
+UPDATE analytics_sessions
+SET landing_id = 'default_landing',
+    nguon      = 'default_landing'
+WHERE landing_id = 'landing_232'
+  AND (entry_url = '' OR entry_url LIKE 'about:%');
+
+-- (1d) LEADS của `landing_232` theo URL thật
+UPDATE leads
+SET landing_id = 'doanh_chung',
+    nguon      = 'doanh_chung'
+WHERE landing_id = 'landing_232'
+  AND url LIKE 'https://lophoc.hanghoaphaisinh.net%';
 
 UPDATE leads
-SET landing_id = 'landing_cu',
-    nguon      = 'landing_cu'
+SET landing_id = 'landing_232',
+    nguon      = 'landing_232'
 WHERE landing_id = 'landing_232'
-  AND EXISTS (
-      SELECT 1 FROM landing_pages lp
-      WHERE lp.page_id = 'landing_cu'
-  );
+  AND url LIKE 'https://ads.giaodichhanghoatuonglai.com%';
+
+-- ⚠️ `landing_232` (row domain `lophoc.hanghoaphaisinh.net`, `is_active = false`)
+--    là landing RIÊNG của anh itdoanh ⇒ GIỮ NGUYÊN, không xoá, không gộp.
+--    Route `ads.../` → `landing_232` vẫn active trong `domain_routes`.
 
 -- ─────────────────────────────────────────────────────────────
 -- BƯỚC 2: `mxv_080_online` → landing thật, theo URL thực tế
@@ -182,7 +216,7 @@ WHERE landing_id = '6adc99f23115ac001247de00';
 --
 --   3 lead của `mxv_080_online` đều có URL `ads.giaodichhanghoatuonglai.com/landing`
 --   ⇒ thuộc `landing_cu`.
---   5 lead của `landing_232` ⇒ `landing_cu` (đã xử lý ở BƯỚC 1).
+--   5 lead của `landing_232` đã xử lý ở BƯỚC 1 (4 → doanh_chung, 1 → landing_232).
 -- ─────────────────────────────────────────────────────────────
 UPDATE leads
 SET landing_id = 'landing_cu',
@@ -198,8 +232,7 @@ WHERE landing_id = 'mxv_080_online';
 UPDATE leads
 SET landing_id = 'default_landing',
     nguon      = 'default_landing'
-WHERE landing_id = '6adc99f23115ac001247de00'
-   OR landing_id = 'default_landing';
+WHERE landing_id = '6adc99f23115ac001247de00';
 
 -- ─────────────────────────────────────────────────────────────
 -- BƯỚC 5: Đồng bộ `nguon` còn sót (VD `nguon = 'an'`)
@@ -213,7 +246,7 @@ SET nguon = landing_id
 WHERE nguon IS DISTINCT FROM landing_id
   AND nguon NOT IN ('', 'landing_chinh')
   AND landing_id IN (
-      'landing_cu', 'landing_lznoew', 'doanh_chung',
+      'landing_cu', 'landing_lznoew', 'doanh_chung', 'landing_232',
       'xu_huong_1', 'xu_huong_2', 'xu_huong_3'
   );
 
@@ -222,7 +255,7 @@ SET nguon = landing_id
 WHERE nguon IS DISTINCT FROM landing_id
   AND nguon NOT IN ('', 'landing_chinh')
   AND landing_id IN (
-      'landing_cu', 'landing_lznoew', 'doanh_chung',
+      'landing_cu', 'landing_lznoew', 'doanh_chung', 'landing_232',
       'xu_huong_1', 'xu_huong_2', 'xu_huong_3'
   );
 
