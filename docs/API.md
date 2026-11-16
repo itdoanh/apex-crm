@@ -183,6 +183,30 @@ Nhưng **vẫn nên cấu hình `success_redirect = "chucmung.html"`** trong CRM
 | `403` | PoW sai, honeypot bị kích, hoặc IP bị rate-limit → ghi vào `spam_quarantine` |
 | `429` | Rate limit |
 
+#### ⛔ Chặn Số Điện Thoại "RÁC" (thêm 2026-11-16)
+
+Nếu SĐT sau khi chuẩn hoá là **mẫu rác** (`0987654321`, `0123456789`,
+`0909090909`, 7 số cuối giống hệt nhau…) ⇒ server:
+
+- **KHÔNG** tạo lead · **KHÔNG** bắn Meta CAPI · **KHÔNG** ghi Google Sheets
+- Ghi log vào `spam_quarantine` với lý do `junk_phone: ...`
+- Trả `200 OK` giả (shadow ban) ⇒ bot không nhận biết bị chặn
+
+| Lớp | Vị trí |
+|---|---|
+| Client (chặn TRƯỚC, không gửi lên server) | `tracker.js` → `blockJunkPhone()` |
+| Server (chặn phụ) | `backend/security/junk_phone.go` + `lead_handler.go` |
+
+Chi tiết heuristic: `docs/SECURITY.md` mục 6.1.
+
+#### ⛔ Lead tự động đánh dấu TEST (thêm 2026-11-16)
+
+Tên khách chứa `(test)` ⇒ `leads.is_test = TRUE` ⇒ **không tính vào biểu đồ /
+thống kê / CR%** nhưng **vẫn đồng bộ Google Sheets bình thường** và **không bắn
+Meta CAPI** (không tốn tiền QC).
+
+Chi tiết: `docs/SECURITY.md` mục 6.2 · `docs/DATABASE.md` mục 2.
+
 **Quy trình PoW bắt buộc:**
 1. `GET /api/auth/challenge?difficulty=3` → `{ challenge_id, salt, difficulty, expires_at, signature }`
 2. Client brute-force: tìm `solution` sao cho `SHA256(challenge_id + ":" + salt + ":" + solution)` **bắt đầu bằng `"000"`**.
@@ -194,18 +218,24 @@ Query: `?page=1&limit=50&search=&landing_id=&nguon=&status=&from_date=&to_date=&
 Response:
 ```json
 {
-  "leads": [ { "id": 2, "thoi_gian": "...", "so_dien_thoai": "...", "trang_thai": "moi", "url": "https://...", "tracking": {...} } ],
+  "leads": [ { "id": 2, "thoi_gian": "...", "so_dien_thoai": "...", "trang_thai": "moi", "url": "https://...", "is_test": false, "tracking": {...} } ],
   "total": 2,
   "page": 1, "limit": 50
 }
 ```
+
+> ⭐ **`is_test`** (thêm 2026-11-16) — lead test (tên chứa `(test)`) **VẪN xuất
+> hiện** trong danh sách (UI gắn badge "TEST") nhưng **KHÔNG** tính vào các
+> endpoint thống kê (`/api/crm/stats`, `/api/leads/stats`).
 
 ### `GET /api/leads/export.csv` — Admin
 Query giống `/api/leads` + `?landing_id=&nguon=`. Trả CSV **UTF-8 có BOM** (để Excel đọc tiếng Việt đúng).
 
 Cột CSV: `ID, Thời Gian, Trạng Thái CRM, Họ Tên, Số Điện Thoại, Nhà Mạng, Landing ID,
 **URL Trang Đăng Ký**, Nguồn Traffic, Ghi Chú Sales, Người Phụ Trách, Cập Nhật Lúc,
-Thiết Bị, Tự Động Điền, UTM Campaign, Tracking Raw`.
+Thiết Bị, Tự Động Điền, UTM Campaign, **Lead Test**, Tracking Raw`.
+
+> Cột `Lead Test` = `TEST` nếu `is_test = true`, rỗng nếu không (thêm 2026-11-16).
 
 ### `POST /api/leads/update` — Admin
 ```json
@@ -565,7 +595,7 @@ Handler: `backend/handlers/report_handler.go` · Store: `backend/db/analytics_re
 | `GET /api/analytics/report/devices` | Biểu đồ 10, 11 + Bảng 4 (mã thiết bị & viewport) | Tab 5 |
 | `GET /api/analytics/report/security` | Biểu đồ 12 — KPI bảo mật + lý do chặn bot | Tab 6 |
 | `GET /api/analytics/report/quarantine` | Bảng 5 — nhật ký vùng cách ly | Tab 6 |
-| `POST /api/analytics/report/quarantine/approve` | Duyệt thủ công lead bị chặn nhầm → CRM | Tab 6 |
+| `POST /api/analytics/report/quarantine/approve` | Duyệt thủ công lead bị chặn nhầm → CRM **+ đồng bộ Google Sheets** (xem mục 2.3) | Tab 6 |
 | `GET /api/analytics/report/journey` | Hành trình khách hàng (hồ sơ + timeline từng giây) | CRM |
 | `GET /api/analytics/report/filters` | Danh sách giá trị distinct cho dropdown bộ lọc | Bộ lọc |
 

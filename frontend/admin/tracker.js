@@ -93,6 +93,183 @@
         return base + '_' + LANDING_KEY;
     }
 
+    // ============================================================
+    // 1.0.1 CHẶN SỐ ĐIỆN THOẠI "RÁC" — CHẶN TRƯỚC KHI GỬI LÊN SERVER
+    // ------------------------------------------------------------
+    //
+    // BỐI CẢNH (yêu cầu 2026-11-16 của anh itdoanh):
+    //   Người dùng cố tình nhập SĐT rác (vd "0987654321") chỉ để đốt tiền
+    //   quảng cáo. Mỗi lượt gửi form ⇒ 1 lead ⇒ 1 sự kiện Meta Conversions
+    //   API ⇒ TỐN TIỀN QC.
+    //
+    // ⇒ CHẶN NGAY TRÊN CLIENT: lưu cookie + chuyển thẳng sang trang
+    //   "chúc mừng" ⇒ KHÔNG gửi payload lên server ⇒ KHÔNG tạo lead ⇒
+    //   KHÔNG bắn CAPI ⇒ KHÔNG tốn tiền QC.
+    //
+    // ⚠️ Server (`backend/security/junk_phone.go` + `lead_handler.go`) có lớp
+    //   phòng thủ thứ 2 cho trường hợp client bị bypass.
+    //
+    // ⚠️ Heuristic RẤT CHẶT — chỉ chặn khi CHẮC CHẮN là rác, không chặn
+    //   nhầm số thật của khách.
+    const JUNK_COOKIE_DAYS = 30;
+
+    // Danh sách mẫu rác cố định (bot hay dùng).
+    var JUNK_HARDCODED = {
+        '0000000000': 1, '0111111111': 1, '0123456789': 1, '0222222222': 1,
+        '0333333333': 1, '0444444444': 1, '0555555555': 1, '0666666666': 1,
+        '0777777777': 1, '0888888888': 1, '0987654321': 1, '0999999999': 1,
+        '1234567890': 1, '2109876543': 1
+    };
+
+    // hasRepeatedRun — chuỗi có đoạn liên tiếp >= minLen ký tự giống hệt nhau.
+    function hasRepeatedRun(s, minLen) {
+        if (!s || s.length < minLen) return false;
+        var run = 1;
+        for (var i = 1; i < s.length; i++) {
+            if (s.charAt(i) === s.charAt(i - 1)) {
+                run++;
+                if (run >= minLen) return true;
+            } else {
+                run = 1;
+            }
+        }
+        return false;
+    }
+
+    // hasRepeatedBlock — chuỗi gồm MỘT khối ký tự bị lặp nguyên vẹn.
+    function hasRepeatedBlock(s, blockLen) {
+        if (!s || !blockLen || s.length % blockLen !== 0) return false;
+        var block = s.substring(0, blockLen);
+        for (var i = blockLen; i < s.length; i += blockLen) {
+            if (s.substr(i, blockLen) !== block) return false;
+        }
+        return true;
+    }
+
+    // isSequentialDigits — 10 chữ số tạo dãy liên tiếp tăng/giảm đều ±1.
+    function isSequentialDigits(phone) {
+        if (!phone || phone.length !== 10) return false;
+        var d = [];
+        for (var i = 0; i < 10; i++) d.push(parseInt(phone.charAt(i), 10));
+
+        // Tăng đều +1 (không cuộn vòng 9 → 0).
+        if (d[9] === d[0] + 9) {
+            for (var j = 1; j < 10; j++) if (d[j] !== d[j - 1] + 1) return false;
+            return true;
+        }
+        // Giảm đều -1 (không cuộn vòng 0 → 9).
+        if (d[0] === d[9] + 9) {
+            for (var k = 1; k < 10; k++) if (d[k] !== d[k - 1] - 1) return false;
+            return true;
+        }
+        return false;
+    }
+
+    // isJunkPhone kiểm tra SĐT có phải số rác hay không.
+    // Trả về { junk: true, reason: '...' } hoặc { junk: false, reason: '' }.
+    function isJunkPhone(rawPhone) {
+        var phone = normalizePhoneForJunk(rawPhone);
+        if (!phone || phone.length !== 10) return { junk: false, reason: '' };
+
+        if (JUNK_HARDCODED[phone]) {
+            return { junk: true, reason: 'junk_phone: mẫu số rác cố định' };
+        }
+        // 7 số cuối giống hệt nhau (0911111111, 0988888888).
+        if (hasRepeatedRun(phone.substring(3), 7)) {
+            return { junk: true, reason: 'junk_phone: 7 số cuối giống hệt nhau' };
+        }
+        // Dãy số liên tiếp tăng/giảm đều (0123456789, 0987654321).
+        if (isSequentialDigits(phone)) {
+            return { junk: true, reason: 'junk_phone: dãy số liên tiếp tăng/giảm đều' };
+        }
+        // Số lặp theo mẫu 2 / 5 số, hoặc mẫu 3 số lặp trong 9 số đầu.
+        if (hasRepeatedBlock(phone, 2) || hasRepeatedBlock(phone, 5) || hasRepeatedBlock(phone.substring(0, 9), 3)) {
+            return { junk: true, reason: 'junk_phone: số lặp theo mẫu' };
+        }
+        return { junk: false, reason: '' };
+    }
+
+    // normalizePhoneForJunk chuẩn hoá SĐT về 10 chữ số kiểu Việt Nam.
+    function normalizePhoneForJunk(raw) {
+        var s = String(raw || '').replace(/[^\d+]/g, '');
+        if (s.indexOf('+84') === 0) s = '0' + s.substring(3);
+        else if (s.indexOf('84') === 0 && s.length >= 11) s = '0' + s.substring(2);
+        return s;
+    }
+
+    // setJunkBlocked lưu cookie "đã bị chặn" (tách theo landing).
+    function setJunkBlocked(phone, reason) {
+        try {
+            var key = scopedKey('apex_junk_blocked');
+            var expires = new Date(Date.now() + JUNK_COOKIE_DAYS * 24 * 60 * 60 * 1000).toUTCString();
+            var secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+            document.cookie = key + '=1; max-age=' + (JUNK_COOKIE_DAYS * 86400) + '; expires=' + expires + '; path=/; SameSite=Lax' + secureFlag;
+            if (window.localStorage) {
+                localStorage.setItem(key, '1');
+                localStorage.setItem(scopedKey('apex_junk_blocked_at'), Date.now().toString());
+                localStorage.setItem(scopedKey('apex_junk_blocked_phone'), String(phone || ''));
+                localStorage.setItem(scopedKey('apex_junk_blocked_reason'), String(reason || ''));
+            }
+        } catch (_) {}
+    }
+
+    // isJunkBlocked đã bị chặn trước đó trên landing này chưa.
+    function isJunkBlocked() {
+        try {
+            var key = scopedKey('apex_junk_blocked');
+            if (localStorage.getItem(key) === '1') return true;
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var parts = cookies[i].trim().split('=');
+                if (parts[0] === key && parts[1] === '1') return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    // redirectAfterJunk chuyển khách sang trang "chúc mừng" NGAY LẬP TỨC.
+    //
+    // ⚠️ Dùng `location.replace` (thay vì `href`) để khách KHÔNG bấm "Back"
+    //    quay lại form — tránh gửi lại form rác.
+    function redirectAfterJunk() {
+        try {
+            if (shouldBypassRedirect()) return;
+            var search = window.location.search || '';
+            // ⭐ Tôn trọng trang cảm ơn đã cấu hình của landing (nếu có),
+            //    nếu không thì mặc định 'chucmung.html'.
+            var cfg = window.APEX_LANDING_CONFIG || {};
+            var configured = '';
+            try {
+                if (cfg.settings && cfg.settings.form_config && cfg.settings.form_config.success_redirect) {
+                    configured = cfg.settings.form_config.success_redirect;
+                } else if (cfg.form_config && cfg.form_config.success_redirect) {
+                    configured = cfg.form_config.success_redirect;
+                }
+            } catch (_) {}
+            var target = 'chucmung.html';
+            try {
+                target = normalizeSuccessRedirect(
+                    window.APEX_SUCCESS_REDIRECT || configured || 'chucmung.html'
+                );
+            } catch (_) {}
+            window.location.replace(target + search);
+        } catch (_) {}
+    }
+
+    // blockJunkPhone — điểm chặn duy nhất: dùng ở MỌI chokepoint gửi form.
+    //
+    // Trả về true nếu đã chặn (caller PHẢI dừng, KHÔNG gọi server).
+    function blockJunkPhone(rawPhone) {
+        var res = isJunkPhone(rawPhone);
+        if (!res.junk) return false;
+        setJunkBlocked(rawPhone, res.reason);
+        try {
+            console.warn('[APEX] Chặn SĐT rác — không gửi lên server. ' + res.reason);
+        } catch (_) {}
+        redirectAfterJunk();
+        return true;
+    }
+
     // Lấy hoặc tạo Visitor ID (lưu bền vững 365 ngày qua Cookie + LocalStorage)
     // ⚠️ KHÓA ĐÃ TÁCH THEO LANDING (apex_vid_<landingKey>).
     function getOrCreateVisitorId() {
@@ -1150,6 +1327,25 @@
     }
     checkAutoRedirectRegistered();
 
+    // ⛔ TỰ CHUYỂN TRANG "CHÚC MỪNG" NẾU SỐ RÁC ĐÃ BỊ CHẶN TRƯỚC (2026-11-16)
+    //
+    // Khách dùng SĐT rác đã bị chặn ⇒ cookie `apex_junk_blocked_<landing>`
+    // được lưu. Nếu họ quay lại trang form (bấm Back, F5, mở link mới) ⇒
+    // tự động chuyển sang trang chúc mừng ⇒ KHÔNG cho nhập lại.
+    //
+    // ⚠️ Cookie chỉ sống 30 ngày (JUNK_COOKIE_DAYS) ⇒ sau đó khách có thể
+    //    thử lại (server vẫn chặn ở lớp thứ 2).
+    function checkAutoRedirectJunkBlocked() {
+        try {
+            if (shouldBypassRedirect()) return;
+            const path = (window.location.pathname || '').toLowerCase();
+            if (path.indexOf('chucmung') === -1 && isJunkBlocked()) {
+                redirectAfterJunk();
+            }
+        } catch (_) {}
+    }
+    checkAutoRedirectJunkBlocked();
+
     // ============================================================
     // 5. CẤU HÌNH LANDING & TỰ ĐỘNG LOAD TỪ config.json
     // ============================================================
@@ -1756,6 +1952,23 @@
         const nguon = formData.nguon || formData.source || landingCfg.nguon;
         const phone = formData.phoneNumber || formData.phone || formData.so_dien_thoai || currentPhone;
 
+        // ⛔ CHẶN SỐ ĐIỆN THOẠI "RÁC" — CHẶN TRƯỚC KHI GỬI LÊN SERVER (2026-11-16)
+        //
+        // Lý do: mỗi lượt gửi form ⇒ 1 lead ⇒ 1 sự kiện Meta Conversions API ⇒
+        // TỐN TIỀN QC. Người dùng cố tình nhập SĐT rác (vd "0987654321")
+        // chỉ để đốt tiền quảng cáo.
+        //
+        // ⇒ Lưu cookie chặn + chuyển thẳng sang trang "chúc mừng" ⇒ KHÔNG
+        //   gửi payload lên server ⇒ KHÔNG tạo lead ⇒ KHÔNG bắn CAPI.
+        //
+        // ⚠️ Đây là CHOKEPOINT quan trọng nhất: mọi landing (doanh_chung,
+        //    xu_huong_1/2/3, landing tự tạo trong CRM) đều dùng chung
+        //    tracker.js ⇒ chặn 1 lần là áp dụng cho TẤT CẢ.
+        if (blockJunkPhone(phone)) {
+            // KHÔNG gọi server, KHÔNG bắn fbq('track','Lead'), KHÔNG ping analytics.
+            return { success: true, message: 'Dữ liệu lead đã được ghi nhận thành công', blocked: true };
+        }
+
         // ⚠️ CHỐNG GỬI TRÙNG: nhiều handler submit có thể gọi hàm này cho cùng
         // 1 lần bấm của khách (xem giải thích ở LEAD_DEDUP_WINDOW_MS).
         // Gửi trùng làm request sau bị server ghi vào spam_quarantine ⇒ lead thật
@@ -2140,6 +2353,20 @@
                         phoneInput.focus();
                         return;
                     }
+                    // ⛔ CHẶN SỐ ĐIỆN THOẠI "RÁC" (2026-11-16)
+                    //
+                    // Chặn NGAY khi bấm nút "Đăng ký" ⇒ lưu cookie + chuyển
+                    // sang trang "chúc mừng" ⇒ KHÔNG gửi lên server ⇒ không
+                    // tạo lead ⇒ không tốn tiền QC.
+                    //
+                    // ⚠️ Lớp chặn thứ 2 (sau `sendLeadToBackend`) vì có landing
+                    //    tự xử lý form riêng (vd `registrationForm` với
+                    //    `__REGISTRATION_FORM_HANDLED__`) ⇒ bypass interceptor.
+                    if (blockJunkPhone(clean)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
                     // Đã vượt qua validate SĐT ⇒ đánh dấu để phễu form (Tab 4) biết
                     // khách đã "Validation Passed" dù sau đó có gửi thành công hay không.
                     formValidationPassed = true;
@@ -2268,6 +2495,12 @@
         initAutoFormInterceptor: initAutoFormInterceptor,
         isValidVietnamPhone: isValidVietnamPhone,
         cleanPhoneValue: cleanPhoneValue,
+        // ⛔ API chặn SĐT rác (2026-11-16) — landing tự xử lý form riêng
+        // (vd: doanh_chung, xu_huong_*) có thể gọi để chặn TRƯỚC khi gửi.
+        isJunkPhone: isJunkPhone,
+        blockJunkPhone: blockJunkPhone,
+        isJunkBlocked: isJunkBlocked,
+        redirectAfterJunk: redirectAfterJunk,
         // API mới (2026-11-12) — dùng cho landing tích hợp riêng (vd: doanh_chung)
         collectMetaTracking: collectMetaTracking,
         collectDeviceInfo: collectDeviceInfo,

@@ -93,6 +93,14 @@ func ExtractLeadValue(fieldName string, customText string, lead *models.Lead, tr
 		}
 		return trackingString(trackingData, "lead_id")
 
+	// ⛔ CỜ LEAD TEST (2026-11-16): "Có" / "" để đối soát trên Sheet.
+	// Lead test KHÔNG tính vào biểu đồ/thông số nhưng VẪN đồng bộ sang Sheet.
+	case "is_test", "lead_test":
+		if lead != nil && lead.IsTest {
+			return "Có"
+		}
+		return ""
+
 	// ─── CRM Pipeline ───────────────────────────────────────────────
 	case "trang_thai", "status":
 		if lead != nil && lead.TrangThai != "" {

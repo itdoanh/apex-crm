@@ -71,6 +71,10 @@ var leadFieldCatalog = []LeadFieldOption{
 	{Key: "nguoi_phu_trach", Label: "Nhân Viên Phụ Trách", Group: FieldGroupLead},
 	{Key: "ghi_chu", Label: "Ghi Chú Tư Vấn", Group: FieldGroupLead},
 	{Key: "lead_id", Label: "Mã Lead (Hệ Thống)", Group: FieldGroupLead},
+	// ⛔ CỜ LEAD TEST (2026-11-16): "Có" khi tên khách chứa "(test)".
+	// Lead test KHÔNG tính vào biểu đồ/thông số nhưng VẪN đồng bộ sang
+	// Sheet ⇒ cần cột để đối soát & loại khỏi báo cáo doanh thu.
+	{Key: "is_test", Label: "Lead Test", Header: "Lead Test", Group: FieldGroupLead},
 
 	// ─── CRM Pipeline ───────────────────────────────────────────────
 	{Key: "trang_thai", Label: "Trạng Thái Lead (Mã)", Group: FieldGroupCRM},

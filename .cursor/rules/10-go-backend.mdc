@@ -259,6 +259,25 @@ mux.HandleFunc("/api/admin/audit-logs",
 4. Nếu frontend đọc trực tiếp từ JSON → grep toàn `frontend/admin/js/`.
 5. Cập nhật `docs/DATABASE.md`.
 
+### Cờ `is_test` (lead test) — lọc mặc định (thêm 2026-11-16)
+
+Cột `leads.is_test BOOLEAN` đánh dấu lead mà tên chứa `(test)`.
+
+```go
+// ✅ buildWhereClause() — mặc định LOẠI lead test khỏi thống kê/biểu đồ
+conditions = append(conditions, "COALESCE(is_test, FALSE) = FALSE")
+
+// ✅ Bảng CRM + export CSV — GIỮ lead test (admin cần nhìn thấy)
+whereClause, args := buildWhereClauseEx(..., includeTest=true)
+```
+
+> ⚠️ Query thống kê nào đọc `leads` mà **không** dùng `buildWhereClause` (vd subquery
+> trong `ListLandingPages`, `GetMetaCampaignBreakdown`) ⇒ **phải tự thêm**
+> `WHERE COALESCE(is_test, FALSE) = FALSE`.
+>
+> ⚠️ `AssociateLeadToSession(..., isTest)` ⇒ lead test **không** set
+> `converted_lead = TRUE` / action `converted` ⇒ biểu đồ analytics + CR% không tính.
+
 ---
 
 ## 10. Không làm

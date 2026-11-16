@@ -1822,7 +1822,11 @@ func (s *Store) GetReportQuarantine(landingID string, limit int, offset int) (ma
 // ApproveQuarantineLead cứu một lead bị chặn nhầm: đẩy thẳng vào CRM.
 //
 // ⚠️ Đây là hành động ghi dữ liệu nghiệp vụ — chỉ admin đã đăng nhập mới gọi được.
-func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, error) {
+//
+// 📌 2026-11-16: trả về THÊM `lead` + `rawData` để tầng handler có thể đồng
+// bộ sang Google Sheets ngay sau khi duyệt (yêu cầu: "số được duyệt thì cũng
+// được đồng bộ vào sheet theo cấu hình kết nối nếu có").
+func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, *models.Lead, map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -1833,12 +1837,12 @@ func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, error) {
 		WHERE id = $1
 	`, id).Scan(&payloadText, &reason, &landingID, &nguon)
 	if err != nil {
-		return nil, fmt.Errorf("không tìm thấy request trong vùng cách ly: %w", err)
+		return nil, nil, nil, fmt.Errorf("không tìm thấy request trong vùng cách ly: %w", err)
 	}
 
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(payloadText), &payload); err != nil {
-		return nil, fmt.Errorf("payload không hợp lệ: %w", err)
+		return nil, nil, nil, fmt.Errorf("payload không hợp lệ: %w", err)
 	}
 
 	pick := func(keys ...string) string {
@@ -1852,7 +1856,7 @@ func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, error) {
 
 	phone := pick("phoneNumber", "phone", "so_dien_thoai", "tel")
 	if phone == "" {
-		return nil, fmt.Errorf("request bị chặn không có số điện thoại ⇒ không thể duyệt")
+		return nil, nil, nil, fmt.Errorf("request bị chặn không có số điện thoại ⇒ không thể duyệt")
 	}
 	name := pick("fullName", "name", "ho_ten", "customer_name")
 
@@ -1867,10 +1871,10 @@ func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, error) {
 		pick("ad_platform"), pick("ad_placement"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("không tạo được lead: %w", err)
+		return nil, nil, nil, fmt.Errorf("không tạo được lead: %w", err)
 	}
 	if !isNew {
-		return nil, fmt.Errorf("số điện thoại %s đã tồn tại trong CRM", phone)
+		return nil, nil, nil, fmt.Errorf("số điện thoại %s đã tồn tại trong CRM", phone)
 	}
 
 	// Ghi chú lại nguồn gốc (duyệt thủ công từ vùng cách ly).
@@ -1888,7 +1892,7 @@ func (s *Store) ApproveQuarantineLead(id int) (map[string]interface{}, error) {
 		"lead_id": lead.ID,
 		"phone":   phone,
 		"name":    name,
-	}, nil
+	}, lead, payload, nil
 }
 
 // ══════════════════════════════════════════════════════════════════════

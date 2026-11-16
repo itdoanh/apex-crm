@@ -286,8 +286,16 @@ function normalizeStatusLocal(raw) {
 
                 const cleanPhone = lead.so_dien_thoai.replace(/\s+/g, '');
 
+                // ⛔ Badge LEAD TEST (2026-11-16): lead tên chứa "(test)" ⇒ đánh dấu
+                // rõ ràng trong bảng CRM để admin không nhầm là lead thật.
+                // (Lead test KHÔNG tính vào biểu đồ / thông số nhưng VẪN hiện ở đây.)
+                const isTest = lead.is_test === true || lead.is_test === 'true';
+                const testBadge = isTest
+                    ? '<span class="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40" title="Lead test — không tính vào biểu đồ/thông số">TEST</span>'
+                    : '';
+
                 return `
-                    <tr class="hover:bg-slate-800/60 transition cursor-pointer group" onclick="openLeadDrawer(${lead.id})">
+                    <tr class="hover:bg-slate-800/60 transition cursor-pointer group ${isTest ? 'opacity-70' : ''}" onclick="openLeadDrawer(${lead.id})">
                         <td class="py-3 px-3 text-center font-mono text-slate-500 text-[11px]">#${lead.id}</td>
                         <td class="py-3 px-4">
                             <div class="flex items-center space-x-2.5">
@@ -295,7 +303,9 @@ function normalizeStatusLocal(raw) {
                                     ${escapeHTML(fullName.charAt(0))}
                                 </div>
                                 <div>
-                                    <div class="font-bold text-slate-100 group-hover:text-orange-400 transition">${escapeHTML(fullName)}</div>
+                                    <div class="font-bold text-slate-100 group-hover:text-orange-400 transition flex items-center gap-1.5">
+                                        ${escapeHTML(fullName)} ${testBadge}
+                                    </div>
                                     <div class="text-[10px] text-slate-500 font-mono">${escapeHTML(tr.server_ip || '-')}</div>
                                 </div>
                             </div>
@@ -403,10 +413,18 @@ function normalizeStatusLocal(raw) {
                     const adPlatform = lead.ad_platform || tr.ad_platform || 'Trực Tiếp';
                     const adPlacement = lead.ad_placement || tr.ad_placement || 'Trực Tiếp';
 
+                    // ⛔ Badge LEAD TEST (2026-11-16) — xem giải thích ở bảng desktop.
+                    const isTest = lead.is_test === true || lead.is_test === 'true';
+                    const testBadge = isTest
+                        ? '<span class="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 flex-shrink-0" title="Lead test — không tính vào biểu đồ/thông số">TEST</span>'
+                        : '';
+
                     return `
-                        <div class="bg-slate-950 border border-slate-800 hover:border-orange-500/60 p-3 rounded-xl shadow cursor-pointer transition space-y-2 group" onclick="openLeadDrawer(${lead.id})">
+                        <div class="bg-slate-950 border border-slate-800 hover:border-orange-500/60 p-3 rounded-xl shadow cursor-pointer transition space-y-2 group ${isTest ? 'opacity-70' : ''}" onclick="openLeadDrawer(${lead.id})">
                             <div class="flex items-start justify-between gap-1">
-                                <div class="font-bold text-white text-xs group-hover:text-orange-400 transition truncate">${escapeHTML(fullName)}</div>
+                                <div class="font-bold text-white text-xs group-hover:text-orange-400 transition truncate flex items-center gap-1.5">
+                                    ${escapeHTML(fullName)} ${testBadge}
+                                </div>
                                 <span class="text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${getCarrierBadgeClass(carrier)} flex-shrink-0">${escapeHTML(carrier)}</span>
                             </div>
 

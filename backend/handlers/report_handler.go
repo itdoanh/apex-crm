@@ -318,28 +318,16 @@ func (h *ReportHandler) HandleQuarantine(w http.ResponseWriter, r *http.Request)
 
 // ─── POST /api/analytics/report/quarantine/approve ────────────────────
 //
-// Duyệt thủ công một lead bị chặn nhầm ⇒ đẩy thẳng về CRM.
-func (h *ReportHandler) HandleApproveQuarantine(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"success": false, "error": "Chỉ chấp nhận POST"})
-		return
-	}
-
-	var body struct {
-		ID int `json:"id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "Thiếu id hợp lệ"})
-		return
-	}
-
-	result, err := h.store.ApproveQuarantineLead(body.ID)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": result})
-}
+// Duyệt thủ công một lead bị chặn nhầm ⇒ đẩy thẳng về CRM **và đồng bộ
+// sang Google Sheets** theo cấu hình kết nối.
+//
+// 📌 2026-11-16: handler đã CHUYỂN sang `LeadHandler.HandleApproveQuarantine`
+//    (file `lead_handler.go`) vì cần `syncLeadToGoogleSheets()` — hàm duy
+//    nhất biết tra cấu hình sheet theo landing + domain rồi append dòng vào
+//    đúng sheet được gán.
+//
+// ⚠️ GIỮ hàm này (deprecated) để không phá vỡ ai đang gọi trực tiếp — nhưng
+//    route trong `main.go` đã trỏ sang `leadHandler`.
 
 // ─── GET /api/analytics/report/journey ───────────────────────────────
 //
