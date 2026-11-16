@@ -133,9 +133,18 @@ landingEdgeRouter(r):
   5. Chặn file ẩn (tên bắt đầu bằng ".")
   6. Whitelist đuôi file được phép phục vụ
   7. Fallback: tìm file trong frontend/landing, frontend/admin, static/
+     7a. File .html tĩnh → PHẢI resolve được landing context (ResolveRoute "/" hoặc
+         ResolveChucMungRoute) để InjectDynamicScriptsWithBase() gắn data-landing-id.
+         Không resolve được → 404 (KHÔNG phục vụ HTML thô ⇒ tracker.js ghi nhầm landing).
 ```
 
 **Điểm quan trọng:** `subPath` có đuôi file (`.js`, `.css`) nhưng không tìm thấy → trả `404` với MIME đúng, **tuyệt đối không fallback về HTML landing** (tránh trả HTML sai kiểu cho file JS).
+
+> ⚠️ **Route prefix phải khớp URL dạng `/<tên>.html`** (fix 2026-11-16): `ResolveRoute`
+> kiểm tra thêm `strings.TrimSuffix(cleanPath, ".html") == pfx` ⇒ `/chucmung.html` khớp
+> route `/chucmung`. Nếu thiếu, trang chúc mừng rơi xuống **bước 7** (file tĩnh từ đĩa)
+> ⇒ mất `data-landing-id` ⇒ thống kê view/lead **chồng chéo giữa các landing**.
+> Chi tiết: `docs/LANDING.md` mục 7.1.
 
 ### 3.3. RAM Cache
 
@@ -144,7 +153,7 @@ landingEdgeRouter(r):
 | `LandingCache` | `page_id` → landing config + HTML | `Get(host, pageID)`, `GetByPageID(pageID)`, `Reload()` |
 | `DomainCache` | `domain` → sorted routes (prefix dài → ngắn) | `ResolveRoute(host, path)`, `HasDomain(host)`, `Reload()` |
 
-`DomainCache` dùng **Longest Prefix Match**: `/landing` được ưu tiên hơn `/`, và `/` luôn ở cuối.
+`DomainCache` dùng **Longest Prefix Match**: `/landing` được ưu tiên hơn `/`, và `/` luôn ở cuối. Ngoài ra route prefix khớp cả URL dạng `/<tên>.html` (fix 2026-11-16 — xem mục 3.2).
 
 **Bất biến:** mọi handler ghi vào `landing_pages` / `domains` / `domain_routes` **phải gọi `Reload()`** sau khi ghi, nếu không thay đổi sẽ không hiện ra cho người dùng.
 

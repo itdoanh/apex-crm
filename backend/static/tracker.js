@@ -1286,8 +1286,21 @@
         if (!currentLandingId && window.APEX_LANDING_CONFIG && window.APEX_LANDING_CONFIG.landing_id) {
             currentLandingId = window.APEX_LANDING_CONFIG.landing_id;
         }
+        // ⚠️ KHÔNG được fallback sang landing ID của template (`mxv_080_online`)
+        // hay landing ID nào khác khi trang không có định danh rõ ràng.
+        //
+        // BỐI CẢNH (fix 2026-11-16 — bug chồng chéo thông số landing):
+        //   Fallback cứng `'mxv_080_online'` khiến MỌI trang bị phục vụ mà
+        //   không có `data-landing-id` (vd trang chúc mừng `/chucmung.html`
+        //   bị serve thẳng từ đĩa) đều ghi analytics/lead về template dùng
+        //   chung ⇒ lượt xem & lead của landing thật bị ghi nhầm ⇒ tab
+        //   Quản lý Landing hiển thị thông số chồng chéo.
+        //
+        // ⇒ Khi không xác định được landing, DỪNG lại (không nạp config sai).
+        //   `getLandingConfig()` sẽ tự dùng `default_landing` ⇒ dữ liệu được
+        //   ghi vào nhóm "không xác định" thay vì ghi nhầm vào landing khác.
         if (!currentLandingId) {
-            currentLandingId = 'mxv_080_online';
+            return window.APEX_LANDING_CONFIG || {};
         }
 
         // 1. Ưu tiên gọi Dynamic Backend Configuration API (<0.1ms RAM Cache)
@@ -1381,10 +1394,20 @@
             }
         }
 
+        // ⚠️ KHÔNG dùng `window.LadiPageScript.runtime.ladipage_id` làm fallback.
+        //
+        // BỐI CẢNH (fix 2026-11-16 — bug chồng chéo thông số landing):
+        //   `ladipage_id` là ID nội bộ của LadiPage (vd `6adc99f23115ac001247de00`),
+        //   KHÔNG phải `page_id` trong hệ thống Apex. Dùng nó làm `landing_id`
+        //   ⇒ sinh ra các landing ID RÁC trong `analytics_sessions` ⇒ chúng
+        //   không khớp landing nào trong CRM ⇒ vừa nhiễu thống kê toàn hệ
+        //   thống, vừa làm thay đổi chồng chéo giữa các landing.
+        //
+        //   Thay vào đó: nếu không xác định được landing ⇒ `default_landing`
+        //   (nhóm riêng, dễ nhận diện & sửa lại sau), KHÔNG ghi nhầm.
         const landingId = scriptLandingId ||
             globalConfig.landing_id || globalConfig.landingId || window.APEX_LANDING_ID ||
             urlLandingId ||
-            (window.LadiPageScript && window.LadiPageScript.runtime && window.LadiPageScript.runtime.ladipage_id) ||
             'default_landing';
 
         const finalLandingId = String(landingId).trim();

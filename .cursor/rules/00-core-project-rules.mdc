@@ -48,6 +48,28 @@ alwaysApply: true
     `syncLeadStatusToGoogleSheets()` tra `google_sheet_sync_logs.row_range` rồi
     `Values.BatchUpdate` đúng dòng. Ô rỗng ⇒ bỏ qua. `RAW` (không diễn giải `=`
     là công thức — chống formula injection qua ghi chú sales).
+15. **Cách ly row landing theo domain** (fix 2026-11-16) — `UpdateLandingCode` chỉ
+    update `WHERE domain = $3 AND page_id = $4` (KHÔNG `OR domain = ''`) ·
+    `EnsureLandingPageDomainRow()` clone row gốc (`domain=''`) trước khi update ·
+    `ToggleLandingActiveBase()` chỉ toggle row template (dùng khi deploy).
+    Sai ⇒ ghi đè template ⇒ **thống kê chồng chéo giữa các landing đã nhân bản**.
+16. **Route prefix khớp URL dạng `/<tên>.html`** (fix 2026-11-16) —
+    `DomainCache.ResolveRoute` kiểm tra thêm
+    `strings.TrimSuffix(cleanPath, ".html") == pfx` ⇒ `/chucmung.html` khớp route
+    `/chucmung`. Thiếu ⇒ trang chúc mừng rơi xuống nhánh phục vụ file tĩnh từ đĩa
+    ⇒ mất `data-landing-id` ⇒ tracker ghi nhầm landing.
+17. **File `.html` tĩnh phải có landing context** (fix 2026-11-16) — bước 7 edge
+    router (`backend/main.go`): không resolve được landing ⇒ **404**, KHÔNG phục vụ
+    HTML thô.
+18. **`tracker.js` KHÔNG fallback về template/ID rác** (fix 2026-11-16) — đã bỏ
+    fallback `'mxv_080_online'` và `window.LadiPageScript.runtime.ladipage_id`.
+    Chuỗi resolve duy nhất: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id`
+    → `APEX_LANDING_ID` → URL → `'default_landing'`.
+19. **Thống kê landing tách human/bot** (fix 2026-11-16) — `ListLandingPages()`
+    trả `views_count` (tổng) · `human_views_count` (`FILTER (WHERE NOT is_bot)`) ·
+    `bot_views_count`; CR% trong tab Quản lý Landing dùng `human_views_count`
+    (khớp công thức tab Trung Tâm Báo Cáo); `domains []string` lấy từ
+    `domain_routes`.
 
 ## Nguyên tắc bảo mật
 
