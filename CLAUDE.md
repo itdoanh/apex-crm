@@ -76,6 +76,20 @@
     - `AssociateLeadToSession(..., isTest)` ⇒ KHÔNG set `converted_lead`.
     - Meta CAPI ⇒ **KHÔNG bắn**.
 31. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) — route `POST /api/analytics/report/quarantine/approve` do `LeadHandler.HandleApproveQuarantine` xử lý (cần `syncLeadToGoogleSheets()`). `store.ApproveQuarantineLead(id)` trả `(result, lead, rawData, error)` ⇒ handler gọi `go h.syncLeadToGoogleSheets(lead, rawData)`.
+32. **Dedup PageView Pixel ↔ CAPI — `event_id` dùng chung** (fix 2026-11-16) —
+ Meta CHỈ gộp sự kiện browser (`fbq`) với server (CAPI) khi cả hai dùng CHUNG
+ `event_id`. Không đồng bộ ⇒ **1 lượt xem bị đếm 2 lượt PageView**.
+ - `eventID` là **tham số THỨ 4** của `fbq` — KHÔNG phải thuộc tính trong object
+   tham số 3. `fbq('track','PageView',{},{eventID: pvEventId})` ✅
+ - Backend `backend/handlers/landing_handler.go`: `injectPageViewEventIDSnippet()` (đầu
+   `<head>`, sinh MỘT `window.APEX_PV_EVENT_ID` prefix `pv-`) ·
+   `rewritePageViewWithEventID()` (ghi đè mọi `fbq('track','PageView')` hardcode) ·
+   block Meta Pixel auto-inject kèm eventID.
+ - Client `tracker.js`: `ensurePageViewEventId()` + `buildAnalyticsPayload()` gửi
+   `event_id` lên server trong payload analytics.
+ - Server `dispatchCAPIPageView()`: landing CÓ Pixel ⇒ chỉ bắn CAPI PageView khi có
+   `event_id` CHUNG (payload, fallback `analytics_sessions.pv_event_id`) · thiếu ⇒ KHÔNG bắn.
+ - DB: `analytics_sessions.pv_event_id` — giữ giá trị ĐẦU TIÊN của phiên.
 
 ## Production
 

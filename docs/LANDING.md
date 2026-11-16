@@ -308,6 +308,66 @@ phát hiện `window.fbq !== window._fbq` ⇒ Meta báo trong console:
 > ⚠️ Đừng dùng `LIKE '%_bq%'` để tìm lỗi này — `_` là wildcard trong `LIKE` nên sẽ
 > match nhầm. Dùng `strpos()` + `replace()` (literal, không phải regex).
 
+### ⚠️ Dedup PageView: `event_id` dùng chung Pixel ↔ CAPI (fix 2026-11-16)
+
+**Vấn đề:** nếu cả Pixel trên web và CAPI trên server cùng bắn `PageView` mà
+**không đồng bộ `event_id`**, Meta sẽ tính **1 lượt vào trang thành 2 lượt
+PageView** ⇒ sai lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+
+**Điều kiện để Meta gộp 2 sự kiện làm 1:**
+
+1. `event_name` giống nhau — đều là `PageView`.
+2. `event_id` trùng khớp **100%** — biến `pvEventId` bắn ở `fbq('track', …)`
+   phải được gửi kèm lên API server để server truyền vào trường `"event_id"`
+   trong payload CAPI.
+3. Thứ tự thời gian — trình duyệt gọi `fbq('track', 'PageView')` **trước**
+   (để kịp sinh cookie `_fbp`), sau đó mới gửi request kích hoạt CAPI kèm
+   cookie `_fbp`, `_fbc`, `client_user_agent` và `pvEventId`.
+
+⚠️ `eventID` là **tham số thứ 4** của `fbq` — KHÔNG phải thuộc tính trong object
+tham số 3:
+
+```js
+// ✅ ĐÚNG
+fbq('track', 'PageView', {}, { eventID: pvEventId });
+// ❌ SAI — Meta không đọc được eventID ⇒ không gộp
+fbq('track', 'PageView', { eventID: pvEventId });
+```
+
+**Cơ chế đã triển khai:**
+
+| Tầng | Thành phần | Nội dung |
+|---|---|---|
+| Server | `injectPageViewEventIDSnippet()` | Chèn script ở **đầu `<head>`** sinh MỘT `window.APEX_PV_EVENT_ID` (prefix `pv-`). Idempotent. |
+| Server | `rewritePageViewWithEventID()` | Ghi đè mọi lệnh `fbq('track','PageView')` **hardcode trong HTML landing** (export LadiPage) để kèm `{ eventID: window.APEX_PV_EVENT_ID }`. Lệnh đã có `eventID` ⇒ giữ nguyên. |
+| Server | `InjectDynamicScriptsWithBase()` | Block Meta Pixel auto-inject cũng kèm `{ eventID: window.APEX_PV_EVENT_ID }`. |
+| Client | `ensurePageViewEventId()` (`tracker.js`) | Đọc `window.APEX_PV_EVENT_ID` (do server inject) hoặc tự sinh ⇒ **1 giá trị duy nhất / lần tải trang**. |
+| Client | `buildAnalyticsPayload()` | Gửi `event_id` lên server trong payload `/api/analytics/track`. |
+| Server | `dispatchCAPIPageView()` | Landing **có** Pixel ⇒ chỉ bắn CAPI PageView khi có `event_id` **chung** (từ payload, fallback `analytics_sessions.pv_event_id`). Thiếu ⇒ **bỏ qua server PageView** (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt). |
+| DB | `analytics_sessions.pv_event_id` | Lưu `event_id` đầu tiên của phiên (fallback khi ping đầu bị throttle / client cache bản tracker.js cũ). |
+
+**HTML landing viết tay** (Code Studio) nên dùng mẫu sau:
+
+```html
+<!-- Meta Pixel Code -->
+<script>
+  !function (f, b, e, v, n, t, s) { /* …fbevents.js… */ }(window, document, 'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+
+  // Tạo hoặc lấy event_id đồng bộ với request gửi về server CAPI
+  window.APEX_PV_EVENT_ID = window.APEX_PV_EVENT_ID ||
+      ('pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+  var pvEventId = window.APEX_PV_EVENT_ID;
+
+  fbq('init', '1558828029597854');
+  fbq('track', 'PageView', {}, { eventID: pvEventId });
+</script>
+```
+
+**Kiểm tra trong CRM:** tab **Quảng cáo Facebook** → bảng *Lịch sử gửi sự kiện* →
+cột `event_id` hiển thị đầy đủ + badge **"✓ đã gộp với Pixel"** cho sự kiện
+`PageView` có prefix `pv-`.
+
 ### ⚠️ `success_redirect` không được chứa domain (fix 2026-11-06)
 
 `form_config.success_redirect` trong CSDL của `landing_cu` từng được cấu hình là:

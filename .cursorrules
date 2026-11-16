@@ -41,6 +41,11 @@
 25. **Chặn SĐT rác — 2 lớp, KHÔNG tốn tiền QC** (fix 2026-11-16) — CLIENT `tracker.js` → `blockJunkPhone()` chặn TRƯỚC khi gọi `fetch` ⇒ cookie `apex_junk_blocked_<landing>` (30 ngày) + chuyển `chucmung.html` ⇒ KHÔNG POST `/api/leads`, KHÔNG bắn CAPI. SERVER `backend/security/junk_phone.go` chặn phụ (ghi `spam_quarantine`, trả 200 giả). Heuristic rất chặt — KHÔNG chặn nhầm số thật
 26. **Lead test (tên chứa `(test)`) ⇒ `leads.is_test`** (fix 2026-11-16) — VẪN hiện ở CRM + VẪN đồng bộ Google Sheets, nhưng KHÔNG tính vào biểu đồ/thống kê/CR% và KHÔNG bắn Meta CAPI
 27. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) — `POST /api/analytics/report/quarantine/approve` do `LeadHandler` xử lý ⇒ lead duyệt vừa vào CRM vừa vào sheet theo cấu hình
+28. **Dedup PageView Pixel ↔ CAPI — `event_id` dùng chung** (fix 2026-11-16) — Meta CHỈ gộp browser (`fbq`) ↔ server (CAPI) khi CHUNG `event_id`. Không đồng bộ ⇒ 1 lượt xem đếm 2 lần PageView.
+ - `eventID` là tham số **THỨ 4** của `fbq` — KHÔNG phải thuộc tính trong object tham số 3
+ - Backend: `injectPageViewEventIDSnippet()` (đầu `<head>`, `window.APEX_PV_EVENT_ID` prefix `pv-`) + `rewritePageViewWithEventID()` (ghi đè mọi `fbq('track','PageView')` hardcode)
+ - Client: `tracker.js` `ensurePageViewEventId()` + `buildAnalyticsPayload()` gửi `event_id`
+ - Server: `dispatchCAPIPageView()` chỉ bắn CAPI PageView khi có event_id CHUNG · DB: `analytics_sessions.pv_event_id`
 
 ## Production
 

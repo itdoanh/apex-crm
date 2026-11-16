@@ -334,6 +334,31 @@ func (s *Store) HasFacebookCAPISessionEvent(sessionID, eventName string) (bool, 
 	return exists, nil
 }
 
+// GetSessionPvEventID đọc `event_id` của PageView đã lưu theo phiên.
+//
+// Dùng làm FALLBACK khi client không gửi `event_id` trong payload analytics
+// (vd: trình duyệt cache bản tracker.js cũ, hoặc ping đầu tiên bị throttle).
+//
+// ⚠️ Bắt buộc cho dedup Pixel ↔ CAPI (fix 2026-11-16): server phải dùng
+// ĐÚNG event_id mà Pixel đã bắn, nếu không Meta sẽ tính 1 lượt xem thành 2.
+func (s *Store) GetSessionPvEventID(sessionID string) (string, error) {
+	if sessionID == "" {
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const q = `SELECT pv_event_id FROM analytics_sessions WHERE session_id = $1`
+	var eventID string
+	if err := s.pool.QueryRow(ctx, q, sessionID).Scan(&eventID); err != nil {
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return eventID, nil
+}
+
 // ListFacebookCAPILogs trả về log gửi sự kiện (mới nhất trước).
 func (s *Store) ListFacebookCAPILogs(landingID string, status string, eventName string, leadID uint64, limit int) ([]models.FacebookCAPIEvent, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)

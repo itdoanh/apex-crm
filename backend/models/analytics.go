@@ -76,6 +76,21 @@ type AnalyticsEventPayload struct {
 	Igshid      string `json:"igshid,omitempty"`
 	MetaClickID string `json:"meta_click_id,omitempty"`
 
+	// ─── Event ID dùng chung Pixel ↔ CAPI (fix 2026-11-16) ────────
+	//
+	// Meta CHỈ gộp (deduplicate) sự kiện trình duyệt (`fbq`) với sự kiện
+	// máy chủ (Conversions API) khi cả hai dùng CHUNG `event_id`.
+	//
+	// ⇒ Nếu Pixel bắn `PageView` với `eventID = pv_xxx` mà server CAPI bắn
+	//   `PageView` với `event_id` KHÁC ⇒ Meta tính 1 lượt xem thành 2 lượt
+	//   ⇒ sai lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+	//
+	// ⇒ Client sinh `pvEventId` (dùng cho `fbq('track','PageView',{},{
+	//   eventID})`), gửi kèm lên server trong payload này ⇒ server truyền
+	//   NGUYÊN VĂN vào trường `event_id` của payload CAPI ⇒ Meta gộp 2 sự
+	//   kiện thành 1.
+	EventID string `json:"event_id,omitempty"`
+
 	// ─── Meta Ads Macros ──────────────────────────────────────────
 	UTMPlacement   string `json:"utm_placement,omitempty"`
 	CampaignName   string `json:"campaign_name,omitempty"`

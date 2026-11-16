@@ -67,9 +67,17 @@ fbq('track', 'PageView');
 	if initCount != 1 {
 		t.Fatalf("HTML đã có pixel ⇒ sau khi render phải còn đúng 1 lần fbq('init'), thực tế = %d", initCount)
 	}
-	pvCount := strings.Count(out, "fbq('track', 'PageView')")
+	pvCount := strings.Count(out, "fbq('track', 'PageView'")
 	if pvCount != 1 {
 		t.Fatalf("PageView phải được bắn đúng 1 lần, thực tế = %d", pvCount)
+	}
+	// ⚠️ Dedup Pixel ↔ CAPI (fix 2026-11-16): mọi lệnh PageView phải kèm
+	// `eventID` (tham số thứ 4) để Meta gộp được với server CAPI.
+	if !strings.Contains(out, "fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID })") {
+		t.Fatalf("PageView phải kèm eventID để dedup với CAPI:\n%s", out)
+	}
+	if !strings.Contains(out, "window.APEX_PV_EVENT_ID =") {
+		t.Fatalf("phải inject script sinh window.APEX_PV_EVENT_ID:\n%s", out)
 	}
 }
 
@@ -90,7 +98,10 @@ func TestInjectDynamicScripts_StillInjectsWhenNoPixel(t *testing.T) {
 	if !strings.Contains(out, "fbq('init', '111222333')") {
 		t.Fatal("landing chưa có pixel ⇒ backend phải inject Meta Pixel")
 	}
-	if !strings.Contains(out, "fbq('track', 'PageView')") {
+	if !strings.Contains(out, "fbq('track', 'PageView'") {
 		t.Fatal("phải bắn PageView khi inject pixel")
+	}
+	if !strings.Contains(out, "{ eventID: window.APEX_PV_EVENT_ID }") {
+		t.Fatalf("PageView auto-inject phải kèm eventID để dedup với CAPI:\n%s", out)
 	}
 }

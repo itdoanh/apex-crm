@@ -392,15 +392,16 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 
 	// ─── Meta Conversions API: PageView server-side ──────────────────
 	//
-	// ⚠️ CHỈ bắn khi landing KHÔNG có Meta Pixel browser.
+	// ⚠️ DEDUP PIXEL ↔ CAPI (fix 2026-11-16):
 	//
-	// VÌ SAO: landing có Pixel ⇒ Pixel đã bắn `fbq('track','PageView')`.
-	// Nếu server bắn thêm ⇒ 1 lượt xem bị đếm 2 lần (không có event_id
-	// chung để dedup vì Pixel không truyền eventID cho PageView) ⇒ số lượt
-	// hiển thị & chi phí quảng cáo bị phồng.
+	// Landing có Pixel ⇒ Pixel đã bắn `fbq('track','PageView')`.
+	// Nếu server bắn thêm mà KHÔNG có `event_id` chung ⇒ 1 lượt xem bị đếm
+	// 2 lần ⇒ số lượt hiển thị & chi phí quảng cáo bị phồng.
 	//
-	// Landing KHÔNG có Pixel (hoặc Pixel bị chặn) ⇒ server gửi PageView để
-	// vẫn thu thập được lượt hiển thị trên Meta Ads Manager.
+	// ⇒ Server CHỈ bắn PageView khi:
+	//   1. Landing KHÔNG có Pixel (server là nguồn duy nhất), HOẶC
+	//   2. Landing CÓ Pixel nhưng có `event_id` CHUNG (client gửi kèm trong
+	//      payload analytics) ⇒ Meta gộp 2 sự kiện thành 1.
 	//
 	// Chạy goroutine riêng ⇒ không chặn response analytics.
 	go h.dispatchCAPIPageView(&p, clientIP, rawUA)
@@ -433,8 +434,29 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 	if p.IsBot {
 		return
 	}
-	// Landing có Pixel browser ⇒ KHÔNG bắn PageView server-side.
-	if h.landingHasMetaPixel(p.LandingID) {
+
+	// ⚠️ DEDUP PAGEVIEW PIXEL ↔ CAPI (fix 2026-11-16).
+	//
+	// Landing có Meta Pixel browser ⇒ Pixel ĐÃ bắn `fbq('track','PageView')`.
+	// Nếu server KHÔNG bắn CAPI ⇒ thiếu PageView cho traffic không chạy JS
+	//   (bot Meta, crawler) — nhưng đó cũng không phải lượt hiển thị thật.
+	// Nếu server CÓ bắn CAPI ⇒ BẮT BUỘC phải dùng CHUNG `event_id` với
+	//   Pixel, nếu không Meta sẽ tính 1 lượt xem thành 2 ⇒ sai lệch toàn bộ
+	//   chỉ số Landing Page View + phân phối quảng cáo.
+	//
+	// ⇒ Ưu tiên `p.EventID` (client gửi kèm trong payload analytics).
+	// ⇒ Fallback: đọc `pv_event_id` đã lưu của phiên (ping đầu bị throttle
+	//   hoặc trình duyệt cache bản tracker.js cũ).
+	// ⇒ Nếu KHÔNG có event_id chung ⇒ BỎ QUA server PageView (an toàn:
+	//   không đếm trùng, chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+	eventID := strings.TrimSpace(p.EventID)
+	if eventID == "" && h.store != nil {
+		if stored, err := h.store.GetSessionPvEventID(p.SessionID); err == nil {
+			eventID = strings.TrimSpace(stored)
+		}
+	}
+	if h.landingHasMetaPixel(p.LandingID) && eventID == "" {
+		// Có Pixel nhưng KHÔNG có event_id chung ⇒ KHÔNG bắn server PageView.
 		return
 	}
 
@@ -449,6 +471,19 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 		ClientIP:  clientIP,
 		UserAgent: rawUA,
 		SessionID: p.SessionID,
+		// ⚠️ EVENT ID DÙNG CHUNG PIXEL ↔ CAPI (fix 2026-11-16).
+		//
+		// Meta CHỈ gộp sự kiện browser (`fbq('track','PageView',{},{eventID})`)
+		// với sự kiện server (CAPI) khi cả hai dùng CHUNG `event_id`.
+		//
+		// ⇒ Client sinh `pvEventId`, bắn Pixel với eventID đó, rồi gửi kèm
+		//   lên server trong payload analytics (`event_id`).
+		// ⇒ Server truyền NGUYÊN VĂN giá trị này vào `event_id` của payload
+		//   CAPI ⇒ Meta gộp 2 sự kiện thành 1 ⇒ 1 lượt xem chỉ tính 1 lần.
+		//
+		// NếU KHÔNG có event_id chung ⇒ Meta tính 1 lượt xem thành 2 ⇒ sai
+		// lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+		EventID: eventID,
 	}
 	lc.Tracking = map[string]interface{}{
 		"fbc":               p.Fbc,
@@ -491,7 +526,8 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 //   1. `settings.facebook_pixel_id` (pixel do backend cấu hình)
 //   2. `code_html` — có `fbq('init'...)` hoặc nạp `fbevents.js`
 //
-// ⇒ Landing nào đã có pixel browser ⇒ KHÔNG bắn PageView server-side.
+// ⇒ Landing nào đã có pixel browser ⇒ server CHỈ bắn PageView khi có
+// `event_id` CHUNG với Pixel (xem `dispatchCAPIPageView`).
 func (h *AnalyticsHandler) landingHasMetaPixel(landingID string) bool {
 	if h.landingCache == nil || landingID == "" {
 		return false

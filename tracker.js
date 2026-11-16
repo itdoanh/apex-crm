@@ -44,6 +44,49 @@
     }
 
     // ============================================================
+    // 1.0.1 EVENT ID DÙNG CHUNG PIXEL ↔ CAPI — PAGEVIEW (fix 2026-11-16)
+    // ------------------------------------------------------------
+    // ⚠️ VẤN ĐỀ: Pixel trình duyệt bắn `fbq('track','PageView')` (KHÔNG có
+    // eventID) trong khi server CAPI bắn `PageView` với `event_id` KHÁC
+    // ⇒ Meta KHÔNG gộp được ⇒ tính 1 lượt xem thành 2 lượt PageView
+    // ⇒ sai lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+    //
+    // CÁCH SỬA:
+    //   1. Sinh MỘT `pvEventId` duy nhất cho 1 lần tải trang.
+    //   2. Pixel bắn `fbq('track','PageView',{},{eventID: pvEventId})`.
+    //   3. tracker.js gửi `event_id = pvEventId` lên server trong payload
+    //      analytics ⇒ server truyền NGUYÊN VĂN vào `event_id` của CAPI.
+    //   4. Meta gộp 2 sự kiện thành 1 ⇒ 1 lượt xem = 1 PageView.
+    //
+    // ⚠️ THỨ TỰ: Pixel PHẢI bắn TRƯỚC (để kịp sinh cookie `_fbp`), sau đó
+    // mới gửi request analytics kèm `_fbp`/`_fbc` + `pvEventId`.
+    //
+    // `window.APEX_PV_EVENT_ID` được backend inject vào `<head>` (xem
+    // `injectPageViewEventIDSnippet` trong backend/handlers/landing_handler.go)
+    // ⇒ dùng CHUNG 1 giá trị với block Pixel hardcode trong HTML landing.
+    let pvEventId = '';
+    function ensurePageViewEventId() {
+        if (pvEventId) return pvEventId;
+        // Ưu tiên giá trị backend inject (đồng bộ với Pixel hardcode trong HTML).
+        try {
+            const injected = (window.APEX_PV_EVENT_ID || '').trim();
+            if (injected) {
+                pvEventId = injected;
+                return pvEventId;
+            }
+        } catch (_) {}
+        try {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                pvEventId = 'pv-' + window.crypto.randomUUID();
+                return pvEventId;
+            }
+        } catch (_) {}
+        pvEventId = 'pv-' + Date.now().toString(36) + '-' +
+            Math.random().toString(36).slice(2, 12);
+        return pvEventId;
+    }
+
+    // ============================================================
     // 1.0 KHÓA NGĂN CÁCH THEO LANDING (TÁCH BIỆT HOÀN TOÀN)
     // ------------------------------------------------------------
     // Mỗi landing page dùng một bộ khóa lưu trữ RIÊNG:
@@ -1444,7 +1487,10 @@
                 t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
                 document,'script','https://connect.facebook.net/en_US/fbevents.js');
                 fbq('init', fbPixelId);
-                fbq('track', 'PageView');
+                // ⚠️ `eventID` là tham số THỨ 4 của fbq (KHÔNG phải thuộc tính
+                // trong object tham số 3) — Meta chỉ gộp browser ↔ server khi
+                // event_id trùng khớp 100%.
+                fbq('track', 'PageView', {}, { eventID: ensurePageViewEventId() });
             } catch (_) {}
         }
     }
@@ -1672,6 +1718,10 @@
             fbp: meta.fbp,
             igshid: meta.igshid,
             meta_click_id: meta.meta_click_id,
+            // ─── Event ID dùng chung Pixel ↔ CAPI (PageView) ───
+            // Pixel bắn `fbq('track','PageView',{},{eventID})` với CÙNG giá trị
+            // này ⇒ Meta gộp 2 sự kiện thành 1 ⇒ không đếm trùng PageView.
+            event_id: ensurePageViewEventId(),
             referrer: document.referrer || '',
             entry_url: window.location.href,
             device_type: dev.device_type,

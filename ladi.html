@@ -156,8 +156,16 @@
             t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
             'https://connect.facebook.net/en_US/fbevents.js');
+            
+        // === [APEX PV EVENT ID] — event_id dùng chung Pixel ↔ CAPI (dedup PageView) ===
+        // Meta chỉ gộp sự kiện trình duyệt (fbq) với sự kiện máy chủ (CAPI)
+        // khi cả hai dùng CHUNG event_id. Giá trị này được tracker.js gửi lên
+        // server (payload analytics "event_id") ⇒ server truyền nguyên văn vào
+        // trường "event_id" của payload CAPI ⇒ Meta gộp 2 sự kiện thành 1.
+        window.APEX_PV_EVENT_ID = window.APEX_PV_EVENT_ID || ('pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+        var pvEventId = window.APEX_PV_EVENT_ID;
             fbq('init', '1558828029597854');
-            fbq('track', 'PageView');
+            fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
     </script>
     <noscript></noscript>
     <script
