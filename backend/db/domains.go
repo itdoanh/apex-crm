@@ -471,7 +471,7 @@ func (s *Store) GetAllActiveDomainRoutes() ([]models.DomainRoute, error) {
 	defer cancel()
 
 	query := `
-		SELECT
+		SELECT DISTINCT ON (dr.id)
 			dr.id, dr.domain_id, LOWER(d.domain) AS domain, dr.path_prefix, dr.landing_id,
 			COALESCE(lp.name, dr.landing_id) AS landing_name,
 			dr.is_active, dr.redirect_url,
@@ -482,9 +482,9 @@ func (s *Store) GetAllActiveDomainRoutes() ([]models.DomainRoute, error) {
 		WHERE dr.is_active = true
 		  AND (
 		    dr.redirect_url IS NOT NULL AND dr.redirect_url <> ''
-		    OR lp.is_active = true
+		    OR EXISTS (SELECT 1 FROM landing_pages lp2 WHERE lp2.page_id = dr.landing_id AND lp2.is_active = true)
 		  )
-		ORDER BY LENGTH(dr.path_prefix) DESC;
+		ORDER BY dr.id, lp.updated_at DESC
 	`
 	rows, err := s.pool.Query(ctx, query)
 	if err != nil {

@@ -482,7 +482,9 @@ func (h *LandingHandler) HandleDeployLanding(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_ = h.store.SaveLandingFile("", payload.PageID, "index.html", "html", payload.CodeHTML)
-	_ = h.store.ToggleLandingActive("", payload.PageID, true)
+	// ⚠️ Chỉ bật BẢN GỐC — không bật/tắt các bản theo domain (trạng thái
+	// domain khác do người dùng cố ý cấu hình, không nên bị deploy ghi đè).
+	_ = h.store.ToggleLandingActiveBase(payload.PageID, true)
 	h.cache.Invalidate("", payload.PageID)
 
 	// 3. Nếu landing đã được cấu hình tên miền hoặc có route, tự động đồng bộ và deploy lên tên miền đó

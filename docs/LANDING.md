@@ -36,6 +36,12 @@ FROM domain_routes r JOIN domains d ON d.id = r.domain_id;
 - `/landing` khớp trước `/`
 - `/` luôn ở cuối danh sách
 
+> ⚠️ **Route prefix khớp cả URL dạng `/<tên>.html`** (fix 2026-11-16):
+> `/chucmung.html` PHẢI khớp route prefix `/chucmung` (không chỉ `/chucmung/`).
+> Nếu không, trang chúc mừng rơi xuống nhánh **phục vụ file tĩnh từ đĩa** ⇒
+> mất `data-landing-id` ⇒ `tracker.js` ghi nhầm landing ⇒ **thống kê chồng chéo**.
+> Chi tiết: mục 7.1.
+
 ---
 
 ## 2. Vòng đời một landing
@@ -927,6 +933,71 @@ analytics bị ghi đè liên tục (`ON CONFLICT` chỉ giữ giá trị mới 
 
 > ⚠️ Đừng đổi `ApexTracker.send()` lại về `sendAnalyticsPing()` — sẽ quay lại lỗi spam request.
 > Thêm 1 kiểu event mới thì dùng `sendAnalyticsPing()` (gửi ngay) nếu event đó quan trọng.
+
+---
+
+## 7.1 🚨 Sửa lỗi thống kê landing CHỒNG CHÉO (fix 2026-11-16)
+
+**Triệu chứng (anh itdoanh báo):**
+> *"lỗi ở phần ql landing thì các landing tôi nhân bản ra vẫn bị chồng chéo dữ
+> liệu thông số như lượt xem, lead trong tab đấy k chính xác"*
+
+⇒ Trong tab **Quản lý Landing**, các landing đã nhân bản hiển thị **cùng số lượt
+xem / lead** (không tách được), dù nội dung & domain hoàn toàn khác nhau.
+
+### Nguyên nhân gốc (3 tầng, đã xác minh trên production)
+
+| # | Tầng | Nguyên nhân | Hậu quả |
+|---|---|---|---|
+| **[A]** | Edge router | `ResolveRoute` **không** khớp `/chucmung.html` với route prefix `/chucmung` (`strings.HasPrefix("/chucmung.html", "/chucmung/")` = `false`) | Trang chúc mừng rơi xuống nhánh **phục vụ file tĩnh từ đĩa** ⇒ không có `data-landing-id`, không có `window.APEX_LANDING_CONFIG` |
+| **[B]** | `tracker.js` | `loadConfigFile()` hardcode fallback `'mxv_080_online'`; `getLandingConfig()` fallback `window.LadiPageScript.runtime.ladipage_id` | Sinh landing ID rác `6adc99f23115ac001247de00` (21 sessions) + ghi mọi thứ về template `mxv_080_online` |
+| **[C]** | DB | `UpdateLandingCode` dùng `WHERE (domain = $3 OR domain = '') AND page_id = $4` ⇒ sửa code trên domain đích **ghi đè luôn** template gốc | Toàn bộ landing cùng `page_id` bị gộp làm 1 ⇒ thống kê chồng chéo |
+
+> 🔍 **Bằng chứng production:** `landing_pages.code_html` của `landing_232` và
+> `landing_cu` có **cùng md5** (`31d23cbec24ad026aa03a3f3e794cf07`) và cùng độ dài
+> (265594) ⇒ `landing_cu` chính là bản **đổi tên** của `landing_232`. 47 sessions +
+> 5 leads của `landing_232` thuộc về `landing_cu`.
+
+### Đã sửa ở code
+
+| File | Sửa gì |
+|---|---|
+| `backend/cache/domain_cache.go` | `ResolveRoute` khớp thêm URL dạng `/<tên>.html` với prefix `/<tên>` |
+| `backend/main.go` (bước 7 — static fallback) | File `.html` tĩnh **không** được phục vụ thô nếu không resolve được landing context ⇒ **404** thay vì phục vụ sai (inject `data-landing-id` khi có context) |
+| `frontend/admin/js/tracker.js` (+ 6 bản mirror) | Bỏ fallback `'mxv_080_online'` **và** `ladipage_id` ⇒ chỉ còn `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `default_landing` |
+| `backend/db/landings.go` | Thêm `EnsureLandingPageDomainRow()`; `UpdateLandingCode` chỉ update `WHERE domain = $3 AND page_id = $4`; `ToggleLandingActiveBase()` chỉ toggle template (`domain = ''`) |
+| `backend/handlers/landing_handler.go` | `HandleDeployLanding` dùng `ToggleLandingActiveBase()` (không toggle nhầm row domain) |
+| `backend/db/domains.go` | `GetAllActiveDomainRoutes()` dùng `SELECT DISTINCT ON (dr.id)` ⇒ không trả trùng route khi 1 landing có nhiều row domain |
+| `backend/models/landing.go` | Thêm `HumanViewsCount`, `BotViewsCount`, `Domains []string` |
+| `backend/db/landings.go` (`ListLandingPages`) | Tách `views_count` (tổng) / `human_views_count` (`COUNT(*) FILTER (WHERE NOT is_bot)`) / `bot_views_count`; gắn danh sách domain deploy từ `domain_routes` |
+| `frontend/admin/js/landings.js` + `index.html` | CR% tính trên `human_views_count` (khớp công thức tab Trung Tâm Báo Cáo); hiển thị badge domain (tối đa 3 + "+N") |
+
+> ⚠️ **Sửa `tracker.js` ⇒ BẮT BUỘC chạy `node scripts/sync-static-mirror.js`** (7 bản mirror).
+
+### Migrations dữ liệu lịch sử
+
+`deploy/fix_landing_attribution_20261116.sql` — sửa `landing_id`/`nguon` của các bản ghi
+đã ghi nhầm:
+
+- Bảng backup `analytics_sessions_backup_20261116` / `leads_backup_20261116`
+  (tạo bằng `LIKE ... INCLUDING ALL` + **PRIMARY KEY** ⇒ `ON CONFLICT DO NOTHING` có tác dụng ⇒ **idempotent**).
+- `landing_232` → `landing_cu`; `mxv_080_online` → landing theo `entry_url` thực tế
+  (`/chucmung%` → `landing_lznoew`, `/landing%` → `landing_cu`, `lophoc.*` → `doanh_chung`,
+  `xuhuong.*`/`daotao.*` → `xu_huong_1`, còn lại → `default_landing`).
+- `6adc99f23115ac001247de00` (ladipage_id) → `landing_lznoew` / `default_landing`.
+- Chuẩn hoá `nguon` lạ (`an`, ...) về `landing_id`.
+
+> 🧪 Đã chạy thử trên DB test (`apex_leads_test`) với dữ liệu mô phỏng đúng hình dạng
+> production (`backend/tests/seed_attribution_repair_test.sql`) ⇒ chạy 2 lần cho kết quả
+> **giống hệt**, backup **không nhân bản**.
+
+### Test tự động
+
+| File | Kiểm tra |
+|---|---|
+| `backend/cache/domain_cache_route_test.go` | `ResolveRoute` khớp `.html` không phá route thường, không che route dài hơn |
+| `backend/db/landings_dedupe_domains_test.go` | `dedupeLandingPagesByPageID` gộp/dedupe danh sách domain |
+| `backend/tests/e2e_landing_metrics_crosscontamination_test.js` | Quét pattern code (Go + JS + mirror) để chống tái phát |
 
 ---
 

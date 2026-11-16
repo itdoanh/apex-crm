@@ -33,7 +33,10 @@
                 allLandingsList.forEach(p => {
                     if (p.is_active) activeCount++;
                     else draftCount++;
-                    totalViews += (p.views_count || 0);
+                    // ⚠️ Dùng LƯỢT XEM NGƯỜI THẬT (human) để khớp với
+                    // Trung Tâm Báo Cáo (fix 2026-11-16). Fallback về tổng
+                    // sessions nếu backend chưa trả human views.
+                    totalViews += (p.human_views_count || p.views_count || 0);
                     totalLeads += (p.leads_count || 0);
                 });
 
@@ -109,17 +112,50 @@
             }
 
             grid.innerHTML = landings.map(p => {
-                const convRate = p.views_count > 0 ? ((p.leads_count / p.views_count) * 100).toFixed(1) : '0.0';
+                // ⚠️ CR tính theo LƯỢT XEM NGƯỜI THẬT (human views), KHÔNG phải
+                // tổng sessions (bao gồm bot).
+                //
+                // BỐI CẢNH (fix 2026-11-16 — thống kê chồng chéo):
+                //   Tab "Trung Tâm Báo Cáo" dùng `human_visitors` làm mẫu số CR.
+                //   Tab Quản lý Landing dùng `views_count` (TỔNG sessions, gồm bot)
+                //   ⇒ CR ở 2 tab lệch nhau ⇒ người dùng thấy "thông số không
+                //   chính xác".
+                //
+                //   ⇒ Dùng `human_views_count` làm mẫu số, fallback về
+                //     `views_count` nếu backend chưa trả human views.
+                const humanViews = (p.human_views_count || 0);
+                const totalViews = (p.views_count || 0);
+                const botViews = (p.bot_views_count || 0);
+                const crBase = humanViews > 0 ? humanViews : totalViews;
+                const convRate = crBase > 0 ? ((p.leads_count || 0) / crBase * 100).toFixed(1) : '0.0';
+
                 const statusBadge = p.status === 'published'
                     ? '<span class="bg-emerald-950 text-emerald-400 border border-emerald-800/80 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Đã Xuất Bản</span>'
                     : '<span class="bg-amber-950 text-amber-400 border border-amber-800/80 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Bản Nháp (Draft)</span>';
 
-                const domainDisplay = p.domain
-                    ? `<span class="bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono truncate max-w-[140px]" title="${escapeHTML(p.domain)}"><i class="fa-solid fa-globe mr-1"></i>${escapeHTML(p.domain)}</span>`
-                    : `<span class="text-slate-500 text-[10px] font-mono">Chung Domain</span>`;
+                // Danh sách domain đang deploy (từ `domain_routes`).
+                // Landing nhân bản rồi deploy lên nhiều domain sẽ có nhiều domain
+                // ⇒ hiển thị đầy đủ để người dùng biết số liệu gộp từ mấy nơi.
+                const deployDomains = Array.isArray(p.domains) ? p.domains.filter(d => d && String(d).trim() !== '') : [];
+                let domainDisplay = '';
+                if (deployDomains.length > 0) {
+                    const badges = deployDomains.slice(0, 3).map(d => {
+                        const safe = escapeHTML(d);
+                        return `<span class="bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono truncate max-w-[150px]" title="${safe}"><i class="fa-solid fa-globe mr-1"></i>${safe}</span>`;
+                    }).join('');
+                    const more = deployDomains.length > 3
+                        ? `<span class="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono" title="${escapeHTML(deployDomains.join(', '))}">+${deployDomains.length - 3}</span>`
+                        : '';
+                    domainDisplay = badges + more;
+                } else if (p.domain) {
+                    domainDisplay = `<span class="bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] px-2 py-0.5 rounded font-mono truncate max-w-[140px]" title="${escapeHTML(p.domain)}"><i class="fa-solid fa-globe mr-1"></i>${escapeHTML(p.domain)}</span>`;
+                } else {
+                    domainDisplay = `<span class="text-slate-500 text-[10px] font-mono" title="Landing chưa được deploy lên tên miền nào">Chưa Deploy</span>`;
+                }
 
-                const domainUrl = (p.domain && (p.domain.startsWith('localhost') || p.domain.startsWith('127.0.0.1'))) ? ('http://' + p.domain) : (p.domain ? ('https://' + p.domain) : '');
-                const publicUrl = p.domain ? `${domainUrl}${p.path_prefix || '/'}` : `/p/${encodeURIComponent(p.page_id)}`;
+                const primaryDomain = (deployDomains.length > 0 ? deployDomains[0] : (p.domain || ''));
+                const domainUrl = (primaryDomain && (primaryDomain.startsWith('localhost') || primaryDomain.startsWith('127.0.0.1'))) ? ('http://' + primaryDomain) : (primaryDomain ? ('https://' + primaryDomain) : '');
+                const publicUrl = primaryDomain ? `${domainUrl}${p.path_prefix || '/'}` : `/p/${encodeURIComponent(p.page_id)}`;
 
                 const s = p.settings || {};
                 const sheetMode = s.google_sheet_sync_mode || 'selected';
@@ -169,15 +205,16 @@
 
                             <!-- Performance Stats Row -->
                             <div class="grid grid-cols-3 gap-2 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 my-3 text-center font-mono">
-                                <div>
+                                <div title="${humanViews.toLocaleString('vi-VN')} lượt xem người thật${botViews > 0 ? ' · ' + botViews.toLocaleString('vi-VN') + ' lượt xem bot' : ''}">
                                     <div class="text-[10px] text-slate-500 uppercase">Lượt Xem</div>
-                                    <div class="text-sm font-bold text-blue-400">${(p.views_count || 0).toLocaleString('vi-VN')}</div>
+                                    <div class="text-sm font-bold text-blue-400">${humanViews.toLocaleString('vi-VN')}</div>
+                                    ${botViews > 0 ? `<div class="text-[9px] text-slate-600">+${botViews.toLocaleString('vi-VN')} bot</div>` : ''}
                                 </div>
                                 <div>
                                     <div class="text-[10px] text-slate-500 uppercase">Leads</div>
                                     <div class="text-sm font-bold text-orange-400">${(p.leads_count || 0).toLocaleString('vi-VN')}</div>
                                 </div>
-                                <div>
+                                <div title="CR = Leads ÷ Lượt xem người thật (khớp công thức của Trung Tâm Báo Cáo)">
                                     <div class="text-[10px] text-slate-500 uppercase">CR (%)</div>
                                     <div class="text-sm font-bold text-emerald-400">${convRate}%</div>
                                 </div>

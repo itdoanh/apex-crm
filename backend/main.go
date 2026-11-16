@@ -922,6 +922,52 @@ func main() {
 				continue
 			}
 			if fi, err := os.Stat(cleanTarget); err == nil && !fi.IsDir() {
+				// ⚠️ BẮT BUỘC (fix 2026-11-16 — bug chồng chéo thông số landing):
+				//
+				//   KHÔNG được phục vụ file `.html` tĩnh từ đĩa mà thiếu định danh
+				//   landing. HTML tĩnh chỉ có `<script src="tracker.js">` trần ⇒
+				//   tracker.js không tìm được `data-landing-id` / `APEX_LANDING_CONFIG`
+				//   ⇒ rơi về chuỗi fallback ⇒ ghi analytics/lead về landing KHÁC
+				//   (template `mxv_080_online`, `default_landing`, ...) ⇒ thông số
+				//   lượt xem/lead bị chồng chéo giữa các landing.
+				//
+				//   ⇒ File `.html` phải đi qua `InjectDynamicScriptsWithBase` với
+				//     landing context của host (route gốc, hoặc route `/chucmung`
+				//     nếu route gốc không dùng được).
+				//
+				//   LƯU Ý: đây là LỚP PHÒNG VỒ CUỐI. `ResolveRoute` đã được sửa để
+				//   `/chucmung.html` khớp route `/chucmung` ⇒ nhánh này chỉ còn
+				//   bị gọi cho file HTML không thuộc route nào.
+				if strings.EqualFold(filepath.Ext(cleanTarget), ".html") {
+					if data, readErr := os.ReadFile(cleanTarget); readErr == nil && len(data) > 0 {
+						// Xác định landing context cho host này.
+						cmLandingID, _, _, _, routeFound := domainCache.ResolveRoute(r.Host, "/")
+						if !routeFound {
+							if fallbackID, ok := domainCache.ResolveChucMungRoute(r.Host); ok {
+								cmLandingID = fallbackID
+								routeFound = true
+							}
+						}
+						if routeFound && cmLandingID != "" {
+							cmLanding := landingCache.Get(r.Host, cmLandingID)
+							if cmLanding == nil {
+								cmLanding = landingCache.GetByPageID(cmLandingID)
+							}
+							if cmLanding != nil {
+								rendered := landingHandler.InjectDynamicScriptsWithBase(string(data), cmLanding, "/")
+								w.Header().Set("Content-Type", "text/html; charset=utf-8")
+								setNoCache()
+								_, _ = w.Write([]byte(rendered))
+								return
+							}
+						}
+						// KHÔNG xác định được landing context ⇒ KHÔNG phục vụ HTML
+						// thô (sẽ ghi sai landing) ⇒ trả 404 rõ ràng.
+						log.Printf("[WARN] [EDGE ROUTER] Từ chối phục vụ HTML tĩnh không có landing context: host=%s path=%s", r.Host, reqPath)
+						http.NotFound(w, r)
+						return
+					}
+				}
 				setStaticCacheHeaders(w, cleanTarget)
 				http.ServeFile(w, r, cleanTarget)
 				return
