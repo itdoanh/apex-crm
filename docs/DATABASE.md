@@ -487,7 +487,7 @@ Bổ sung 5 cột vào `analytics_sessions` (migration tự động trong `initS
 > "tỷ lệ bỏ ngang form". `tracker.js` gửi 5 trường này **kèm trong payload
 > analytics** (`POST /api/analytics/track`) chứ không chỉ trong payload lead.
 
-> ⚠️ `UpsertAnalyticsSession` dùng **92 tham số**. Nếu thêm cột mới phải cập nhật
+> ⚠️ `UpsertAnalyticsSession` dùng **93 tham số**. Nếu thêm cột mới phải cập nhật
 > **cả** danh sách `$1..$n` **và** `ON CONFLICT ... DO UPDATE SET` — nếu quên,
 > Postgres sẽ báo lỗi "bind message supplies N parameters, but prepared statement requires M".
 
@@ -570,6 +570,49 @@ landing_id = CASE WHEN analytics_sessions.landing_id != '' THEN analytics_sessio
 > `INSERT ... ON CONFLICT (session_id) DO UPDATE` ⇒ luôn tạo dòng session nếu
 > chưa có ⇒ **mọi lead đều xuất hiện trong biểu đồ**.
 
+### 5.7. Cột `pv_event_id` — dedup PageView Pixel ↔ CAPI (2026-11-16)
+
+Migration tự động trong `initSchema` (`backend/db/db.go`):
+
+```sql
+ALTER TABLE analytics_sessions
+  ADD COLUMN IF NOT EXISTS pv_event_id VARCHAR(100) NOT NULL DEFAULT '';
+```
+
+| Cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `pv_event_id` | `VARCHAR(100) NOT NULL DEFAULT ''` | `event_id` của PageView đầu tiên của phiên (prefix `pv-`) |
+
+> **Vì sao?** Meta CHỈ gộp (deduplicate) sự kiện trình duyệt (`fbq`) với sự kiện máy
+> chủ (CAPI) khi cả hai dùng **CHUNG `event_id`**. Nếu Pixel bắn
+> `fbq('track','PageView')` **không có** eventID mà server CAPI bắn `PageView` với
+> `event_id` khác ⇒ Meta tính **1 lượt xem thành 2 lượt PageView** ⇒ sai lệch toàn
+> bộ chỉ số Landing Page View + phân phối quảng cáo.
+>
+> ⇒ Client sinh MỘT `window.APEX_PV_EVENT_ID` cho 1 lần tải trang, bắn Pixel với
+> eventID đó, rồi gửi kèm lên server (payload analytics `event_id`).
+> ⇒ Server truyền **nguyên văn** vào `event_id` của payload CAPI ⇒ Meta gộp 2 sự
+> kiện thành 1.
+
+**Quy tắc ghi (`UpsertAnalyticsSession`)** — giữ giá trị **đầu tiên** của phiên:
+
+```sql
+pv_event_id = CASE
+  WHEN analytics_sessions.pv_event_id != '' THEN analytics_sessions.pv_event_id
+  ELSE EXCLUDED.pv_event_id
+END;
+```
+
+> `tracker.js` gửi ping nhiều lần (pageview, heartbeat, exit…) nhưng `pvEventId` là
+> **HẰNG SỐ** trong 1 lần tải trang ⇒ mọi ping mang cùng giá trị ⇒ giữ giá trị
+> đầu tiên, không ghi đè.
+
+**Fallback phía server**: `GetSessionPvEventID(sessionID)` đọc cột này khi client
+không gửi `event_id` trong payload (trình duyệt cache bản `tracker.js` cũ, hoặc ping
+đầu bị throttle). Landing **có** Meta Pixel mà không có event_id chung ⇒ server
+**KHÔNG bắn** PageView server-side (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+
+⚠️ `UpsertAnalyticsSession` dùng **93 tham số** sau thay đổi này.
 
 ---
 

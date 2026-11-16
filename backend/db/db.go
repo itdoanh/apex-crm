@@ -256,6 +256,18 @@ func (s *Store) initSchema(ctx context.Context) error {
 	-- Tổng thời gian user đã focus vào form (ms) — dùng cho "Avg Fill Duration".
 	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS form_focus_ms INTEGER NOT NULL DEFAULT 0;
 
+	-- ══════════════════════════════════════════════════════════════
+	-- EVENT ID DÙNG CHUNG PIXEL ↔ CAPI (fix 2026-11-16)
+	-- ══════════════════════════════════════════════════════════════
+	-- Meta CHỈ gộp (deduplicate) sự kiện trình duyệt (fbq) với sự kiện
+	-- máy chủ (Conversions API) khi cả hai dùng CHUNG event_id.
+	--
+	-- ⇒ Landing nào có Meta Pixel browser sẽ CHỈ bắn PageView server-side khi
+	--   có event_id CHUNG (xem landingHasMetaPixel) ⇒ không có xung đột.
+	-- ⇒ Lưu pv_event_id của phiên để server dùng lại đúng giá trị
+	--   client đã bắn lên Pixel.
+	ALTER TABLE analytics_sessions ADD COLUMN IF NOT EXISTS pv_event_id VARCHAR(100) NOT NULL DEFAULT '';
+
 	CREATE INDEX IF NOT EXISTS idx_sessions_landing_id ON analytics_sessions (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_nguon ON analytics_sessions (nguon);
 	CREATE INDEX IF NOT EXISTS idx_sessions_is_bot ON analytics_sessions (is_bot);
@@ -1755,7 +1767,8 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			is_new_visitor, has_video_play, has_zalo_click, has_tel_click,
 			form_submit_attempts, form_validation_errors,
 			scroll_depth_25, scroll_depth_50, scroll_depth_75, scroll_depth_90, scroll_depth_100,
-			is_autofill, autofill_source, fill_duration_ms, validation_passed, form_focus_ms
+			is_autofill, autofill_source, fill_duration_ms, validation_passed, form_focus_ms,
+			pv_event_id
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8, $9,
@@ -1775,7 +1788,8 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			$72, $73, $74, $75, $76, $77,
 			$78, $79, $80, $81, $82, $83,
 			$84, $85, $86, $87,
-			$88, $89, $90, $91, $92
+			$88, $89, $90, $91, $92,
+			$93
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
 			last_seen = NOW(),
@@ -1875,7 +1889,12 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 			autofill_source = CASE WHEN EXCLUDED.autofill_source != '' THEN EXCLUDED.autofill_source ELSE analytics_sessions.autofill_source END,
 			fill_duration_ms = GREATEST(analytics_sessions.fill_duration_ms, EXCLUDED.fill_duration_ms),
 			validation_passed = analytics_sessions.validation_passed OR EXCLUDED.validation_passed,
-			form_focus_ms = GREATEST(analytics_sessions.form_focus_ms, EXCLUDED.form_focus_ms);
+			form_focus_ms = GREATEST(analytics_sessions.form_focus_ms, EXCLUDED.form_focus_ms),
+			-- ⚠️ GIỮ event_id ĐẦU TIÊN của phiên (fix 2026-11-16).
+			-- Tracker.js gửi ping nhiều lần (pageview, heartbeat, exit…) nhưng
+			-- pvEventId là HẰNG SỐ trong 1 lần tải trang ⇒ mọi ping mang cùng
+			-- giá trị ⇒ lưu giá trị đầu tiên, không ghi đè.
+			pv_event_id = CASE WHEN analytics_sessions.pv_event_id != '' THEN analytics_sessions.pv_event_id ELSE EXCLUDED.pv_event_id END;
 	`
 
 	var leadIDVal interface{}
@@ -1904,6 +1923,7 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 		p.FormSubmitAttempts, p.FormValidationError,
 		p.ScrollDepth25, p.ScrollDepth50, p.ScrollDepth75, p.ScrollDepth90, p.ScrollDepth100,
 		p.IsAutofill, p.AutofillSource, p.FillDurationMs, p.ValidationPassed, p.FormFocusMs,
+		p.EventID,
 	)
 	return err
 }

@@ -1589,10 +1589,13 @@
                             <input type="password" id="fbAdsFormGatewayKey" placeholder="Dán access key" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-blue-500">
                         </div>
                         <div class="pt-2 space-y-1.5 border-t border-slate-800">
-                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
+                            <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold" title="Server gửi sự kiện PageView lên Meta CAPI. Nếu landing đã có Meta Pixel trình duyệt, server CHỈ gửi khi có event_id DÙNG CHUNG với Pixel (event_id bắt đầu bằng 'pv-') ⇒ Meta gộp 2 sự kiện thành 1, không đếm trùng lượt xem.">
                                 <input type="checkbox" id="fbAdsFormSendPV" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
                                 Gửi <strong>PageView</strong> từ server
                             </label>
+                            <p class="text-[10px] text-slate-500 leading-relaxed ml-5">
+                                ℹ️ Dedup Pixel ↔ CAPI: landing có Pixel ⇒ server chỉ bắn PageView khi có <code class="text-emerald-400">event_id</code> dùng chung (prefix <code class="text-emerald-400">pv-</code>). Thiếu event_id ⇒ server bỏ qua ⇒ không đếm trùng lượt xem.
+                            </p>
                             <label class="flex items-center gap-2 text-[11px] text-slate-300 font-semibold">
                                 <input type="checkbox" id="fbAdsFormSendLead" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 accent-blue-500">
                                 Gửi <strong>Lead</strong> khi khách đăng ký form

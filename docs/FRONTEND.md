@@ -690,6 +690,27 @@ Backend dùng lại đúng `event_id` đó ⇒ Meta gộp thành 1 sự kiện (
 > Test `backend/handlers/landing_tracker_pixel_test.go::TestTrackerMirrorsAreIdentical`
 > sẽ FAIL nếu lệch.
 
+### Deduplication PageView browser ↔ server (thêm 2026-11-16)
+
+Ngoài `Lead`, sự kiện **`PageView`** cũng cần dedup: nếu Pixel web và CAPI server
+cùng bắn mà **không đồng bộ `event_id`**, Meta tính **1 lượt vào trang thành 2 lượt
+PageView** ⇒ sai lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
+
+| Tầng | Thành phần | Nội dung |
+|---|---|---|
+| Server | `injectPageViewEventIDSnippet()` | Chèn script ở **đầu `<head>`** sinh MỘT `window.APEX_PV_EVENT_ID` (prefix `pv-`). Idempotent. |
+| Server | `rewritePageViewWithEventID()` | Ghi đè mọi `fbq('track','PageView')` hardcode trong HTML landing (export LadiPage) để kèm `{ eventID: window.APEX_PV_EVENT_ID }`. Lệnh đã có `eventID` ⇒ giữ nguyên. |
+| Client | `ensurePageViewEventId()` | Đọc `window.APEX_PV_EVENT_ID` (do server inject) hoặc tự sinh ⇒ 1 giá trị / lần tải trang. |
+| Client | `buildAnalyticsPayload()` | Gửi `event_id` lên server trong payload `/api/analytics/track`. |
+| Server | `dispatchCAPIPageView()` | Landing CÓ Pixel ⇒ chỉ bắn CAPI PageView khi có `event_id` chung. Thiếu ⇒ bỏ qua. |
+
+**Hiển thị trong CRM:** bảng *Lịch sử gửi sự kiện* (tab Facebook Ads) hiển thị
+`event_id` **đầy đủ** + badge **"✓ đã gộp với Pixel"** cho sự kiện `PageView` có
+prefix `pv-` (`frontend/admin/js/facebook-ads.js` → `renderFacebookAdsLogs()`).
+
+Checkbox *"Gửi PageView từ server"* có tooltip giải thích cơ chế dedup
+(`frontend/admin/index.html`).
+
 ### Quản lý CAPI theo từng landing (bật/tắt nhanh)
 
 | Thành phần | Mô tả |

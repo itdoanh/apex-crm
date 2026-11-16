@@ -1603,6 +1603,13 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 		rawHTML = `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Landing Page</title></head><body><h1>Trang Landing Mới</h1></body></html>`
 	}
 
+	// ⚠️ DEDUP PAGEVIEW PIXEL ↔ CAPI (fix 2026-11-16):
+	// Ghi đè mọi lệnh `fbq('track','PageView')` có sẵn trong HTML landing
+	// (hardcode từ LadiPage) để kèm `{ eventID: window.APEX_PV_EVENT_ID }`
+	// ⇒ giá trị này được gửi lên server ⇒ server truyền nguyên văn vào
+	// `event_id` của payload CAPI ⇒ Meta gộp 2 sự kiện thành 1.
+	rawHTML = rewritePageViewWithEventID(rawHTML)
+
 	settings := p.Settings
 	if settings == nil {
 		settings = make(map[string]interface{})
@@ -1711,6 +1718,10 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	// - Có `fbq('init')` với ID KHÁC ⇒ KHÔNG inject ID của ta (tránh 2 pixel
 	//   cùng chạy, gây nhân đôi PageView).
 	// - Có `fbevents.js` nhưng chưa `init` ⇒ vẫn KHÔNG inject (HTML chủ động).
+	// ⚠️ SỬA 2026-11-16 (dedup PageView Pixel ↔ CAPI):
+	// Block Pixel auto-inject PHẢI truyền `eventID` (tham số thứ 4 của fbq)
+	// đồng bộ với `event_id` server gửi lên Meta CAPI ⇒ Meta gộp 2 sự kiện
+	// thành 1 ⇒ không đếm trùng PageView.
 	if fbPixel != "" && !htmlHasMetaPixel(rawHTML, fbPixel) {
 		headInjection.WriteString(fmt.Sprintf(`
 <!-- Facebook Pixel Code -->
@@ -1721,7 +1732,7 @@ n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 document,'script','https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '%s');
-fbq('track', 'PageView');
+fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=%s&ev=PageView&noscript=1"/></noscript>
 `, fbPixel, fbPixel))
@@ -1815,6 +1826,26 @@ gtag('config', '%s');
 		result = result[:insertAt] + "\n" + configTrapScript + result[insertAt:]
 	}
 
+	// ⚠️ DEDUP PAGEVIEW PIXEL ↔ CAPI (fix 2026-11-16):
+	// Chèn script sinh `window.APEX_PV_EVENT_ID` ở ĐẦU `<head>` (SAU
+	// configTrapScript) để giá trị luôn sẵn sàng khi block Pixel inline
+	// (`fbq('track','PageView',…)`) chạy.
+	//
+	// ⚠️ Idempotent: chỉ chèn nếu HTML chưa TỰ SINH giá trị này.
+	// ⚠️ KHÔNG dùng `strings.Contains(result, "APEX_PV_EVENT_ID")` vì các lệnh
+	// `fbq('track','PageView',{},{eventID: window.APEX_PV_EVENT_ID})` đã được
+	// rewrite ở trên cũng chứa chuỗi này ⇒ sẽ bỏ sót việc sinh giá trị.
+	if !strings.Contains(result, "window.APEX_PV_EVENT_ID =") &&
+		!strings.Contains(result, "window.APEX_PV_EVENT_ID=") {
+		if idx := strings.Index(strings.ToLower(result), "<head>"); idx != -1 {
+			insertAt := idx + len("<head>")
+			result = result[:insertAt] + injectPageViewEventIDSnippet() + result[insertAt:]
+		} else {
+			// HTML không có <head> ⇒ chèn vào đầu tài liệu (script vẫn chạy).
+			result = injectPageViewEventIDSnippet() + result
+		}
+	}
+
 	// Custom Body Scripts inject vào trước </body>
 	if bodyScripts != "" {
 		var bodyInjection strings.Builder
@@ -1879,6 +1910,107 @@ gtag('config', '%s');
 	result = rewriteRelativeAssetPaths(result, basePath)
 
 	return result
+}
+
+// ============================================================
+// DEDUP PAGEVIEW: EVENT ID DÙNG CHUNG PIXEL ↔ CAPI (fix 2026-11-16)
+// ============================================================
+//
+// VẤN ĐỀ (báo cáo của anh itdoanh — 2026-11-16):
+//   Pixel trình duyệt bắn `fbq('track','PageView')` (KHÔNG có eventID) trong
+//   khi server CAPI bắn `PageView` với `event_id` KHÁC ⇒ Meta KHÔNG gộp được
+//   ⇒ tính 1 lượt vào trang thành 2 lượt PageView ⇒ sai lệch toàn bộ chỉ số
+//   Landing Page View + phân phối quảng cáo.
+//
+// ĐIỀU KIỆN META GỘP 2 SỰ KIỆN THÀNH 1:
+//   1. `event_name` giống nhau — đều là `PageView`.
+//   2. `event_id` trùng khớp 100% — biến `pvEventId` bắn ở `fbq('track',…)`
+//      phải được gửi kèm lên API server để server truyền vào trường
+//      `event_id` trong payload CAPI.
+//   3. Thứ tự thời gian — trình duyệt gọi `fbq('track','PageView')` TRƯỚC
+//      (để kịp sinh cookie `_fbp`), sau đó mới gửi request kích hoạt CAPI
+//      kèm cookie `_fbp`, `_fbc`, `client_user_agent` và `pvEventId`.
+//
+// ⚠️ `eventID` là tham số THỨ 4 của `fbq` — KHÔNG phải thuộc tính trong
+// object tham số 3 (đặt sai chỗ ⇒ Meta không đọc được ⇒ không gộp).
+//
+// ⇒ GIẢI PHÁP:
+//   1. `injectPageViewEventIDSnippet()` chèn script ở ĐẦU `<head>` sinh MỘT
+//      `window.APEX_PV_EVENT_ID` duy nhất cho 1 lần tải trang.
+//   2. `rewritePageViewWithEventID()` ghi đè mọi lệnh `fbq('track','PageView')`
+//      có sẵn trong HTML landing (hardcode từ LadiPage) để kèm eventID.
+//   3. `tracker.js` đọc `window.APEX_PV_EVENT_ID` và gửi lên server trong
+//      payload analytics (`event_id`) ⇒ server truyền nguyên văn vào CAPI.
+
+// injectPageViewEventIDSnippet trả về script sinh `window.APEX_PV_EVENT_ID`.
+//
+// Script được chèn ở ĐẦU `<head>` (trước mọi block Pixel inline) để giá trị
+// luôn sẵn sàng khi `fbq('track','PageView')` chạy.
+//
+// ⚠️ Idempotent: nếu HTML đã có `window.APEX_PV_EVENT_ID` thì KHÔNG chèn lại
+// (tránh 2 giá trị khác nhau ⇒ Pixel dùng giá trị này, tracker.js dùng giá
+// trị kia ⇒ KHÔNG gộp được ⇒ đếm trùng).
+func injectPageViewEventIDSnippet() string {
+	return `
+<script>
+/* [APEX PV EVENT ID] — event_id dùng chung Pixel ↔ CAPI (dedup PageView) */
+(function(){
+  try {
+    if (window.APEX_PV_EVENT_ID) return;
+    var __apexPvId = '';
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      __apexPvId = 'pv-' + window.crypto.randomUUID();
+    } else {
+      __apexPvId = 'pv-' + Date.now().toString(36) + '-' +
+        Math.random().toString(36).slice(2, 12);
+    }
+    window.APEX_PV_EVENT_ID = __apexPvId;
+  } catch (e) {}
+})();
+</script>
+`
+}
+
+// rePageViewCallPattern khớp lệnh `fbq('track','PageView')` (chưa có eventID).
+//
+// Bắt các biến thể:
+//   fbq('track', 'PageView')
+//   fbq("track", "PageView")
+//   fbq('track','PageView',{})
+//   fbq( 'track' , 'PageView' )
+var rePageViewCallPattern = regexp.MustCompile(
+	`(?i)fbq\(\s*(['"])track['"]\s*,\s*(['"])PageView['"]\s*,?\s*(\{\s*\})?\s*\)`)
+
+// rewritePageViewWithEventID ghi đè mọi lệnh `fbq('track','PageView')` trong
+// HTML để kèm `{ eventID: window.APEX_PV_EVENT_ID }` (tham số thứ 4).
+//
+// ⚠️ KHÔNG đụng vào lệnh đã có `eventID` (pattern chỉ khớp lệnh KHÔNG có
+// tham số thứ 4 ⇒ lệnh đã đúng giữ nguyên).
+//
+// ⚠️ KHÔNG đụng vào `fbq('track', 'PageView', { ... })` có object tham số 3
+// phức tạp vì regex không khớp được (an toàn hơn là sửa sai).
+func rewritePageViewWithEventID(html string) string {
+	if html == "" {
+		return html
+	}
+	return rePageViewCallPattern.ReplaceAllStringFunc(html, func(m string) string {
+		sub := rePageViewCallPattern.FindStringSubmatch(m)
+		qTrack := "'"
+		if len(sub) > 1 && sub[1] == `"` {
+			qTrack = `"`
+		}
+		qPV := "'"
+		if len(sub) > 2 && sub[2] == `"` {
+			qPV = `"`
+		}
+		// Giữ nguyên object tham số 3 nếu có, thêm tham số thứ 4 (eventID).
+		obj3 := "{}"
+		if len(sub) > 3 && strings.TrimSpace(sub[3]) != "" {
+			obj3 = sub[3]
+		}
+		return fmt.Sprintf("fbq(%strack%s, %sPageView%s, %s, { eventID: window.APEX_PV_EVENT_ID })",
+			qTrack, qTrack, qPV, qPV, obj3)
+	})
 }
 
 // rewriteRelativeAssetPaths đổi các đường dẫn tài nguyên TƯƠNG ĐỐI trong HTML

@@ -170,11 +170,28 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
     - `AssociateLeadToSession(..., isTest)` ⇒ KHÔNG set `converted_lead` / action `converted`.
     - Meta CAPI (`dispatchCAPILead` + `dispatchCAPICRMSync`) ⇒ **KHÔNG bắn**.
 22. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) —
-    `POST /api/analytics/report/quarantine/approve` do `LeadHandler.HandleApproveQuarantine`
-    xử lý (không phải `ReportHandler` — vì cần `syncLeadToGoogleSheets()`).
-    `store.ApproveQuarantineLead(id)` trả về `(result, lead, rawData, error)` ⇒ handler gọi
-    `go h.syncLeadToGoogleSheets(lead, rawData)` ⇒ lead được duyệt **vào CRM + vào sheet**
-    theo đúng cấu hình `google_sheet_configs` / `google_sheet_sync_mode` của landing.
+ `POST /api/analytics/report/quarantine/approve` do `LeadHandler.HandleApproveQuarantine`
+ xử lý (không phải `ReportHandler` — vì cần `syncLeadToGoogleSheets()`).
+ `store.ApproveQuarantineLead(id)` trả về `(result, lead, rawData, error)` ⇒ handler gọi
+ `go h.syncLeadToGoogleSheets(lead, rawData)` ⇒ lead được duyệt **vào CRM + vào sheet**
+ theo đúng cấu hình `google_sheet_configs` / `google_sheet_sync_mode` của landing.
+23. **Dedup PageView Pixel ↔ CAPI — `event_id` dùng chung** (fix 2026-11-16) —
+ Meta CHỈ gộp sự kiện browser (`fbq`) với server (CAPI) khi cả hai dùng CHUNG
+ `event_id`. Không đồng bộ ⇒ **1 lượt xem bị đếm 2 lượt PageView** ⇒ sai lệch toàn
+ bộ chỉ số Landing Page View + phân phồi quảng cáo.
+ - `eventID` là **tham số THỨ 4** của `fbq` — KHÔNG phải thuộc tính trong object
+   tham số 3. `fbq('track','PageView',{},{eventID: pvEventId})` ✅
+ - Backend: `injectPageViewEventIDSnippet()` chèn script ở ĐẦU `<head>` sinh MỘT
+   `window.APEX_PV_EVENT_ID` (prefix `pv-`) · `rewritePageViewWithEventID()` ghi đè
+   mọi `fbq('track','PageView')` hardcode trong HTML landing để kèm eventID ·
+   block Meta Pixel auto-inject cũng kèm eventID.
+ - Client (`tracker.js`): `ensurePageViewEventId()` đọc `window.APEX_PV_EVENT_ID` ·
+   `buildAnalyticsPayload()` gửi `event_id` lên server trong payload analytics.
+ - Server (`dispatchCAPIPageView`): landing CÓ Pixel ⇒ chỉ bắn CAPI PageView khi có
+   `event_id` CHUNG (payload, fallback `analytics_sessions.pv_event_id`) · thiếu ⇒
+   **KHÔNG bắn** (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+ - DB: `analytics_sessions.pv_event_id` — giữ giá trị ĐẦU TIÊN của phiên.
+ - Thứ tự thời gian: Pixel bắn TRƯỚC (sinh cookie `_fbp`) ⇒ sau đó mới ping analytics.
 
 ---
 

@@ -45,8 +45,12 @@ func TestRenderRawLandingNoDuplicatePixel(t *testing.T) {
 	if n := strings.Count(out, "fbq('init'"); n != 1 {
 		t.Fatalf("fbq('init') phải xuất hiện đúng 1 lần, thực tế = %d", n)
 	}
-	if n := strings.Count(out, "fbq('track', 'PageView')"); n != 1 {
+	if n := strings.Count(out, "fbq('track', 'PageView'"); n != 1 {
 		t.Fatalf("PageView phải được track đúng 1 lần, thực tế = %d", n)
+	}
+	// ⚠️ Dedup Pixel ↔ CAPI (fix 2026-11-16): PageView phải kèm eventID.
+	if !strings.Contains(out, "{ eventID: window.APEX_PV_EVENT_ID }") {
+		t.Fatalf("PageView phải kèm eventID để Meta gộp với server CAPI:\n%s", out)
 	}
 	if strings.Contains(out, "ads.giaodichhanghoatuonglai.com/chucmung") {
 		t.Fatal("URL chuyển hướng sau đăng ký vẫn chứa domain ⇒ có thể quay lại trang có form")

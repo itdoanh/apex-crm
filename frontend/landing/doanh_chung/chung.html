@@ -63,10 +63,18 @@
 //    Nguyên nhân: fbevents.js kiểm tra `window.fbq !== window._fbq` ⇒ 2 instance
 //    khác version cùng chạy trên 1 trang. Sửa ở đây (2026-11-13).
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
+
+        // === [APEX PV EVENT ID] — event_id dùng chung Pixel ↔ CAPI (dedup PageView) ===
+        // Meta chỉ gộp sự kiện trình duyệt (fbq) với sự kiện máy chủ (CAPI)
+        // khi cả hai dùng CHUNG event_id. Giá trị này được tracker.js gửi lên
+        // server (payload analytics "event_id") ⇒ server truyền nguyên văn vào
+        // trường "event_id" của payload CAPI ⇒ Meta gộp 2 sự kiện thành 1.
+        window.APEX_PV_EVENT_ID = window.APEX_PV_EVENT_ID || ('pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+        var pvEventId = window.APEX_PV_EVENT_ID;
 fbq('init', '1429098679111905');
 
 // ===== Chỉ track PageView duy nhất trên landing =====
-fbq('track', 'PageView');
+fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
 // Lưu cờ để chucmung.html biết đã PageView từ landing
 try { sessionStorage.setItem('apex_pv_landing', '1'); } catch(_){}
 </script>

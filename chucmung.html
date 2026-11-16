@@ -297,8 +297,16 @@
             s.parentNode.insertBefore(t, s)
         }(window, document, 'script',
             'https://connect.facebook.net/en_US/fbevents.js');
+        
+        // === [APEX PV EVENT ID] — event_id dùng chung Pixel ↔ CAPI (dedup PageView) ===
+        // Meta chỉ gộp sự kiện trình duyệt (fbq) với sự kiện máy chủ (CAPI)
+        // khi cả hai dùng CHUNG event_id. Giá trị này được tracker.js gửi lên
+        // server (payload analytics "event_id") ⇒ server truyền nguyên văn vào
+        // trường "event_id" của payload CAPI ⇒ Meta gộp 2 sự kiện thành 1.
+        window.APEX_PV_EVENT_ID = window.APEX_PV_EVENT_ID || ('pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+        var pvEventId = window.APEX_PV_EVENT_ID;
         fbq('init', '1558828029597854');
-        fbq('track', 'PageView');
+        fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
     </script>
     <script
         data-ldp-identity="">window.LadiPageScript = window.LadiPageScript || {}; window.LadiPageScript.runtime = Object.assign({}, window.LadiPageScript.runtime || {}, { "ladipage_id": "6adc99f23115ac001247de00", "store_id": "6aabc31504590c0012f5b5fa", "time_zone": 7, "publish_platform": "LADIPAGE" });</script>

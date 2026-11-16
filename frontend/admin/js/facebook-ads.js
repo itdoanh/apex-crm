@@ -760,6 +760,17 @@ function renderFacebookAdsLogs() {
             manual_test: 'Test thủ công',
         }[l.triggered_by] || l.triggered_by || '-';
 
+        // ⚠️ Dedup Pixel ↔ CAPI (fix 2026-11-16):
+        // Sự kiện `PageView` có `event_id` dạng `pv_*` ⇒ đó là event_id
+        // DÙNG CHUNG với Pixel trình duyệt ⇒ Meta gộp 2 sự kiện thành 1
+        // (1 lượt xem = 1 PageView, không đếm trùng).
+        const evtID = l.event_id || '-';
+        const isPVShared = typeof l.event_id === 'string' && l.event_id.indexOf('pv') === 0;
+        const eventIdCell = isPVShared
+            ? `<span class="font-mono text-[10px] text-emerald-400" title="Event ID dùng chung với Meta Pixel trình duyệt ⇒ Meta gộp 2 sự kiện thành 1">${escapeHTMLFb(evtID)}</span>
+               <span class="block text-[9px] text-emerald-500/80 mt-0.5">✓ đã gộp với Pixel</span>`
+            : `<span class="font-mono text-[10px] text-slate-500" title="${escapeHTMLFb(evtID)}">${escapeHTMLFb(evtID.slice(0, 26))}${evtID.length > 26 ? '…' : ''}</span>`;
+
         return `
             <tr class="hover:bg-slate-800/40 transition">
                 <td class="py-2.5 px-3 font-mono text-[10px] text-slate-500">${escapeHTMLFb(l.created_at)}</td>
@@ -767,7 +778,7 @@ function renderFacebookAdsLogs() {
                     <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold ${st.cls}">${escapeHTMLFb(st.label)}</span>
                 </td>
                 <td class="py-2.5 px-3 font-mono text-[11px] font-bold text-orange-400">${escapeHTMLFb(l.event_name || '-')}</td>
-                <td class="py-2.5 px-3 font-mono text-[10px] text-slate-500">${escapeHTMLFb((l.event_id || '-').slice(0, 26))}</td>
+                <td class="py-2.5 px-3">${eventIdCell}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${escapeHTMLFb(l.landing_id || 'Mặc định')}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${l.lead_id ? '#' + escapeHTMLFb(l.lead_id) : '-'}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${escapeHTMLFb(trigger)}</td>
