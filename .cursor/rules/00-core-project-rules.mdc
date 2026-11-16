@@ -79,6 +79,36 @@ alwaysApply: true
     mới phải đọc token từ dòng riêng (`GetFacebookCAPIConfigExact`) — KHÔNG
     fallback token của config mặc định (sai ⇒ dòng mới có `access_token` rỗng
     ⇒ CAPI lúc chạy báo "thiếu Access Token").
+21. **Chặn SĐT rác — 2 lớp, KHÔNG tốn tiền QC** (fix 2026-11-16) —
+    - CLIENT (`frontend/admin/js/tracker.js` → `blockJunkPhone()`): chặn **TRƯỚC**
+      khi gọi `fetch` ⇒ lưu cookie `apex_junk_blocked_<landing>` (30 ngày) +
+      `location.replace('chucmung.html')` ⇒ **KHÔNG** POST `/api/leads`, **KHÔNG**
+      bắn `fbq('track','Lead')` ⇒ không tạo lead ⇒ **không tốn tiền QC**.
+      Chokepoint: `sendLeadToBackend()` + `initAutoFormInterceptor()` + guard khi
+      tải trang (`checkAutoRedirectJunkBlocked()`).
+    - SERVER (`backend/security/junk_phone.go` → `security.IsJunkPhone`, gọi trong
+      `lead_handler.go` bước 6.1): không tạo lead, ghi `spam_quarantine`,
+      trả `200 OK` giả (shadow ban).
+    - Heuristic **rất chặt** (KHÔNG chặn nhầm số thật): 14 mẫu cứng · 7 số cuối
+      giống hệt · dãy liên tiếp ±1 **đều toàn bộ** (`0987654322` ❌ không chặn) ·
+      lặp mẫu 2/5 số · lặp mẫu 3 số trong 9 số đầu.
+    - Sửa `tracker.js` ⇒ `node scripts/sync-static-mirror.js` (7 bản mirror).
+22. **Lead test (tên chứa `(test)`) ⇒ `leads.is_test`** (fix 2026-11-16) —
+    `security.IsTestLeadName()` (không phân biệt hoa thường).
+    - Bảng CRM + export CSV (cột "Lead Test") ⇒ **VẪN hiện** (badge "TEST").
+    - Google Sheets ⇒ **VẪN đồng bộ bình thường** (field `is_test` ⇒ "Có"/"").
+    - Biểu đồ / thống kê / CR% / phễu / `ListLandingPages` /
+      `GetMetaCampaignBreakdown` ⇒ **KHÔNG tính** (`buildWhereClause()` lọc mặc định;
+      `buildWhereClauseEx(..., includeTest=true)` cho bảng CRM + export CSV).
+    - `AssociateLeadToSession(..., isTest)` ⇒ KHÔNG set `converted_lead` / action
+      `converted`.
+    - Meta CAPI (`dispatchCAPILead` + `dispatchCAPICRMSync`) ⇒ **KHÔNG bắn**.
+23. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) —
+    `POST /api/analytics/report/quarantine/approve` do `LeadHandler.HandleApproveQuarantine`
+    xử lý (KHÔNG phải `ReportHandler` — vì cần `syncLeadToGoogleSheets()`).
+    `store.ApproveQuarantineLead(id)` trả `(result, lead, rawData, error)` ⇒ handler
+    gọi `go h.syncLeadToGoogleSheets(lead, rawData)` ⇒ lead được duyệt **vào CRM +
+    vào sheet** theo đúng cấu hình `google_sheet_configs` / `google_sheet_sync_mode`.
 
 ## Nguyên tắc bảo mật
 

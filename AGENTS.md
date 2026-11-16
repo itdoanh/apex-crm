@@ -148,6 +148,33 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
 17. **`tracker.js` KHÔNG được fallback về template/ID rác** (fix 2026-11-16) — đã bỏ fallback `'mxv_080_online'` (template) và `window.LadiPageScript.runtime.ladipage_id`. Chuỗi resolve duy nhất: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `'default_landing'`. Thêm fallback mới = tạo landing ID rác ⇒ thống kê chồng chéo.
 18. **File `.html` tĩnh phải có landing context** (fix 2026-11-16) — bước 7 của edge router (`backend/main.go`): nếu không resolve được landing (qua `ResolveRoute(host,"/")` hoặc `ResolveChucMungRoute`) ⇒ **404**, KHÔNG phục vụ HTML thô.
 19. **CAPI mặc định phải TẮT/XOÁ được** (fix 2026-11-16) — `POST /api/facebook-ads/config/toggle` và `config/delete` với `landing_id` rỗng ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH (`landing_id = ''` trong `facebook_capi_configs`). Query luôn khớp **CHÍNH XÁC** `landing_id` ⇒ không xoá/toggle nhầm dòng của landing khác. Tắt dòng mặc định ⇒ mọi landing **chưa** có cấu hình riêng ngừng gửi CAPI. Lưu cấu hình RIÊNG cho 1 landing mới phải đọc token từ dòng riêng (`GetFacebookCAPIConfigExact`) — KHÔNG fallback token của config mặc định (sai ⇒ dòng mới có `access_token` rỗng ⇒ CAPI lúc chạy báo "thiếu Access Token").
+20. **Chặn SĐT rác — 2 lớp, KHÔNG tốn tiền QC** (fix 2026-11-16) —
+    - CLIENT (`frontend/admin/js/tracker.js` → `blockJunkPhone()`): chặn **TRƯỚC** khi gọi
+      `fetch` ⇒ lưu cookie `apex_junk_blocked_<landing>` (30 ngày) + `location.replace('chucmung.html')`
+      ⇒ **KHÔNG** POST `/api/leads`, **KHÔNG** bắn `fbq('track','Lead')` ⇒ không tạo lead ⇒
+      **không tốn tiền QC**. Chokepoint: `sendLeadToBackend()` + `initAutoFormInterceptor()` +
+      guard khi tải trang (`checkAutoRedirectJunkBlocked()`).
+    - SERVER (`backend/security/junk_phone.go` → `security.IsJunkPhone`, gọi trong
+      `lead_handler.go` bước 6.1): không tạo lead, ghi `spam_quarantine`, trả `200 OK` giả.
+    - Heuristic **rất chặt** (không chặn nhầm số thật): 14 mẫu cứng · 7 số cuối giống hệt ·
+      dãy liên tiếp ±1 **đều toàn bộ** (`0987654322` ❌ không chặn) · lặp mẫu 2/5 số ·
+      lặp mẫu 3 số trong 9 số đầu.
+    - Sửa `tracker.js` ⇒ `node scripts/sync-static-mirror.js` (7 bản mirror).
+21. **Lead test (tên chứa `(test)`) — tự đánh dấu `is_test`** (fix 2026-11-16) —
+    `leads.is_test BOOLEAN` (`security.IsTestLeadName()`, không phân biệt hoa thường).
+    - Bảng CRM + export CSV (cột "Lead Test") ⇒ **VẪN hiện** (badge "TEST").
+    - Google Sheets ⇒ **VẪN đồng bộ bình thường** (field `is_test` ⇒ "Có"/"").
+    - Biểu đồ / thống kê / CR% / phễu / `ListLandingPages` / `GetMetaCampaignBreakdown` ⇒
+      **KHÔNG tính** (`buildWhereClause()` lọc mặc định; `buildWhereClauseEx(..., includeTest=true)`
+      cho bảng CRM + export CSV).
+    - `AssociateLeadToSession(..., isTest)` ⇒ KHÔNG set `converted_lead` / action `converted`.
+    - Meta CAPI (`dispatchCAPILead` + `dispatchCAPICRMSync`) ⇒ **KHÔNG bắn**.
+22. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) —
+    `POST /api/analytics/report/quarantine/approve` do `LeadHandler.HandleApproveQuarantine`
+    xử lý (không phải `ReportHandler` — vì cần `syncLeadToGoogleSheets()`).
+    `store.ApproveQuarantineLead(id)` trả về `(result, lead, rawData, error)` ⇒ handler gọi
+    `go h.syncLeadToGoogleSheets(lead, rawData)` ⇒ lead được duyệt **vào CRM + vào sheet**
+    theo đúng cấu hình `google_sheet_configs` / `google_sheet_sync_mode` của landing.
 
 ---
 

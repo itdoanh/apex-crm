@@ -664,6 +664,48 @@ Server lưu vào cột `leads.url` và đồng bộ sang Google Sheets bằng fi
 
 > Landing page mới **không cần làm gì thêm** — `tracker.js` đã gửi sẵn.
 
+### ⛔ Chặn SĐT rác — tự động chuyển trang "chúc mừng" (thêm 2026-11-16)
+
+**Áp dụng cho TẤT CẢ landing** (kể cả `doanh_chung`, `xu_huong_1`, `xu_huong_2`,
+`xu_huong_3`) vì tất cả dùng chung 1 file `tracker.js`.
+
+Khi khách nhập SĐT rác (`0987654321`, `0909090909`, 7 số cuối giống hệt…) và bấm
+"Đăng ký":
+
+```
+tracker.js (client)
+  └─ blockJunkPhone()
+       ├─ setJunkBlocked()   → cookie + localStorage `apex_junk_blocked_<landing>` (30 ngày)
+       ├─ redirectAfterJunk() → window.location.replace('chucmung.html')
+       └─ return true ⇒ DỪNG: KHÔNG POST /api/leads, KHÔNG ping analytics,
+                          KHÔNG bắn fbq('track','Lead')
+```
+
+⇒ **Không tạo lead ⇒ không bắn Meta CAPI ⇒ không tốn tiền QC.**
+
+Khi tải lại trang form mà cookie `apex_junk_blocked_<landing>` còn hiệu lực ⇒ tự
+động chuyển sang `chucmung.html` (khách không nhập lại được).
+
+Lớp phòng thủ thứ 2 phía server: `backend/security/junk_phone.go`
+(`security.IsJunkPhone`) gọi trong `lead_handler.go` bước 6.1 — nếu client bị
+bypass ⇒ không tạo lead, ghi `spam_quarantine`, trả `200 OK` giả.
+
+| Nơi | Hành vi |
+|---|---|
+| `sendLeadToBackend()` | ⛔ chặn TRƯỚC khi gọi `fetch` (chokepoint chính) |
+| `initAutoFormInterceptor()` | ⛔ chặn ngay khi bấm nút (landing tự xử lý form riêng) |
+| Tải trang | ⛔ tự chuyển `chucmung.html` nếu cookie chặn còn hiệu lực |
+
+> ⚠️ Landing tự viết handler submit riêng (vd `doanh_chung` dùng
+> `assets/js/apex-adapter.js` → `ApexTracker.sendLeadToBackend()`) **vẫn được bảo
+> vệ** vì chặn nằm ngay trong `sendLeadToBackend()`.
+>
+> ⚠️ Sửa `tracker.js` ⇒ chạy `node scripts/sync-static-mirror.js` (7 bản mirror)
+> + deploy ⇒ backend tự đồng bộ `tracker.js` vào `landing_files` cho mọi landing
+> (`SyncSharedStaticFilesToDB`).
+>
+> Chi tiết heuristic + bảng mẫu rác: `docs/SECURITY.md` mục 6.1.
+
 ---
 
 ## 6. Quy trình tạo landing mới (checklist)

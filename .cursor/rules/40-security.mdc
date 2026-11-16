@@ -174,6 +174,27 @@ Xem `docs/SECURITY.md` mục 4.
 
 ---
 
+## 8.1 Chặn SĐT rác — 2 lớp (thêm 2026-11-16)
+
+**File:** `backend/security/junk_phone.go` + `frontend/admin/js/tracker.js`
+
+| Lớp | Vị trí | Hành vi |
+|---|---|---|
+| CLIENT (chặn TRƯỚC) | `tracker.js` → `blockJunkPhone()` | cookie `apex_junk_blocked_<landing>` (30 ngày) + `location.replace('chucmung.html')` ⇒ **KHÔNG** POST `/api/leads`, **KHÔNG** bắn `fbq('track','Lead')` ⇒ **không tốn tiền QC** |
+| SERVER (chặn phụ) | `lead_handler.go` bước 6.1 | không tạo lead, ghi `spam_quarantine`, trả `200 OK` giả (shadow ban) |
+
+> ⚠️ Heuristic phải **RẤT CHẶT** — không được chặn nhầm số thật của khách.
+> Chỉ chặn khi CHẮC CHẮN rác: 14 mẫu cứng · 7 số cuối giống hệt ·
+> dãy liên tiếp ±1 **đều toàn bộ** (`0987654322` ❌ không chặn) ·
+> lặp mẫu 2/5 số · lặp mẫu 3 số trong 9 số đầu.
+>
+> ⚠️ Client chặn phải nằm TRƯỚC chỗ disable nút / gọi `fetch` — nếu đặt sau
+> thì request đã đi ⇒ đã tốn tiền QC.
+
+Xem `docs/SECURITY.md` mục 6.1.
+
+---
+
 ## 9. Bảo vệ file tĩnh
 
 ```go

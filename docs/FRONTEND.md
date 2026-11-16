@@ -101,6 +101,16 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 | Quản Lý Tên Miền | DNS check, SSL check, deploy route |
 | Nhật Ký & Phiên | Active sessions + audit logs |
 
+#### Badge "TEST" cho lead test (thêm 2026-11-16)
+
+Lead mà **tên chứa `(test)`** do admin tạo để kiểm tra hệ thống ⇒ backend tự đánh dấu
+`is_test = TRUE`. Trong bảng CRM (desktop) và thẻ mobile, `crm.js` render badge
+màu tím **"TEST"** + giảm opacity để admin không nhầm là lead thật.
+
+> Lead test **VẪN hiện** trong CRM và **VẪN** đồng bộ Google Sheets, nhưng **KHÔNG**
+> tính vào biểu đồ / thống kê / CR% và **KHÔNG** bắn Meta CAPI.
+> Chi tiết: `docs/SECURITY.md` mục 6.2 · `docs/DATABASE.md` mục 2.
+
 ### Panel chuyển động
 - Sidebar trái — icon + label, active state
 - Header — tên user, nút đổi mật khẩu, đăng xuất
@@ -504,6 +514,9 @@ Hàm helper quan trọng trong `js/studio/file-manager.js`:
 3. `GET /api/auth/challenge` → giải PoW.
 4. Submit form → `POST /api/leads` kèm tracking + PoW solution.
 5. Set cookie 180 ngày → redirect `chucmung.html` nếu đã đăng ký.
+6. **Chặn SĐT rác TRƯỚC khi gửi** (`blockJunkPhone()`) — lưu cookie
+   `apex_junk_blocked_<landing>` (30 ngày) + chuyển `chucmung.html` ⇒ KHÔNG
+   POST `/api/leads`, KHÔNG bắn `fbq('track','Lead')` ⇒ **không tốn tiền QC**.
 
 ### Data thu thập
 
@@ -532,6 +545,10 @@ Hàm helper quan trọng trong `js/studio/file-manager.js`:
   nhiều handler submit cùng lúc — nếu không, request thứ 2+ dùng lại nonce PoW đã tiêu thụ
   ⇒ server ghi vào `spam_quarantine` ⇒ **lead thật bị gắn nhầm nhãn "Lỗi Proof-of-Work"**.
   Chi tiết: `docs/LANDING.md` mục 3 & `docs/SECURITY.md` mục 2.
+- **Chặn SĐT rác phải nằm TRƯỚC chỗ disable nút / gọi `fetch`** trong
+  `sendLeadToBackend()`. Nếu đặt sau ⇒ request đã gửi ⇒ đã tốn tiền QC.
+  Server có lớp phòng thủ thứ 2 (`security.IsJunkPhone`) nhưng lúc đó đã tốn 1
+  request. Chi tiết: `docs/SECURITY.md` mục 6.1.
 
 ### Code Studio preview — cách ly
 

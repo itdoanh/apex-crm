@@ -23,6 +23,7 @@ type Lead struct {
 	AdPlatform  string          `json:"ad_platform"`     // Meta Ads, Google Ads, TikTok Ads, Zalo Ads, Direct...
 	AdPlacement string          `json:"ad_placement"`    // Vị trí phân phối: Instagram, FB Feed, Audience Network, GDN, YouTube...
 	URL         string          `json:"url"`             // URL trang khách vừa gửi form (landing + query string) — dùng để truy ngược lead về đúng trang
+	IsTest      bool            `json:"is_test"`         // TRUE = lead test (tên chứa "(test)") — không tính vào biểu đồ/thông số
 	Tracking    json.RawMessage `json:"tracking"`        // Chứa toàn bộ thông tin trình duyệt + form dạng JSON linh hoạt
 }
 

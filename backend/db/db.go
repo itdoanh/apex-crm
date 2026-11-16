@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"apex-backend/models"
+	"apex-backend/security"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -105,6 +106,12 @@ func (s *Store) initSchema(ctx context.Context) error {
 	-- để đồng bộ sang Google Sheets bằng 1 field mapping cố định ("url").
 	ALTER TABLE leads ADD COLUMN IF NOT EXISTS url VARCHAR(1000) NOT NULL DEFAULT '';
 
+	-- ⚠️ CỜ LEAD TEST (yêu cầu 2026-11-16):
+	-- Lead mà tên chứa "(test)" do chính admin tạo để kiểm tra hệ thống.
+	-- ⇒ Đánh dấu is_test = TRUE ⇒ KHÔNG tính vào biểu đồ / thông số (CR%, doanh thu),
+	--   NHƯNG vẫn đồng bộ sang Google Sheets bình thường.
+	ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
+
 	CREATE INDEX IF NOT EXISTS idx_leads_landing_id ON leads (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_leads_nguon ON leads (nguon);
 	CREATE INDEX IF NOT EXISTS idx_leads_so_dien_thoai ON leads (so_dien_thoai);
@@ -115,6 +122,7 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_leads_ad_platform ON leads (ad_platform);
 	CREATE INDEX IF NOT EXISTS idx_leads_ad_placement ON leads (ad_placement);
 	CREATE INDEX IF NOT EXISTS idx_leads_tracking_gin ON leads USING gin (tracking);
+	CREATE INDEX IF NOT EXISTS idx_leads_is_test ON leads (is_test);
 
 	-- Bảng lưu trữ phiên truy cập & toàn bộ hành vi chi tiết (Analytics & Bot Detection)
 	CREATE TABLE IF NOT EXISTS analytics_sessions (
@@ -624,6 +632,7 @@ func (s *Store) migrateAnalyticsAttribution() {
 				    l.thoi_gian, l.thoi_gian
 				FROM leads l
 				WHERE COALESCE(l.tracking->>'session_id', '') != ''
+				  AND COALESCE(l.is_test, FALSE) = FALSE
 				  AND NOT EXISTS (
 				    SELECT 1 FROM analytics_sessions s WHERE s.session_id = l.tracking->>'session_id'
 				  )
@@ -640,6 +649,7 @@ func (s *Store) migrateAnalyticsAttribution() {
 				    so_dien_thoai = COALESCE(NULLIF(s.so_dien_thoai, ''), l.so_dien_thoai)
 				FROM leads l
 				WHERE s.session_id = l.tracking->>'session_id'
+				  AND COALESCE(l.is_test, FALSE) = FALSE
 				  AND (s.lead_id IS NULL OR s.lead_id <> l.id);
 			`,
 		},
@@ -671,6 +681,7 @@ func (s *Store) migrateAnalyticsAttribution() {
 				FROM picked p
 				JOIN leads l ON l.so_dien_thoai = p.phone
 				WHERE s.session_id = p.session_id
+				  AND COALESCE(l.is_test, FALSE) = FALSE
 				  AND s.lead_id IS NULL;
 			`,
 		},
@@ -706,6 +717,7 @@ func (s *Store) migrateAnalyticsAttribution() {
 				  AND (
 				    s.lead_id IS NULL
 				    OR NOT EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id)
+				    OR EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND COALESCE(l.is_test, FALSE) = TRUE)
 				  );
 			`,
 		},
@@ -779,6 +791,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 	// Trích xuất từ trackingJSON nếu truyền vào rỗng
 	var trackMap map[string]interface{}
 	sessionID := ""
+	leadName := ""
 	if err := json.Unmarshal(trackingJSON, &trackMap); err == nil {
 		if city == "" {
 			if v, ok := trackMap["city"].(string); ok {
@@ -824,10 +837,24 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 				break
 			}
 		}
+		// ⚠️ LEAD TEST (yêu cầu 2026-11-16):
+		// Tên khách chứa "(test)" ⇒ đánh dấu `is_test = TRUE` ⇒ KHÔNG tính
+		// vào biểu đồ / thông số (CR%, doanh thu) nhưng VẪN đồng bộ sang
+		// Google Sheets bình thường.
+		for _, k := range []string{"fullName", "name", "ho_ten", "customer_name"} {
+			if v, ok := trackMap[k].(string); ok && strings.TrimSpace(v) != "" {
+				leadName = strings.TrimSpace(v)
+				break
+			}
+		}
 	}
 	if country == "" {
 		country = "Việt Nam"
 	}
+
+	// Cờ lead test — tính 1 lần ở đây để MỌI đường ghi lead (kể cả duyệt
+	// cách ly) đều tự động áp dụng cùng 1 quy tắc.
+	isTest := security.IsTestLeadName(leadName)
 
 	// === BẮT ĐẦU TRANSACTION ===
 	// Serialize theo SĐT: mọi request cùng 1 SĐT phải xếp hàng, tránh race
@@ -850,6 +877,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		       COALESCE(is_test, FALSE),
 		       tracking::text
 		FROM leads
 		WHERE so_dien_thoai = $1
@@ -880,6 +908,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		&existing.AdPlatform,
 		&existing.AdPlacement,
 		&existing.URL,
+		&existing.IsTest,
 		&existingTrackingStr,
 	)
 	if err == nil {
@@ -928,20 +957,21 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 
 	// 2. Lead mới hoàn toàn
 	query := `
-		INSERT INTO leads (landing_id, nguon, so_dien_thoai, url, tracking, trang_thai, ghi_chu, nguoi_phu_trach, city, region, country, isp, ad_platform, ad_placement, thoi_gian, cap_nhat_luc)
-		VALUES ($1, $2, $3, $4, $5::jsonb, 'moi', '', '', $6, $7, $8, $9, $10, $11, NOW(), NOW())
+		INSERT INTO leads (landing_id, nguon, so_dien_thoai, url, tracking, trang_thai, ghi_chu, nguoi_phu_trach, city, region, country, isp, ad_platform, ad_placement, is_test, thoi_gian, cap_nhat_luc)
+		VALUES ($1, $2, $3, $4, $5::jsonb, 'moi', '', '', $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
 		RETURNING id, TO_CHAR(thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'), landing_id, nguon, so_dien_thoai,
 		          COALESCE(trang_thai, 'moi'), COALESCE(ghi_chu, ''), COALESCE(nguoi_phu_trach, ''),
 		          TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		          COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		          COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		          COALESCE(is_test, FALSE),
 		          tracking::text;
 	`
 
 	var lead models.Lead
 	var trackingStr string
 
-	err = tx.QueryRow(ctx, query, landingID, nguon, phone, pageURL, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement).Scan(
+	err = tx.QueryRow(ctx, query, landingID, nguon, phone, pageURL, string(trackingJSON), city, region, country, isp, adPlatform, adPlacement, isTest).Scan(
 		&lead.ID,
 		&lead.CreatedAt,
 		&lead.LandingID,
@@ -958,6 +988,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		&lead.AdPlatform,
 		&lead.AdPlacement,
 		&lead.URL,
+		&lead.IsTest,
 		&trackingStr,
 	)
 	if err != nil {
@@ -973,10 +1004,30 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 }
 
 // buildWhereClause xây dựng câu lệnh WHERE động theo đa chiều các bộ lọc: tìm kiếm, landing, nguồn, trạng thái, ngày, giờ
+//
+// ⚠️ MẶC ĐỊNH: LOẠI TRỪ lead test (is_test = TRUE).
+//
+// Yêu cầu 2026-11-16 của anh itdoanh: lead mà tên chứa "(test)" là lead
+// do chính admin tạo để kiểm tra ⇒ KHÔNG được tính vào biểu đồ / thông số
+// (CR%, doanh thu, KPI) — nhưng VẪN hiện trong bảng CRM (có badge TEST)
+// và VẪN đồng bộ sang Google Sheets bình thường.
 func buildWhereClause(search string, landingID string, nguon string, status string, fromDate string, toDate string, fromHour int, toHour int) (string, []interface{}) {
+	return buildWhereClauseEx(search, landingID, nguon, status, fromDate, toDate, fromHour, toHour, false)
+}
+
+// buildWhereClauseEx như buildWhereClause nhưng cho phép giữ lại lead test.
+//
+// includeTest = true  ⇒ KHÔNG lọc is_test (dùng cho bảng CRM + export CSV,
+//                        nơi admin cần nhìn thấy lead test).
+// includeTest = false ⇒ loại lead test khỏi mọi thống kê / biểu đồ.
+func buildWhereClauseEx(search string, landingID string, nguon string, status string, fromDate string, toDate string, fromHour int, toHour int, includeTest bool) (string, []interface{}) {
 	var conditions []string
 	var args []interface{}
 	idx := 1
+
+	if !includeTest {
+		conditions = append(conditions, "COALESCE(is_test, FALSE) = FALSE")
+	}
 
 	if strings.TrimSpace(search) != "" {
 		conditions = append(conditions, fmt.Sprintf("(so_dien_thoai ILIKE '%%' || $%d || '%%' OR ghi_chu ILIKE '%%' || $%d || '%%' OR tracking->>'fullName' ILIKE '%%' || $%d || '%%')", idx, idx, idx))
@@ -1056,7 +1107,11 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 	}
 	offset := (page - 1) * limit
 
-	whereClause, args := buildWhereClause(search, landingID, nguon, status, fromDate, toDate, fromHour, toHour)
+	// ⚠️ Bảng CRM + đếm tổng: GIỮ lead test (includeTest = true) ⇒ admin
+	// vẫn nhìn thấy lead test trong danh sách (có badge "TEST") để xoá/tra cứu.
+	// Các thống kê / biểu đồ (GetCRMStats, CountStats) dùng bản mặc định ⇒
+	// ĐÃ loại lead test.
+	whereClause, args := buildWhereClauseEx(search, landingID, nguon, status, fromDate, toDate, fromHour, toHour, true)
 
 	// Đếm tổng số bản ghi khớp bộ lọc
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM leads %s", whereClause)
@@ -1076,6 +1131,7 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		       COALESCE(is_test, FALSE),
 		       tracking::text
 		FROM leads
 		%s
@@ -1110,6 +1166,7 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 			&lead.AdPlatform,
 			&lead.AdPlacement,
 			&lead.URL,
+			&lead.IsTest,
 			&trackingStr,
 		); err != nil {
 			return nil, 0, fmt.Errorf("lỗi đọc dòng lead: %w", err)
@@ -1130,7 +1187,8 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	whereClause, args := buildWhereClause(search, landingID, nguon, status, fromDate, toDate, fromHour, toHour)
+	// Export CSV: GIỮ lead test (admin cần xuất để đối soát).
+	whereClause, args := buildWhereClauseEx(search, landingID, nguon, status, fromDate, toDate, fromHour, toHour, true)
 
 	query := fmt.Sprintf(`
 		SELECT id, TO_CHAR(thoi_gian AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'), landing_id, nguon, so_dien_thoai,
@@ -1138,6 +1196,7 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		       COALESCE(is_test, FALSE),
 		       tracking::text
 		FROM leads
 		%s
@@ -1171,6 +1230,7 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 			&lead.AdPlatform,
 			&lead.AdPlacement,
 			&lead.URL,
+			&lead.IsTest,
 			&trackingStr,
 		); err != nil {
 			return nil, fmt.Errorf("lỗi đọc dữ liệu export CSV: %w", err)
@@ -1198,6 +1258,7 @@ func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
 		       TO_CHAR(COALESCE(cap_nhat_luc, thoi_gian) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS'),
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
+		       COALESCE(is_test, FALSE),
 		       tracking::text
 		FROM leads
 		WHERE id = $1
@@ -1208,7 +1269,7 @@ func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
 		&lead.ID, &lead.CreatedAt, &lead.LandingID, &lead.Nguon, &lead.Phone,
 		&lead.TrangThai, &lead.GhiChu, &lead.AssignedTo, &lead.UpdatedAt,
 		&lead.City, &lead.Region, &lead.Country, &lead.ISP,
-		&lead.AdPlatform, &lead.AdPlacement, &lead.URL, &trackingStr,
+		&lead.AdPlatform, &lead.AdPlacement, &lead.URL, &lead.IsTest, &trackingStr,
 	)
 	if err != nil {
 		return nil, err
@@ -1858,7 +1919,11 @@ func (s *Store) UpsertAnalyticsSession(p *models.AnalyticsEventPayload, ip strin
 //
 // CÁCH SỬA: dùng `INSERT ... ON CONFLICT (session_id) DO UPDATE` ⇒ luôn tạo
 // dòng session nếu chưa có ⇒ mọi lead đều xuất hiện trong biểu đồ.
-func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID uint64) error {
+//
+// ⚠️ LEAD TEST (2026-11-16): khi isTest = true ⇒ KHÔNG set converted_lead = TRUE
+// và KHÔNG ghi action 'converted' ⇒ biểu đồ analytics / CR% / phễu chuyển đổi
+// KHÔNG tính lead test (yêu cầu: lead test không tính vào biểu đồ, thông số).
+func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID uint64, isTest bool) error {
 	if sessionID == "" {
 		return nil
 	}
@@ -1883,38 +1948,49 @@ func (s *Store) AssociateLeadToSession(sessionID string, phone string, leadID ui
 		nguon = landingID
 	}
 
-	query := `
+	// Lead test ⇒ converted_lead = FALSE + không ghi action 'converted'.
+	convertedFlag := "TRUE"
+	convertedAction := `jsonb_build_array(jsonb_build_object(
+			    'time', 0,
+			    'type', 'converted',
+			    'target', 'registrationForm',
+			    'text', 'Hoàn tất đăng ký',
+			    'detail', jsonb_build_object('lead_id', $6::bigint, 'phone', $5::varchar)
+			))`
+	if isTest {
+		convertedFlag = "FALSE"
+		convertedAction = `'[]'::jsonb`
+	}
+
+	query := fmt.Sprintf(`
 		INSERT INTO analytics_sessions (
 			session_id, visitor_id, landing_id, nguon,
 			so_dien_thoai, lead_id, converted_lead, has_interacted_form,
 			duration_seconds, actions, first_seen, last_seen
 		) VALUES (
 			$1, $2, $3, $4,
-			$5, $6::bigint, TRUE, TRUE,
-			0, jsonb_build_array(jsonb_build_object(
-			    'time', 0,
-			    'type', 'converted',
-			    'target', 'registrationForm',
-			    'text', 'Hoàn tất đăng ký',
-			    'detail', jsonb_build_object('lead_id', $6::bigint, 'phone', $5::varchar)
-			)), NOW(), NOW()
+			$5, $6::bigint, %s, TRUE,
+			0, %s, NOW(), NOW()
 		)
 		ON CONFLICT (session_id) DO UPDATE SET
-			converted_lead = TRUE,
+			converted_lead = analytics_sessions.converted_lead OR %s,
 			so_dien_thoai = EXCLUDED.so_dien_thoai,
 			lead_id = EXCLUDED.lead_id,
 			has_interacted_form = TRUE,
 			landing_id = CASE WHEN EXCLUDED.landing_id != '' THEN EXCLUDED.landing_id ELSE analytics_sessions.landing_id END,
 			nguon = CASE WHEN EXCLUDED.nguon != '' THEN EXCLUDED.nguon ELSE analytics_sessions.nguon END,
-			actions = COALESCE(analytics_sessions.actions, '[]'::jsonb) || jsonb_build_array(jsonb_build_object(
-			    'time', analytics_sessions.duration_seconds,
-			    'type', 'converted',
-			    'target', 'registrationForm',
-			    'text', 'Hoàn tất đăng ký',
-			    'detail', jsonb_build_object('lead_id', EXCLUDED.lead_id, 'phone', EXCLUDED.so_dien_thoai)
-			)),
+			actions = CASE
+				WHEN %s = FALSE THEN analytics_sessions.actions
+				ELSE COALESCE(analytics_sessions.actions, '[]'::jsonb) || jsonb_build_array(jsonb_build_object(
+				    'time', analytics_sessions.duration_seconds,
+				    'type', 'converted',
+				    'target', 'registrationForm',
+				    'text', 'Hoàn tất đăng ký',
+				    'detail', jsonb_build_object('lead_id', EXCLUDED.lead_id, 'phone', EXCLUDED.so_dien_thoai)
+				))
+			END,
 			last_seen = NOW()
-	`
+	`, convertedFlag, convertedAction, convertedFlag, convertedFlag)
 	_, err := s.pool.Exec(ctx, query, sessionID, visitorID, landingID, nguon, phone, int64(leadID))
 	return err
 }

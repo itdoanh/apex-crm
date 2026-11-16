@@ -316,6 +316,87 @@ Lead spam từ 1 IP sẽ bị chặn trước khi chạm DB — tiết kiệm t�
 
 ---
 
+## 6.1 Chặn Số Điện Thoại "RÁC" — Bảo vệ ngân sách Quảng Cáo (thêm 2026-11-16)
+
+**File:** `backend/security/junk_phone.go` + `frontend/admin/js/tracker.js`
+
+### Bối cảnh
+
+Người dùng **cố tình** nhập số điện thoại rác (vd `0987654321`) chỉ để **đốt tiền
+quảng cáo (QC)**. Mỗi lượt gửi form ⇒ 1 lead ⇒ 1 sự kiện **Meta Conversions API**
+⇒ tốn tiền QC + làm thổi phồng chỉ số chuyển đổi.
+
+### Mô hình 2 lớp (defense in depth)
+
+| Lớp | Vị trí | Hành vi |
+|---|---|---|
+| **1. CLIENT** (chặn TRƯỚC) | `tracker.js` → `blockJunkPhone()` | Lưu cookie `apex_junk_blocked_<landing>` (30 ngày) + chuyển thẳng sang `chucmung.html` ⇒ **KHÔNG gửi payload lên server** ⇒ không tạo lead ⇒ không bắn CAPI ⇒ **không tốn tiền QC** |
+| **2. SERVER** (chặn phụ) | `lead_handler.go` (bước 6.1) | Nếu client bị bypass ⇒ **không tạo lead**, **không bắn CAPI**, **không ghi Google Sheets**, ghi log vào `spam_quarantine`, trả `200 OK` giả (shadow ban) |
+
+### Chokepoint client (quan trọng)
+
+`blockJunkPhone()` được gọi ở **2 chokepoint** trong `tracker.js`:
+
+1. `sendLeadToBackend()` — chặn **TRƯỚC** khi disable nút / gọi fetch ⇒ không
+   gửi `POST /api/leads`, không ping analytics, không bắn `fbq('track','Lead')`.
+2. `initAutoFormInterceptor()` — chặn ngay khi bấm nút "Đăng ký" (lớp chặn thứ 2
+   cho các landing tự xử lý form riêng, vd `registrationForm` với
+   `__REGISTRATION_FORM_HANDLED__`).
+
+Ngoài ra: khi tải trang, nếu cookie `apex_junk_blocked_<landing>` còn hiệu lực ⇒
+tự động chuyển sang `chucmung.html` (khách không nhập lại được).
+
+> ⚠️ **Vì sao dùng chung 1 `tracker.js`?** Cả 4 landing hiện tại
+> (`doanh_chung`, `xu_huong_1`, `xu_huong_2`, `xu_huong_3`) + MỌI landing tạo
+> trong CRM đều dùng chung `tracker.js` (nạp từ `landing_files` trong DB, đồng bộ
+> từ đĩa lúc backend khởi động qua `SyncSharedStaticFilesToDB`) ⇒ **sửa 1 lần
+> là áp dụng cho tất cả**. Sửa `tracker.js` ⇒ **phải** chạy
+> `node scripts/sync-static-mirror.js` (7 bản mirror).
+
+### Heuristic phát hiện (RẤT CHẶT — không chặn nhầm số thật)
+
+Chỉ xét số đã chuẩn hoá về 10 chữ số kiểu Việt Nam:
+
+| # | Mẫu | Ví dụ |
+|---|---|---|
+| 1 | Danh sách cứng (14 mẫu) | `0987654321`, `0123456789`, `0000000000` |
+| 2 | 7 số cuối giống hệt nhau | `0911111111`, `0988888888` |
+| 3 | Dãy số liên tiếp tăng/giảm **đều** ±1 | `0123456789`, `0987654321` — còn `0987654322` ❌ (không chặn) |
+| 4 | Số lặp theo mẫu 2 / 5 số, hoặc mẫu 3 số lặp trong 9 số đầu | `0909090909`, `0123401234`, `0120120120` |
+
+> ⚠️ `0987654322` (chỉ 1 bước lệch) **KHÔNG** bị chặn ⇒ số thật của khách
+> không bị ảnh hưởng.
+>
+> ⚠️ Hàm `isSequentialDigits` yêu cầu **MỌI** cặp kề nhau cùng bước — nếu chỉ
+> kiểm tra "phần đầu tăng" thì số thật như `0981234567` sẽ bị chặn nhầm.
+
+### Kiểm thử
+
+```bash
+cd backend && go test ./security/ -run "TestIsJunkPhone|TestIsTestLeadName" -v
+```
+
+---
+
+## 6.2 Đánh dấu LEAD TEST (thêm 2026-11-16)
+
+**File:** `backend/security/junk_phone.go` (`IsTestLeadName`) + `backend/db/db.go`
+
+Lead mà **tên chứa `(test)`** do chính admin tạo để kiểm tra hệ thống ⇒ tự động
+đánh dấu `leads.is_test = TRUE`.
+
+| Nơi | Lead test |
+|---|---|
+| Bảng CRM + export CSV | ✅ Vẫn hiện (badge "TEST") |
+| Google Sheets | ✅ **Vẫn đồng bộ bình thường** (yêu cầu của anh itdoanh) |
+| Biểu đồ / thống kê / CR% / phễu | ❌ Không tính |
+| Meta CAPI | ❌ Không bắn (không tốn tiền QC) |
+
+Nhận diện không phân biệt hoa thường: `(test)` · `(TEST)` · `( Test )`.
+Chi tiết schema + cơ chế lọc: `docs/DATABASE.md` mục 2.
+
+---
+
 ## 7. GeoIP & Ad Placement
 
 **File:** `backend/security/geoip.go`, `backend/security/ad_placement.go`
