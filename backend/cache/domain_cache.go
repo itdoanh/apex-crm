@@ -150,6 +150,37 @@ func (c *DomainCache) ResolveRoute(host, reqPath string) (landingID, pathPrefix,
 			return r.LandingID, pfx, "", r.RedirectURL, true
 		}
 
+		// ⚠️ BẮT BUỘC (fix 2026-11-16 — bug chồng chéo thông số landing):
+		//
+		//   URL dạng `/<tên>.html` PHẢI khớp route prefix `/<tên>`.
+		//
+		//   BỐI CẢNH:
+		//     Meta Ads / Zalo / retargeting trỏ THẲNG tới `/chucmung.html`
+		//     (file .html, không có dấu "/" cuối). Route `/chucmung` chỉ khớp
+		//     `/chucmung`, `/chucmung/`, `/chucmung/index.html`.
+		//     ⇒ `strings.HasPrefix("/chucmung.html", "/chucmung/")` = FALSE
+		//     ⇒ KHÔNG route nào khớp ⇒ `found = false` ⇒ Edge Router rơi xuống
+		//     nhánh phục vụ file TĨNH từ đĩa (`frontend/landing/chucmung.html`)
+		//     ⇒ KHÔNG chạy `InjectDynamicScriptsWithBase` ⇒ HTML trả về KHÔNG có
+		//     `data-landing-id` và KHÔNG có `window.APEX_LANDING_CONFIG`.
+		//
+		//   HẬU QUẢ (đúng triệu chứng anh itdoanh báo 2026-11-16):
+		//     tracker.js rơi về chuỗi fallback ⇒ ghi analytics/lead về
+		//     `mxv_080_online` (template dùng chung) hoặc `default_landing` ⇒
+		//     lượt xem & lead của landing thật bị ghi nhầm sang landing khác ⇒
+		//     tab Quản lý Landing hiển thị thông số chồng chéo.
+		//
+		//   CÁCH SỬA: khi path kết thúc bằng `.html`, thử khớp với prefix
+		//   bằng cách bỏ đuôi `.html` ⇒ trả về `subPath` = tên file đầy đủ
+		//   (vd: `chucmung.html`) để Edge Router đi vào nhánh phục vụ
+		//   chucmung CÓ inject dynamic scripts.
+		if strings.HasSuffix(cleanPath, ".html") {
+			htmlBase := strings.TrimSuffix(cleanPath, ".html")
+			if htmlBase == pfx {
+				return r.LandingID, pfx, strings.TrimPrefix(cleanPath, "/"), r.RedirectURL, true
+			}
+		}
+
 		if strings.HasPrefix(cleanPath, pfx+"/") {
 			sub := strings.TrimPrefix(cleanPath, pfx+"/")
 			return r.LandingID, pfx, sub, r.RedirectURL, true

@@ -16,6 +16,25 @@ type LandingPage struct {
 	UpdatedAt    string                 `json:"updated_at"`
 	LeadsCount   int                    `json:"leads_count,omitempty"`
 	ViewsCount   int                    `json:"views_count,omitempty"`
+
+	// ⚠️ HumanViewsCount / BotViewsCount (fix 2026-11-16 — thống kê chồng chéo).
+	//
+	//   `ViewsCount` = TỔNG sessions (bao gồm bot). Tab "Trung Tâm Báo Cáo"
+	//   dùng `human_visitors` (loại bot) làm mẫu số CR. Nếu tab Quản lý
+	//   Landing dùng tổng sessions làm mẫu số ⇒ CR ở 2 tab LỆCH NHAU ⇒
+	//   người dùng thấy "thông số không chính xác".
+	//
+	//   ⇒ Tách rõ: `ViewsCount` (tổng), `HumanViewsCount` (người thật),
+	//     `BotViewsCount` (bot). CR tính theo `HumanViewsCount` để khớp
+	//     với Trung Tâm Báo Cáo.
+	HumanViewsCount int `json:"human_views_count,omitempty"`
+	BotViewsCount   int `json:"bot_views_count,omitempty"`
+
+	// Domains liệt kê TẤT CẢ domain mà landing này đang được deploy
+	// (từ bảng `domain_routes`). Landing nhân bản rồi deploy lên nhiều
+	// domain sẽ có nhiều domain — trước đây UI chỉ hiện 1 domain (hoặc
+	// "Chung Domain") ⇒ người dùng tưởng thông số bị gộp chồng.
+	Domains []string `json:"domains,omitempty"`
 }
 
 // LandingFile đại diện cho một tệp tin (HTML, CSS, JS) thuộc thư mục của Landing Page

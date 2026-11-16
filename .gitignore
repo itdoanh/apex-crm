@@ -54,3 +54,6 @@ backend/logs/
 
 # Local persistent SSH session workspace
 .apex-session/
+
+# Temporary diagnostic scripts (SSH/psql one-off)
+.tmp_diag/

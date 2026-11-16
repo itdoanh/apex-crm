@@ -242,6 +242,37 @@ trống sau khi deploy.
 > **Ngoại lệ cấu hình sheet:** `google_sheet_sync_mode` + `google_sheet_ids` là cấu
 > hình ở **MỨC LANDING** ⇒ phải đồng bộ 2 chiều (bản gốc ↔ bản domain).
 
+### 🚨 Cách ly row theo domain — KHÔNG ghi đè template (fix 2026-11-16)
+
+**Triệu chứng:** các landing đã nhân bản có **thống kê chồng chéo** (lượt xem / lead
+gộp chung) trong tab Quản lý Landing.
+
+**Nguyên nhân:** `UpdateLandingCode` dùng:
+
+```sql
+WHERE (domain = $3 OR domain = '') AND page_id = $4   -- ❌ SAI
+```
+
+⇒ Sửa code HTML trên domain đích **ghi đè LUÔN** row template (`domain = ''`) ⇒
+mọi landing cùng `page_id` bị gộp làm 1 ⇒ số liệu chồng chéo. Tương tự,
+`ToggleLandingActive` khi deploy cũng tắt/mở nhầm row domain khác.
+
+| Hàm store | Quy tắc bắt buộc (fix 2026-11-16) |
+|---|---|
+| `EnsureLandingPageDomainRow(ctx, domain, pageID, codeHTML)` | Trước khi update row theo domain: nếu chưa có row `(domain, page_id)` ⇒ **clone từ row gốc** (`domain=''`) sang row domain mới. Không có hàm này thì update sẽ **không ăn** (0 row) ⇒ mất code. |
+| `UpdateLandingCode()` | Update **chỉ** `WHERE domain = $3 AND page_id = $4`. Không dùng `OR domain = ''`. |
+| `ToggleLandingActive(domain, pageID, isActive)` | `domain != ''` ⇒ chỉ toggle row đó. `domain = ''` ⇒ toggle **mọi** row của `page_id` (dùng khi bật/tắt toàn bộ landing). |
+| `ToggleLandingActiveBase(pageID, isActive)` | Toggle **chỉ** row template (`domain = ''`). Dùng trong `HandleDeployLanding` để deploy **không** làm đổi trạng thái active của các row domain khác. |
+| `GetAllActiveDomainRoutes()` | Dùng `SELECT DISTINCT ON (dr.id)` + `EXISTS (... landing_pages lp2 WHERE lp2.page_id = dr.landing_id AND lp2.is_active = true)` ⇒ 1 landing có nhiều row domain **không** sinh route trùng. |
+| `ListLandingPages()` | Tách `views_count` (tổng) · `human_views_count` (`COUNT(*) FILTER (WHERE NOT is_bot)`) · `bot_views_count`; gắn `domains []string` từ `domain_routes` (`GetLandingDeployDomains`); `dedupeLandingPagesByPageID` **gộp** danh sách domain (`mergeDomainLists`). |
+
+> 📌 `models.LandingPage` giờ có thêm: `HumanViewsCount int`, `BotViewsCount int`,
+> `Domains []string` — frontend dùng `human_views_count` làm mẫu số CR% (khớp công
+> thức tab Trung Tâm Báo Cáo).
+
+> 🧪 Migration dữ liệu lịch sử: `deploy/fix_landing_attribution_20261116.sql`
+> (đã test trên `apex_leads_test` — idempotent). Chi tiết: `docs/LANDING.md` mục 7.1.
+
 ### `settings` JSONB — feature flags & branding
 
 ```json

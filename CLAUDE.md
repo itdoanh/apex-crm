@@ -58,6 +58,11 @@
 20. **Danh mục trường Google Sheets có 1 nguồn duy nhất** — `backend/integrations/googlesheets/fields.go` (`leadFieldCatalog`, ~90 trường / 9 nhóm). Handler + frontend đều lấy từ đây (`GET /api/integrations/sheets/defaults`); frontend **không** hardcode danh sách trường.
 21. **Cột chuẩn mới không tự áp dụng cho config đã lưu** — Admin bấm "Bổ sung Cột" (`POST /api/integrations/sheets/configs/upgrade-mappings`): giữ nguyên cột cũ, thêm cột mới vào CUỐI, ghi tiêu đề mới vào dòng 1.
 22. **Đổi trạng thái CRM cập nhật lại dòng Sheet** (không append) — `syncLeadStatusToGoogleSheets()` tra `google_sheet_sync_logs.row_range` rồi `Values.BatchUpdate` đúng dòng. Ô rỗng ⇒ bỏ qua; `RAW` (không diễn giải `=` là công thức).
+23. **KHÔNG ghi đè row template khi sửa landing theo domain** (fix 2026-11-16) — `UpdateLandingCode` chỉ update `WHERE domain = $3 AND page_id = $4`; dùng `EnsureLandingPageDomainRow()` clone row gốc (`domain=''`) trước khi update; `ToggleLandingActiveBase()` chỉ toggle row template (dùng khi deploy). Sai ⇒ **thống kê chồng chéo giữa các landing đã nhân bản**.
+24. **Route prefix khớp URL dạng `/<tên>.html`** (fix 2026-11-16) — `DomainCache.ResolveRoute` kiểm tra thêm `strings.TrimSuffix(cleanPath, ".html") == pfx` ⇒ `/chucmung.html` khớp route `/chucmung`. Thiếu ⇒ trang chúc mừng rơi xuống nhánh file tĩnh từ đĩa ⇒ mất `data-landing-id` ⇒ tracker ghi nhầm landing.
+25. **`tracker.js` KHÔNG fallback về template/ID rác** (fix 2026-11-16) — đã bỏ fallback `'mxv_080_online'` và `window.LadiPageScript.runtime.ladipage_id`. Chuỗi resolve duy nhất: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `'default_landing'`.
+26. **File `.html` tĩnh phải có landing context** (fix 2026-11-16) — bước 7 edge router (`backend/main.go`): không resolve được landing ⇒ **404**, không phục vụ HTML thô.
+27. **Thống kê landing tách human/bot** (fix 2026-11-16) — `ListLandingPages()` trả `views_count` (tổng) · `human_views_count` (`FILTER (WHERE NOT is_bot)`) · `bot_views_count`; CR% trong tab Quản lý Landing dùng `human_views_count` (khớp tab Trung Tâm Báo Cáo); `domains []string` lấy từ `domain_routes`.
 
 ## Production
 

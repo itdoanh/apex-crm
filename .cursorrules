@@ -33,6 +33,10 @@
 17. URL Meta Ads: `utm_campaign`=`campaign.id` · `utm_content`=`adset.id` · `utm_term`=`ad.id` (KHÔNG theo Google Ads)
 18. Danh mục trường Google Sheets: 1 nguồn duy nhất `backend/integrations/googlesheets/fields.go` — frontend nạp từ `GET /api/integrations/sheets/defaults`, KHÔNG hardcode
 19. Cột chuẩn mới không tự áp dụng cho config cũ — Admin bấm "Bổ sung Cột" (thêm vào CUỐI, không phá cột cũ) · đổi trạng thái CRM cập nhật dòng Sheet qua `BatchUpdate` (không append)
+20. **Cách ly row landing theo domain** (fix 2026-11-16) — `UpdateLandingCode` chỉ update `WHERE domain=$3 AND page_id=$4` (KHÔNG `OR domain=''`) · `EnsureLandingPageDomainRow()` clone row gốc trước khi update · `ToggleLandingActiveBase()` chỉ toggle template. Sai ⇒ thống kê chồng chéo.
+21. **Route prefix khớp `/<tên>.html`** (fix 2026-11-16) — `ResolveRoute` check `TrimSuffix(cleanPath,".html")==pfx`; file `.html` tĩnh không có landing context ⇒ 404 (KHÔNG phục vụ HTML thô)
+22. **`tracker.js` không fallback về template/ID rác** (fix 2026-11-16) — bỏ `'mxv_080_online'` + `LadiPageScript.runtime.ladipage_id`; chuỗi: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `default_landing`
+23. Thống kê landing tách human/bot — `human_views_count` = mẫu số CR% (khớp tab Trung Tâm Báo Cáo)
 
 ## Production
 
