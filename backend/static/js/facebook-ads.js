@@ -194,12 +194,13 @@ function renderFacebookAdsConfigs() {
             c.send_crm_sync ? 'CRM' : '',
         ].filter(Boolean).join(' · ');
 
-        // Nút bật/tắt nhanh — chỉ cho landing có cấu hình riêng.
-        // Landing mặc định (landing_id = '') toggle bằng form đầy đủ để tránh
-        // tắt nhầm toàn hệ thống.
-        const toggleBtn = c.landing_id === ''
-            ? ''
-            : `<button onclick="fbAdsToggleConfig('${escapeHTMLFb(c.landing_id)}', ${!on})"
+        // Nút bật/tắt nhanh — hiển thị cho CẢ dòng mặc định (landing_id = '')
+        // lẫn dòng cấu hình riêng.
+        //
+        // ⚠️ Dòng mặc định áp dụng cho MỌI landing chưa có cấu hình riêng ⇒
+        // tắt nó sẽ ngừng gửi CAPI cho các landing đó. Vì vậy hàm
+        // fbAdsToggleConfig sẽ hỏi lại xác nhận trước khi tắt (fix 2026-11-16).
+        const toggleBtn = `<button onclick="fbAdsToggleConfig('${escapeHTMLFb(c.landing_id)}', ${!on})"
                     title="${on ? 'Tắt CAPI cho landing này' : 'Bật CAPI cho landing này'}"
                     class="text-[10px] px-2 py-1 rounded ${on ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-900' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'} transition">
                     <i class="fa-solid fa-power-off"></i> ${on ? 'Tắt' : 'Bật'}
@@ -229,15 +230,33 @@ function renderFacebookAdsConfigs() {
 
 /**
  * fbAdsToggleConfig bật/tắt nhanh CAPI cho 1 landing.
+ *
+ * ⚠️ Dòng MẶC ĐỊNH (landing_id = '') áp dụng cho mọi landing CHƯA có cấu
+ * hình riêng ⇒ tắt nó sẽ ngừng gửi CAPI cho các landing đó. Hỏi xác nhận
+ * trước khi tắt để tránh tắt nhầm toàn hệ thống (fix 2026-11-16).
  */
 async function fbAdsToggleConfig(landingId, wantActive) {
+    const isDefault = !landingId;
+    if (!wantActive && isDefault) {
+        const ok = confirm(
+            'TẮT CAPI MẶC ĐỊNH?\n\n' +
+            'Cấu hình mặc định áp dụng cho MỌI landing chưa có cấu hình riêng.\n' +
+            'Tắt ⇒ các landing đó sẽ ngừng gửi sự kiện lên Meta.\n\n' +
+            'Landing đã có cấu hình riêng vẫn hoạt động bình thường.'
+        );
+        if (!ok) return;
+    }
     try {
-        await fbAdsApi('/api/facebook-ads/config/toggle', {
+        const json = await fbAdsApi('/api/facebook-ads/config/toggle', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ landing_id: landingId, is_active: !!wantActive }),
         });
-        fbAdsToast((wantActive ? 'Đã BẬT' : 'Đã TẮT') + ' CAPI cho landing ' + landingId, 'success');
+        fbAdsToast(
+            json.message ||
+            ((wantActive ? 'Đã BẬT' : 'Đã TẮT') + ' CAPI cho ' + (isDefault ? 'cấu hình mặc định' : 'landing ' + landingId)),
+            'success'
+        );
         await loadFacebookAdsConfigs();
     } catch (e) {
         fbAdsToast('Lỗi bật/tắt: ' + e.message, 'error');
@@ -372,12 +391,21 @@ async function fbAdsSaveConfig() {
 
 /**
  * fbAdsDeleteConfig xoá cấu hình.
+ *
+ * ⚠️ Dòng MẶC ĐỊNH (landing_id = '') cũng xoá được — backend khớp CHÍNH XÁC
+ * `landing_id` nên không xoá nhầm cấu hình của landing khác (fix 2026-11-16).
  */
 async function fbAdsDeleteConfig(landingId) {
-    if (!confirm(`Xoá cấu hình CAPI của "${landingId || 'Mặc định'}"?\n\nLưu ý: log gửi sự kiện vẫn được giữ lại để đối soát.`)) return;
+    const isDefault = !landingId;
+    const label = isDefault ? 'cấu hình CAPI MẶC ĐỊNH' : ('cấu hình CAPI của "' + landingId + '"');
+    const warn = isDefault
+        ? '\n\n⚠️ Cấu hình mặc định áp dụng cho MỌI landing chưa có cấu hình riêng.\n' +
+          'Xoá ⇒ các landing đó sẽ không gửi sự kiện CAPI lên Meta nữa.'
+        : '';
+    if (!confirm(`Xoá ${label}?${warn}\n\nLưu ý: log gửi sự kiện vẫn được giữ lại để đối soát.`)) return;
     try {
-        await fbAdsApi('/api/facebook-ads/config/delete?landing_id=' + encodeURIComponent(landingId || ''), { method: 'POST' });
-        fbAdsToast('Đã xoá cấu hình', 'success');
+        const json = await fbAdsApi('/api/facebook-ads/config/delete?landing_id=' + encodeURIComponent(landingId || ''), { method: 'POST' });
+        fbAdsToast(json.message || 'Đã xoá cấu hình', 'success');
         await loadFacebookAdsConfigs();
     } catch (e) {
         fbAdsToast('Lỗi xoá: ' + e.message, 'error');

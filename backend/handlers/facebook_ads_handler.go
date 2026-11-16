@@ -89,11 +89,17 @@ func (h *FacebookAdsHandler) HandleSaveConfig(w http.ResponseWriter, r *http.Req
 	in.AccessToken = stripMaskedToken(in.AccessToken)
 	in.GatewayAccessKey = stripMaskedToken(in.GatewayAccessKey)
 
-	// Lấy cấu hình hiện tại để biết token cũ (trường hợp Admin UI gửi lại
-	// token đã che, hoặc bỏ trống trường token khi chỉ muốn đổi cờ bật/tắt).
+	// Lấy cấu hình hiện tại (ĐÚNG dòng của landing này) để biết token cũ
+	// (trường hợp Admin UI gửi lại token đã che, hoặc bỏ trống trường token
+	// khi chỉ muốn đổi cờ bật/tắt).
+	//
+	// ⚠️ Dùng `GetFacebookCAPIConfigExact` (KHÔNG fallback sang config mặc định):
+	// nếu fallback, lúc tạo cấu hình RIÊNG cho 1 landing mới, `existingToken`
+	// sẽ lấy token của config MẶC ĐỊNH ⇒ validate "có token" pass ⇒ insert
+	// dòng mới với access_token RỖNG ⇒ CAPI lúc chạy báo "thiếu Access Token".
 	var existingToken, existingGatewayKey string
 	var prev *models.FacebookCAPIConfig
-	if p, err := h.store.GetFacebookCAPIConfig(in.LandingID); err == nil && p != nil {
+	if p, err := h.store.GetFacebookCAPIConfigExact(in.LandingID); err == nil && p != nil {
 		prev = p
 		existingToken = prev.AccessToken
 		existingGatewayKey = prev.GatewayAccessKey
@@ -154,33 +160,60 @@ func (h *FacebookAdsHandler) HandleSaveConfig(w http.ResponseWriter, r *http.Req
 }
 
 // HandleDeleteConfig xoá cấu hình CAPI của 1 landing.
+//
+// ⚠️ `landing_id` RỖNG ⇒ xoá DÒNG CẤU HÌNH MẶC ĐỊNH (landing_id = '' trong
+// DB) — dòng fallback áp dụng cho mọi landing chưa có cấu hình riêng.
+//
+// Lý do phải cho phép: trước đây handler trả 400 "Thiếu landing_id" ⇒ Admin
+// KHÔNG xoá được cấu hình mặc định (chỉ sửa được) ⇒ rất khó thoát khi cấu
+// hình mặc định gây sai số liệu (fix 2026-11-16).
+//
+// ⚠️ Query luôn khớp CHÍNH XÁC `landing_id` ⇒ không bao giờ xoá nhầm cấu
+// hình của landing khác.
 func (h *FacebookAdsHandler) HandleDeleteConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		http.Error(w, "Chỉ chấp nhận POST/DELETE", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// landing_id rỗng là HỢP LỆ (dòng cấu hình mặc định) — KHÔNG validate
+	// "Thiếu landing_id" ở đây.
 	landingID := strings.TrimSpace(r.URL.Query().Get("landing_id"))
-	if landingID == "" {
-		fbWriteJSONError(w, http.StatusBadRequest, "Thiếu landing_id")
-		return
-	}
-	if err := h.store.DeleteFacebookCAPIConfig(landingID); err != nil {
+	deleted, err := h.store.DeleteFacebookCAPIConfig(landingID)
+	if err != nil {
 		fbWriteJSONError(w, http.StatusInternalServerError, "Lỗi xoá cấu hình: "+err.Error())
 		return
 	}
+	if deleted == 0 {
+		label := "landing " + landingID
+		if landingID == "" {
+			label = "cấu hình mặc định"
+		}
+		fbWriteJSONError(w, http.StatusNotFound, "Không tìm thấy "+label+" để xoá")
+		return
+	}
 
+	msg := "Đã xoá cấu hình"
+	if landingID == "" {
+		msg = "Đã xoá cấu hình CAPI mặc định — các landing chưa có cấu hình riêng sẽ không gửi CAPI nữa"
+	}
 	fbWriteJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Đã xoá cấu hình",
+		"success":    true,
+		"message":    msg,
+		"landing_id": landingID,
 	})
 }
 
 // HandleToggleConfig bật/tắt nhanh CAPI cho 1 landing (không cần gửi lại
 // toàn bộ cấu hình). Dùng nút công tắc trên bảng cấu hình.
 //
-// Yêu cầu: landing phải có cấu hình riêng trong DB. Landing chưa có ⇒ báo
-// lỗi để Admin tạo cấu hình trước (tránh bật nhầm cấu hình mặc định).
+// ⚠️ `landing_id` RỖNG ⇒ toggle DÒNG CẤU HÌNH MẶC ĐỊNH (landing_id = ''):
+//   - Tắt dòng mặc định ⇒ mọi landing CHƯA có cấu hình riêng cũng ngừng
+//     gửi CAPI (dispatcher fallback về cấu hình mặc định ⇒ is_active=false).
+//   - Landing ĐÃ có cấu hình riêng KHÔNG bị ảnh hưởng.
+//
+// Yêu cầu: landing phải có dòng cấu hình riêng trong DB. Landing chưa có ⇒
+// báo lỗi để Admin tạo cấu hình trước.
 func (h *FacebookAdsHandler) HandleToggleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodPut {
 		http.Error(w, "Chỉ chấp nhận POST/PUT", http.StatusMethodNotAllowed)
@@ -196,11 +229,9 @@ func (h *FacebookAdsHandler) HandleToggleConfig(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// landing_id rỗng là HỢP LỆ (dòng cấu hình mặc định) — KHÔNG validate
+	// "Thiếu landing_id" ở đây.
 	in.LandingID = strings.TrimSpace(in.LandingID)
-	if in.LandingID == "" {
-		fbWriteJSONError(w, http.StatusBadRequest, "Thiếu landing_id")
-		return
-	}
 	if in.IsActive == nil {
 		fbWriteJSONError(w, http.StatusBadRequest, "Thiếu is_active")
 		return
@@ -212,15 +243,30 @@ func (h *FacebookAdsHandler) HandleToggleConfig(w http.ResponseWriter, r *http.R
 		return
 	}
 	if !found {
+		if in.LandingID == "" {
+			fbWriteJSONError(w, http.StatusNotFound,
+				"Chưa có cấu hình CAPI mặc định — hãy tạo cấu hình mặc định trước khi bật/tắt")
+			return
+		}
 		fbWriteJSONError(w, http.StatusNotFound,
 			"Landing "+in.LandingID+" chưa có cấu hình CAPI riêng — hãy tạo cấu hình trước khi bật/tắt")
 		return
 	}
 
+	msg := "Đã cập nhật trạng thái CAPI"
+	if in.LandingID == "" {
+		if *in.IsActive {
+			msg = "Đã BẬT CAPI mặc định — áp dụng cho mọi landing chưa có cấu hình riêng"
+		} else {
+			msg = "Đã TẮT CAPI mặc định — các landing chưa có cấu hình riêng sẽ ngừng gửi CAPI"
+		}
+	}
 	fbWriteJSON(w, http.StatusOK, map[string]interface{}{
 		"success":    true,
 		"landing_id": in.LandingID,
+		"is_default": in.LandingID == "",
 		"is_active":  *in.IsActive,
+		"message":    msg,
 	})
 }
 

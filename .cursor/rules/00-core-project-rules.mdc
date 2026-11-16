@@ -70,6 +70,15 @@ alwaysApply: true
     `bot_views_count`; CR% trong tab Quản lý Landing dùng `human_views_count`
     (khớp công thức tab Trung Tâm Báo Cáo); `domains []string` lấy từ
     `domain_routes`.
+20. **CAPI mặc định tắt/xoá được** (fix 2026-11-16) —
+    `POST /api/facebook-ads/config/toggle` và `config/delete` với `landing_id`
+    RỖNG ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH (`landing_id = ''` trong
+    `facebook_capi_configs`). Query luôn khớp **CHÍNH XÁC** `landing_id` ⇒ không
+    xoá/toggle nhầm dòng của landing khác. Tắt dòng mặc định ⇒ mọi landing
+    **chưa** có cấu hình riêng ngừng gửi CAPI. Lưu cấu hình RIÊNG cho 1 landing
+    mới phải đọc token từ dòng riêng (`GetFacebookCAPIConfigExact`) — KHÔNG
+    fallback token của config mặc định (sai ⇒ dòng mới có `access_token` rỗng
+    ⇒ CAPI lúc chạy báo "thiếu Access Token").
 
 ## Nguyên tắc bảo mật
 

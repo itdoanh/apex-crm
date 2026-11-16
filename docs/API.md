@@ -889,8 +889,8 @@ Account + ánh xạ cột. Đặc điểm:
 |---|---|---|
 | `/api/facebook-ads/configs` | GET | Danh sách cấu hình CAPI (token đã mask) |
 | `/api/facebook-ads/config` | GET/POST | Chi tiết / lưu cấu hình theo `landing_id` |
-| `/api/facebook-ads/config/delete` | POST | Xoá cấu hình |
-| `/api/facebook-ads/config/toggle` | POST | Bật/tắt nhanh CAPI theo `landing_id` (không cần gửi lại config) |
+| `/api/facebook-ads/config/delete` | POST | Xoá cấu hình (`landing_id` rỗng ⇒ xoá cấu hình **mặc định**) |
+| `/api/facebook-ads/config/toggle` | POST | Bật/tắt nhanh CAPI theo `landing_id` (không cần gửi lại config; `landing_id` rỗng ⇒ toggle cấu hình **mặc định**) |
 | `/api/facebook-ads/test-event` | POST | Gửi 1 sự kiện test (có `test_event_code`) |
 | `/api/facebook-ads/dataset-quality` | GET | Chỉ số Dataset Quality (EMQ, coverage, dedupe…) |
 | `/api/facebook-ads/logs` | GET | Lịch sử gửi sự kiện CAPI |
@@ -1122,10 +1122,30 @@ Bật/tắt nhanh CAPI cho 1 landing mà **không** cần gửi lại toàn bộ
 { "landing_id": "mxv_080_online", "is_active": false }
 ```
 
-- Landing phải có cấu hình riêng trong DB ⇒ nếu chưa có, trả `404` kèm thông báo
+- Landing phải có dòng cấu hình riêng trong DB ⇒ nếu chưa có, trả `404` kèm thông báo
   yêu cầu tạo cấu hình trước.
-- **Không** đụng vào cấu hình mặc định (`landing_id = ""`) — đó là fallback áp dụng
-  cho mọi landing chưa có cấu hình riêng, tắt nhầm sẽ ảnh hưởng toàn hệ thống.
+- ⚠️ **`landing_id = ""` ⇒ toggle DÒNG CẤU HÌNH MẶC ĐỊNH** (fix 2026-11-16).
+  - Tắt dòng mặc định ⇒ mọi landing **chưa** có cấu hình riêng cũng ngừng gửi CAPI
+    (dispatcher fallback về cấu hình mặc định ⇒ `is_active = false` ⇒ bỏ qua).
+  - Landing **đã** có cấu hình riêng không bị ảnh hưởng.
+  - Truy vấn khớp **chính xác** `landing_id` ⇒ không bao giờ đụng nhầm dòng khác.
+- Response có thêm `is_default: true|false` và `message` mô tả rõ tác động.
+
+### 9.2.6. `POST /api/facebook-ads/config/delete`
+
+Xoá cấu hình CAPI.
+
+```
+POST /api/facebook-ads/config/delete?landing_id=mxv_080_online
+```
+
+- ⚠️ **`landing_id` rỗng ⇒ xoá DÒNG CẤU HÌNH MẶC ĐỊNH** (`landing_id = ''` trong DB)
+  — trước đây handler trả `400 "Thiếu landing_id"` ⇒ Admin **không** xoá được
+  cấu hình mặc định (fix 2026-11-16).
+- Truy vấn khớp **chính xác** `landing_id` ⇒ không bao giờ xoá nhầm cấu hình của
+  landing khác.
+- Không tồn tại dòng tương ứng ⇒ trả `404`.
+- Log gửi sự kiện (`facebook_capi_logs`) **không** bị xoá ⇒ vẫn đối soát được.
 
 ---
 

@@ -37,6 +37,7 @@
 21. **Route prefix khớp `/<tên>.html`** (fix 2026-11-16) — `ResolveRoute` check `TrimSuffix(cleanPath,".html")==pfx`; file `.html` tĩnh không có landing context ⇒ 404 (KHÔNG phục vụ HTML thô)
 22. **`tracker.js` không fallback về template/ID rác** (fix 2026-11-16) — bỏ `'mxv_080_online'` + `LadiPageScript.runtime.ladipage_id`; chuỗi: `data-landing-id` → `APEX_LANDING_CONFIG.landing_id` → `APEX_LANDING_ID` → URL → `default_landing`
 23. Thống kê landing tách human/bot — `human_views_count` = mẫu số CR% (khớp tab Trung Tâm Báo Cáo)
+24. **CAPI mặc định tắt/xoá được** (fix 2026-11-16) — `config/toggle` + `config/delete` với `landing_id` rỗng ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH; query khớp CHÍNH XÁC `landing_id` ⇒ không đụng nhầm dòng khác
 
 ## Production
 
