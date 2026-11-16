@@ -598,6 +598,11 @@ func (s *Store) initSchema(ctx context.Context) error {
 //   B3. Gắn lead_id cho session qua action 'converted' (SĐT trong action).
 //   B4. Khôi phục landing_id/nguon của session theo landing của lead.
 //   B5. CUỐI CÙNG: gỡ converted_lead cho mọi session không có lead thật.
+//   D1. Backfill cờ is_test cho lead có tên chứa "test" (mở rộng 2026-11-16).
+//   D2. Gỡ converted_lead + xoá action "converted" cho session của lead test.
+//
+// ⚠️ THỨ TỰ: D1 phải chạy TRƯỚC D2 (D1 đánh dấu is_test, D2 dọn session).
+//   D1 cũng phải chạy SAU B1..B5 vì B5 dựa vào is_test để gỡ cờ converted.
 //
 // Tất cả đều IDEMPOTENT — chạy lại nhiều lần vẫn cho cùng kết quả.
 func (s *Store) migrateAnalyticsAttribution() {
@@ -766,6 +771,48 @@ func (s *Store) migrateAnalyticsAttribution() {
 				SET is_test = TRUE
 				WHERE COALESCE(is_test, FALSE) = FALSE
 				  AND LOWER(COALESCE(tracking->>'customer_name', '')) LIKE '%test%';
+			`,
+		},
+		{
+			// D2. GỠ CỜ CONVERTED CHO SESSION GẮN LEAD TEST.
+			//
+			// VẤN ĐỀ: migration B5 (gỡ converted_lead) chạy TRƯỚC D1 ⇒ lúc B5
+			// chạy, các lead tên "test 1" vẫn có is_test = FALSE ⇒ session của
+			// chúng giữ converted_lead = TRUE ⇒ biểu đồ analytics / CR% / phễu
+			// vẫn đếm lead test (đo production: 45 session còn converted=TRUE).
+			//
+			// CÁCH SỬA: D1 đánh dấu is_test ⇒ D2 (chạy SAU D1) gỡ cờ converted
+			// + xoá action converted trong timeline của các session đó.
+			//
+			// ⚠️ THỨ TỰ QUAN TRỌNG: xoá action converted TRƯỚC, sau đó mới
+			// gỡ converted_lead (giữ nguyên lead_id để B5 không gắn lại).
+			//
+			// ⚠️ Idempotent: chạy lại nhiều lần vẫn cho cùng kết quả.
+			name: "D2 go converted_lead cho session cua lead test",
+			sql: `
+				UPDATE analytics_sessions s
+				SET actions = COALESCE(
+				    (
+				        SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
+				        FROM jsonb_array_elements(COALESCE(s.actions, '[]'::jsonb)) e
+				        WHERE COALESCE(e->>'type', '') <> 'converted'
+				    ),
+				    '[]'::jsonb
+				)
+				FROM leads l
+				WHERE s.lead_id = l.id
+				  AND COALESCE(l.is_test, FALSE) = TRUE
+				  AND EXISTS (
+				    SELECT 1 FROM jsonb_array_elements(COALESCE(s.actions, '[]'::jsonb)) e
+				    WHERE e->>'type' = 'converted'
+				  );
+
+				UPDATE analytics_sessions s
+				SET converted_lead = FALSE
+				FROM leads l
+				WHERE s.lead_id = l.id
+				  AND COALESCE(l.is_test, FALSE) = TRUE
+				  AND s.converted_lead = TRUE;
 			`,
 		},
 		{
