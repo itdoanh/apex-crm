@@ -538,7 +538,7 @@ func (s *Store) GetMetaCampaignBreakdown(landingID string, nguon string, fromDat
 
 	conditions := []string{
 		"COALESCE(NULLIF(tracking->>'utm_source',''), '') <> ''",
-		// ⚠️ Lead test (tên chứa "(test)") KHÔNG tính vào thống kê chiến dịch
+		// ⚠️ Lead test (tên chứa chuỗi "test") KHÔNG tính vào thống kê chiến dịch
 		// (leads / doanh thu) — yêu cầu 2026-11-16.
 		"COALESCE(is_test, FALSE) = FALSE",
 	}

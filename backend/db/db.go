@@ -734,6 +734,41 @@ func (s *Store) migrateAnalyticsAttribution() {
 			`,
 		},
 		{
+			// D1. BACKFILL CỜ LEAD TEST (mở rộng 2026-11-16).
+			//
+			// VẤN ĐỀ: `IsTestLeadName` trước đây chỉ khớp "(test)" CÓ DẤU NGOẶC
+			// ⇒ tên "test 1" (không ngoặc) bị bỏ sót ⇒ lead test VẪN được tính
+			// vào biểu đồ / thống kê / CR%. Anh itdoanh phát hiện lead #425
+			// (tên "test 1") vẫn tính vào thông số.
+			//
+			// CÁCH SỬA: quy tắc mới = tên CHỨA chuỗi "test" (không phân biệt hoa
+			// thường) ⇒ backfill lại các lead cũ đã lỡ bị tính.
+			//
+			// ⚠️ Idempotent: chạy lại nhiều lần vẫn cho cùng kết quả.
+			name: "D1 backfill co is_test cho lead ten chua 'test'",
+			sql: `
+				UPDATE leads
+				SET is_test = TRUE
+				WHERE COALESCE(is_test, FALSE) = FALSE
+				  AND LOWER(COALESCE(tracking->>'fullName', '')) LIKE '%test%';
+
+				UPDATE leads
+				SET is_test = TRUE
+				WHERE COALESCE(is_test, FALSE) = FALSE
+				  AND LOWER(COALESCE(tracking->>'name', '')) LIKE '%test%';
+
+				UPDATE leads
+				SET is_test = TRUE
+				WHERE COALESCE(is_test, FALSE) = FALSE
+				  AND LOWER(COALESCE(tracking->>'ho_ten', '')) LIKE '%test%';
+
+				UPDATE leads
+				SET is_test = TRUE
+				WHERE COALESCE(is_test, FALSE) = FALSE
+				  AND LOWER(COALESCE(tracking->>'customer_name', '')) LIKE '%test%';
+			`,
+		},
+		{
 			// CHUẨN HOÁ NGUỒN THEO TỪNG LANDING.
 			//
 			// VẤN ĐỀ: nguồn mặc định cũ là landing_chinh cho MỌI landing
@@ -850,7 +885,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 			}
 		}
 		// ⚠️ LEAD TEST (yêu cầu 2026-11-16):
-		// Tên khách chứa "(test)" ⇒ đánh dấu `is_test = TRUE` ⇒ KHÔNG tính
+		// Tên khách CHỨA chuỗi "test" ⇒ đánh dấu `is_test = TRUE` ⇒ KHÔNG tính
 		// vào biểu đồ / thông số (CR%, doanh thu) nhưng VẪN đồng bộ sang
 		// Google Sheets bình thường.
 		for _, k := range []string{"fullName", "name", "ho_ten", "customer_name"} {
@@ -1019,7 +1054,7 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 //
 // ⚠️ MẶC ĐỊNH: LOẠI TRỪ lead test (is_test = TRUE).
 //
-// Yêu cầu 2026-11-16 của anh itdoanh: lead mà tên chứa "(test)" là lead
+// Yêu cầu 2026-11-16 của anh itdoanh: lead mà tên chứa chuỗi "test" là lead
 // do chính admin tạo để kiểm tra ⇒ KHÔNG được tính vào biểu đồ / thông số
 // (CR%, doanh thu, KPI) — nhưng VẪN hiện trong bảng CRM (có badge TEST)
 // và VẪN đồng bộ sang Google Sheets bình thường.

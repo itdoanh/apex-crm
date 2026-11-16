@@ -201,9 +201,13 @@ Chi tiết heuristic: `docs/SECURITY.md` mục 6.1.
 
 #### ⛔ Lead tự động đánh dấu TEST (thêm 2026-11-16)
 
-Tên khách chứa `(test)` ⇒ `leads.is_test = TRUE` ⇒ **không tính vào biểu đồ /
-thống kê / CR%** nhưng **vẫn đồng bộ Google Sheets bình thường** và **không bắn
-Meta CAPI** (không tốn tiền QC).
+Tên khách **chứa chuỗi `test`** (không phân biệt hoa thường) ⇒ `leads.is_test =
+TRUE` ⇒ **không tính vào biểu đồ / thống kê / CR%** nhưng **vẫn đồng bộ Google
+Sheets bình thường** và **không bắn Meta CAPI** (không tốn tiền QC).
+
+> ⚠️ Mở rộng 2026-11-16 — trước đây chỉ khớp `"(test)"` CÓ DẤU NGOẶC ⇒ tên
+> `"test 1"` bị bỏ sót ⇒ lead test vẫn tính vào thống kê. Có migration backfill
+> (idempotent) cho các lead cũ đã lỡ bị tính.
 
 Chi tiết: `docs/SECURITY.md` mục 6.2 · `docs/DATABASE.md` mục 2.
 
@@ -224,7 +228,7 @@ Response:
 }
 ```
 
-> ⭐ **`is_test`** (thêm 2026-11-16) — lead test (tên chứa `(test)`) **VẪN xuất
+> ⭐ **`is_test`** (thêm 2026-11-16) — lead test (tên chứa chuỗi `test`) **VẪN xuất
 > hiện** trong danh sách (UI gắn badge "TEST") nhưng **KHÔNG** tính vào các
 > endpoint thống kê (`/api/crm/stats`, `/api/leads/stats`).
 

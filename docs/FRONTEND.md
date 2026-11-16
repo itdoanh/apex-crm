@@ -103,8 +103,8 @@ Một file HTML duy nhất chứa toàn bộ panel. Các panel được bật/t�
 
 #### Badge "TEST" cho lead test (thêm 2026-11-16)
 
-Lead mà **tên chứa `(test)`** do admin tạo để kiểm tra hệ thống ⇒ backend tự đánh dấu
-`is_test = TRUE`. Trong bảng CRM (desktop) và thẻ mobile, `crm.js` render badge
+Lead mà **tên chứa chuỗi `test`** do admin tạo để kiểm tra hệ thống ⇒ backend tự
+đánh dấu `is_test = TRUE`. Trong bảng CRM (desktop) và thẻ mobile, `crm.js` render badge
 màu tím **"TEST"** + giảm opacity để admin không nhầm là lead thật.
 
 > Lead test **VẪN hiện** trong CRM và **VẪN** đồng bộ Google Sheets, nhưng **KHÔNG**

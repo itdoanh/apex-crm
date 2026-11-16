@@ -39,7 +39,7 @@
 23. Thống kê landing tách human/bot — `human_views_count` = mẫu số CR% (khớp tab Trung Tâm Báo Cáo)
 24. **CAPI mặc định tắt/xoá được** (fix 2026-11-16) — `config/toggle` + `config/delete` với `landing_id` rỗng ⇒ tác động DÒNG CẤU HÌNH MẶC ĐỊNH; query khớp CHÍNH XÁC `landing_id` ⇒ không đụng nhầm dòng khác
 25. **Chặn SĐT rác — 2 lớp, KHÔNG tốn tiền QC** (fix 2026-11-16) — CLIENT `tracker.js` → `blockJunkPhone()` chặn TRƯỚC khi gọi `fetch` ⇒ cookie `apex_junk_blocked_<landing>` (30 ngày) + chuyển `chucmung.html` ⇒ KHÔNG POST `/api/leads`, KHÔNG bắn CAPI. SERVER `backend/security/junk_phone.go` chặn phụ (ghi `spam_quarantine`, trả 200 giả). Heuristic rất chặt — KHÔNG chặn nhầm số thật
-26. **Lead test (tên chứa `(test)`) ⇒ `leads.is_test`** (fix 2026-11-16) — VẪN hiện ở CRM + VẪN đồng bộ Google Sheets, nhưng KHÔNG tính vào biểu đồ/thống kê/CR% và KHÔNG bắn Meta CAPI
+26. **Lead test (tên CHỨA chuỗi `test`) ⇒ `leads.is_test`** (fix 2026-11-16, mở rộng 2026-11-16) — VẪN hiện ở CRM + VẪN đồng bộ Google Sheets, nhưng KHÔNG tính vào biểu đồ/thống kê/CR% và KHÔNG bắn Meta CAPI. `security.IsTestLeadName()` = `strings.Contains(strings.ToLower(name), "test")` — trước đây chỉ khớp `"(test)"` CÓ NGOẶC ⇒ tên `"test 1"` bị bỏ sót; có migration backfill (bước `D1`) cho lead cũ
 27. **Duyệt cách ly ⇒ đồng bộ Google Sheets** (fix 2026-11-16) — `POST /api/analytics/report/quarantine/approve` do `LeadHandler` xử lý ⇒ lead duyệt vừa vào CRM vừa vào sheet theo cấu hình
 28. **Dedup PageView Pixel ↔ CAPI — `event_id` dùng chung** (fix 2026-11-16) — Meta CHỈ gộp browser (`fbq`) ↔ server (CAPI) khi CHUNG `event_id`. Không đồng bộ ⇒ 1 lượt xem đếm 2 lần PageView.
  - `eventID` là tham số **THỨ 4** của `fbq` — KHÔNG phải thuộc tính trong object tham số 3

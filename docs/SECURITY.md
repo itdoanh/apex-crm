@@ -382,8 +382,8 @@ cd backend && go test ./security/ -run "TestIsJunkPhone|TestIsTestLeadName" -v
 
 **File:** `backend/security/junk_phone.go` (`IsTestLeadName`) + `backend/db/db.go`
 
-Lead mà **tên chứa `(test)`** do chính admin tạo để kiểm tra hệ thống ⇒ tự động
-đánh dấu `leads.is_test = TRUE`.
+Lead mà **tên chứa chuỗi `test`** do chính admin tạo để kiểm tra hệ thống ⇒ tự
+động đánh dấu `leads.is_test = TRUE`.
 
 | Nơi | Lead test |
 |---|---|
@@ -392,8 +392,15 @@ Lead mà **tên chứa `(test)`** do chính admin tạo để kiểm tra hệ th
 | Biểu đồ / thống kê / CR% / phễu | ❌ Không tính |
 | Meta CAPI | ❌ Không bắn (không tốn tiền QC) |
 
-Nhận diện không phân biệt hoa thường: `(test)` · `(TEST)` · `( Test )`.
-Chi tiết schema + cơ chế lọc: `docs/DATABASE.md` mục 2.
+Nhận diện không phân biệt hoa thường, theo kiểu **CHỨA chuỗi `test`**:
+`test` · `test 1` · `(test)` · `(TEST)` · `( Test )` · `Tester Nguyễn` · `contest`.
+
+> ⚠️ **Mở rộng 2026-11-16** — trước đây chỉ khớp `"(test)"` CÓ DẤU NGOẶC ⇒
+> tên `"test 1"` bị bỏ sót ⇒ lead test vẫn tính vào thống kê. Nay nhận diện
+> mọi tên chứa `test`. Có migration backfill (idempotent) cho các lead cũ đã
+> lỡ bị tính.
+>
+> Chi tiết schema + cơ chế lọc: `docs/DATABASE.md` mục 2.
 
 ---
 

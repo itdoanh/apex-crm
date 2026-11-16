@@ -69,7 +69,9 @@
     - SERVER (`backend/security/junk_phone.go` → `security.IsJunkPhone`, `lead_handler.go` bước 6.1): không tạo lead, ghi `spam_quarantine`, trả `200 OK` giả.
     - Heuristic **rất chặt** (không chặn nhầm số thật): 14 mẫu cứng · 7 số cuối giống hệt · dãy liên tiếp ±1 **đều toàn bộ** (`0987654322` ❌) · lặp mẫu 2/5 số · lặp mẫu 3 số trong 9 số đầu.
     - Sửa `tracker.js` ⇒ `node scripts/sync-static-mirror.js` (7 bản mirror).
-30. **Lead test (tên chứa `(test)`) — `leads.is_test`** (fix 2026-11-16) — `security.IsTestLeadName()`.
+30. **Lead test (tên CHỨA chuỗi `test`) — `leads.is_test`** (fix 2026-11-16, mở rộng 2026-11-16) — `security.IsTestLeadName()`.
+    - ⚠️ Trước đây chỉ khớp `"(test)"` CÓ NGOẶC ⇒ tên `"test 1"` bị bỏ sót ⇒ lead test VẪN tính vào thống kê. Nay `strings.Contains(strings.ToLower(name), "test")`.
+    - Migration backfill (idempotent) trong `backend/db/db.go` (bước `D1`) đánh dấu lead cũ đã lỡ bị tính.
     - Bảng CRM + export CSV ⇒ **VẪN hiện** (badge "TEST").
     - Google Sheets ⇒ **VẪN đồng bộ bình thường** (field `is_test`).
     - Biểu đồ / thống kê / CR% / phễu / landing / campaign breakdown ⇒ **KHÔNG tính** (`buildWhereClause()` lọc mặc định; `buildWhereClauseEx(..., includeTest=true)` cho CRM + CSV).

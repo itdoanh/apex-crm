@@ -64,7 +64,13 @@ CREATE TABLE leads (
 > ```
 
 > ⭐ **Cột `is_test`** (thêm 2026-11-16) — cờ LEAD TEST.
-> Lead mà **tên chứa `(test)`** ⇒ tự động đánh dấu `is_test = TRUE`.
+> Lead mà **tên chứa chuỗi `test`** (không phân biệt hoa thường) ⇒ tự động
+> đánh dấu `is_test = TRUE`.
+>
+> ⚠️ **Mở rộng 2026-11-16** — trước đây quy tắc chỉ khớp `"(test)"` CÓ DẤU
+> NGOẶC ⇒ tên `"test 1"` bị bỏ sót ⇒ lead test **vẫn được tính vào thống kê**
+> (bug anh itdoanh phát hiện — lead #425). Nay bất kỳ tên nào chứa `test` đều
+> là lead test: `test` · `test 1` · `TEST` · `(test)` · `Tester Nguyễn` · `contest`.
 >
 > | Nơi | Lead test |
 > |---|---|
@@ -76,13 +82,21 @@ CREATE TABLE leads (
 > | `analytics_sessions.converted_lead` (biểu đồ analytics / CR% / phễu) | ❌ KHÔNG đánh dấu |
 > | Meta Conversions API (CAPI) | ❌ KHÔNG bắn (không tốn tiền QC) |
 >
-> Nhận diện: `security.IsTestLeadName()` — không phân biệt hoa thường,
-> chuẩn hoá khoảng trắng trong ngoặc: `(test)` · `(TEST)` · `( Test )`.
+> Nhận diện: `security.IsTestLeadName()` — `strings.Contains(strings.ToLower(name), "test")`.
 >
 > Migration tự động (idempotent) trong `backend/db/db.go`:
 > ```sql
 > ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
 > CREATE INDEX IF NOT EXISTS idx_leads_is_test ON leads (is_test);
+> ```
+>
+> **Backfill lead cũ** (migration `D1`, idempotent) — tự đánh dấu các lead đã
+> lỡ bị tính trước khi quy tắc được mở rộng:
+> ```sql
+> UPDATE leads SET is_test = TRUE
+> WHERE COALESCE(is_test, FALSE) = FALSE
+>   AND LOWER(COALESCE(tracking->>'fullName', '')) LIKE '%test%';
+> -- (tương tự cho name / ho_ten / customer_name)
 > ```
 >
 > ⚠️ Cơ chế lọc: `buildWhereClause()` (mặc định) **LOẠI** lead test;

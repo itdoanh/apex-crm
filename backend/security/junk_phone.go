@@ -185,22 +185,28 @@ func isSequentialDigits(phone string) bool {
 	return false
 }
 
-// IsTestLeadName kiểm tra tên khách có chứa marker "(test)" hay không.
+// IsTestLeadName kiểm tra tên khách có chứa marker "test" hay không.
 //
 // BỐI CẢNH (yêu cầu 2026-11-16):
 //   Lead test do chính anh itdoanh tạo để kiểm tra ⇒ phải tự động đánh dấu
 //   là lead test ⇒ KHÔNG tính vào biểu đồ / thông số (CR%, doanh thu...), NHƯNG
 //   vẫn đồng bộ sang Google Sheets bình thường.
 //
-// Nhận diện KHÔNG phân biệt hoa thường: "(test)", "(TEST)", "( Test )".
+// NHẬN DIỆN (mở rộng 2026-11-16 sau khi anh test tên "test 1"):
+//   Bất kỳ tên nào CHỨA chuỗi "test" (không phân biệt hoa thường) ⇒ lead test.
+//   - "test"            ✅
+//   - "test 1"          ✅  (trước đây SAI — chỉ khớp "(test)" có ngoặc)
+//   - "Nguyễn (test)"   ✅
+//   - "TEST"            ✅
+//   - "Tester Nguyễn"   ✅  (chứa "test")
+//   - "contest"         ✅  (chứa "test")
+//
+// ⚠️ Quy tắc CỐ Ý rộng: anh itdoanh xác nhận "chứa chuỗi test" là đủ.
+//   Tên chứa "test" hiếm khi là khách thật ⇒ ưu tiên không làm nhiễu KPI.
 func IsTestLeadName(name string) bool {
 	n := strings.TrimSpace(name)
 	if n == "" {
 		return false
 	}
-	lower := strings.ToLower(n)
-	// Chuẩn hoá khoảng trắng bên trong ngoặc: "( test )" → "(test)"
-	normalized := strings.ReplaceAll(lower, "( ", "(")
-	normalized = strings.ReplaceAll(normalized, " )", ")")
-	return strings.Contains(normalized, "(test)")
+	return strings.Contains(strings.ToLower(n), "test")
 }
