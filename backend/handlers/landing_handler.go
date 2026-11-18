@@ -1642,6 +1642,10 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	capiActive := h.isCAPIActive(p.PageID)
 	if capiActive {
 		rawHTML = rewritePageViewWithEventID(rawHTML)
+	} else {
+		// Landing KHÔNG bật CAPI ⇒ gỡ `eventID` (nếu có) ⇒ HTML giữ nguyên
+		// block Meta Pixel GỐC.
+		rawHTML = rewritePageViewWithoutEventID(rawHTML)
 	}
 
 	settings := p.Settings
@@ -2072,6 +2076,40 @@ func rewritePageViewWithEventID(html string) string {
 			qTrack, qTrack, qPV, qPV, obj3)
 	})
 }
+
+// rewritePageViewWithoutEventID gỡ `{ eventID: window.APEX_PV_EVENT_ID }` khỏi
+// lệnh `fbq('track','PageView')` trong HTML ⇒ đưa HTML về **block Meta Pixel GỐC**.
+//
+// ⚠️ DÙNG KHI landing KHÔNG bật CAPI server (fix 2026-11-18 — landing_cu):
+//   `eventID` chỉ có ý nghĩa khi server CAPI bắn sự kiện CÙNG `event_id`.
+//   Landing chỉ dùng Pixel nhúng ⇒ không có sự kiện server để gộp ⇒ giữ
+//   nguyên block Pixel gốc (không sửa HTML của user).
+//
+// ⚠️ Idempotent: lệnh ĐÃ có eventID ⇒ gỡ; lệnh KHÔNG có ⇒ giữ nguyên.
+func rewritePageViewWithoutEventID(html string) string {
+	if html == "" {
+		return html
+	}
+	return rePageViewWithEventIDPattern.ReplaceAllStringFunc(html, func(m string) string {
+		sub := rePageViewWithEventIDPattern.FindStringSubmatch(m)
+		qTrack := "'"
+		if len(sub) > 1 && sub[1] == `"` {
+			qTrack = `"`
+		}
+		qPV := "'"
+		if len(sub) > 2 && sub[2] == `"` {
+			qPV = `"`
+		}
+		return fmt.Sprintf("fbq(%strack%s, %sPageView%s)", qTrack, qTrack, qPV, qPV)
+	})
+}
+
+// rePageViewWithEventIDPattern khớp lệnh `fbq('track','PageView', {}, { eventID: ... })`.
+//
+// ⚠️ CHỈ khớp lệnh có `eventID` với biểu thức `window.APEX_PV_EVENT_ID` —
+//    không đụng vào lệnh `fbq('track', 'Lead', …, { eventID: '…' })`.
+var rePageViewWithEventIDPattern = regexp.MustCompile(
+	`(?i)fbq\(\s*(['"])track['"]\s*,\s*(['"])PageView['"]\s*,\s*\{\s*\}\s*,\s*\{\s*eventID:\s*window\.APEX_PV_EVENT_ID\s*\}\s*\)`)
 
 // rewriteRelativeAssetPaths đổi các đường dẫn tài nguyên TƯƠNG ĐỐI trong HTML
 // thành đường dẫn TUYỆT ĐỐI, dựa trên `basePath` (prefix của URL đang phục vụ).

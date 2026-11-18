@@ -130,6 +130,51 @@ fbq('track', 'PageView');
 	}
 }
 
+// TestRewritePageViewWithoutEventID: lệnh PageView ĐÃ có eventID phải được gỡ
+// khi landing KHÔNG bật CAPI ⇒ HTML về đúng block Meta Pixel GỐC.
+func TestRewritePageViewWithoutEventID(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "single quotes",
+			in:   "fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });",
+			want: "fbq('track', 'PageView');",
+		},
+		{
+			name: "double quotes",
+			in:   `fbq("track", "PageView", {}, { eventID: window.APEX_PV_EVENT_ID });`,
+			want: `fbq("track", "PageView");`,
+		},
+		{
+			name: "không có chấm phẩy",
+			in:   "fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID })",
+			want: "fbq('track', 'PageView')",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := rewritePageViewWithoutEventID(c.in)
+			if out != c.want {
+				t.Fatalf("phải gỡ eventID, thực tế = %q (mong đợi %q)", out, c.want)
+			}
+		})
+	}
+}
+
+// TestRewritePageViewWithoutEventID_KeepOtherEvents: KHÔNG được đụng sự kiện khác
+// (vd `fbq('track','Lead', …, { eventID: '…' })`).
+func TestRewritePageViewWithoutEventID_KeepOtherEvents(t *testing.T) {
+	in := "fbq('track', 'Lead', { content_name: 'x' }, { eventID: 'e1' });"
+	out := rewritePageViewWithoutEventID(in)
+	if out != in {
+		t.Fatalf("sự kiện khác không được sửa, thực tế = %q", out)
+	}
+}
+
 // TestInjectDynamicScripts_NoCAPI_NoEventID (fix 2026-11-18 — landing_cu):
 // landing CHỈ dùng Meta Pixel nhúng (KHÔNG bật CAPI server) ⇒ KHÔNG được
 // gắn `eventID` và KHÔNG được chèn script sinh event_id.
@@ -176,5 +221,36 @@ fbq('track', 'PageView');
 	}
 	if n := strings.Count(out, "fbq('init'"); n != 1 {
 		t.Fatalf("phải có đúng 1 lệnh fbq('init'), thực tế = %d", n)
+	}
+}
+
+// TestInjectDynamicScripts_NoCAPI_RemovesEventIDFromTemplate (fix 2026-11-18):
+// landing KHÔNG bật CAPI nhưng HTML template ĐÃ có `eventID` (export LadiPage)
+// ⇒ backend phải GỠ `eventID` ⇒ HTML về đúng block Meta Pixel GỐC.
+func TestInjectDynamicScripts_NoCAPI_RemovesEventIDFromTemplate(t *testing.T) {
+	p := &models.LandingPage{
+		PageID:   "landing_cu",
+		Domain:   "ads.giaodichhanghoatuonglai.com",
+		Settings: map[string]interface{}{"facebook_pixel_id": "1558828029597854"},
+	}
+
+	raw := `<!DOCTYPE html><html><head><title>T</title>
+<script>
+window.APEX_PV_EVENT_ID = window.APEX_PV_EVENT_ID || ('pv_' + Date.now());
+fbq('init', '1558828029597854');
+fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
+</script>
+</head><body></body></html>`
+
+	h := &LandingHandler{
+		capiChecker: &stubCAPIChecker{active: map[string]bool{}},
+	}
+	out := h.InjectDynamicScripts(raw, p)
+
+	if strings.Contains(out, "eventID: window.APEX_PV_EVENT_ID") {
+		t.Fatalf("landing KHÔNG bật CAPI ⇒ phải gỡ eventID khỏi PageView:\n%s", out)
+	}
+	if !strings.Contains(out, "fbq('track', 'PageView')") {
+		t.Fatalf("PageView phải giữ nguyên dạng gốc:\n%s", out)
 	}
 }
