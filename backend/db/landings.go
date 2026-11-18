@@ -1531,6 +1531,58 @@ func (s *Store) SyncSharedStaticFilesToDB(ctx context.Context, diskRoot string) 
 		}
 	}
 
+	// ⚠️ FIX CHỒNG CHÉO 2026-11-18 (xu_huong_2 → doanh_chung):
+	//   `assets/js/apex-adapter.js` trong DB (landing_files) vẫn là bản CŨ với
+	//   `var LANDING_ID = 'doanh_chung'` hardcode — commit 572deef sửa bản trên
+	//   đĩa (`frontend/landing/doanh_chung/...`) nhưng KHÔNG có cơ chế nào đẩy
+	//   xuống DB ⇒ Edge Router tiếp tục serve bản cũ cho `/apex` ⇒ mọi lead
+	//   của `xu_huong_2` bị ghi về `doanh_chung` (lead #482).
+	//   ⇒ Đồng bộ adapter từ đĩa → DB cho MỌI row đã có file này (giống
+	//   tracker.js). Adapter mới resolve động theo tracker.js nên cùng 1 nội
+	//   dung dùng chung cho mọi landing là đúng.
+	adapterDiskCandidates := []string{
+		filepath.Join(diskRoot, "frontend", "landing", "doanh_chung", "assets", "js", "apex-adapter.js"),
+		filepath.Join(diskRoot, "..", "frontend", "landing", "doanh_chung", "assets", "js", "apex-adapter.js"),
+		filepath.Join(diskRoot, "frontend", "landing", "doanh_chung", "assets", "js", "apex-adapter.js"),
+	}
+	var adapterContent string
+	for _, p := range adapterDiskCandidates {
+		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+			adapterContent = string(data)
+			break
+		}
+	}
+	if adapterContent == "" {
+		log.Printf("[WARN] SyncStatic: không tìm thấy apex-adapter.js trên đĩa, bỏ qua")
+	} else {
+		adapterRows, err := s.pool.Query(ctx, `
+			SELECT DISTINCT domain, page_id FROM landing_files
+			WHERE file_path = 'assets/js/apex-adapter.js'
+		`)
+		if err != nil {
+			log.Printf("[WARN] SyncStatic: không liệt kê được apex-adapter.js: %v", err)
+		} else {
+			adapterUpdated := 0
+			for adapterRows.Next() {
+				var dom, pid string
+				if err := adapterRows.Scan(&dom, &pid); err != nil {
+					continue
+				}
+				if err := s.SaveLandingFile(dom, pid, "assets/js/apex-adapter.js", "js", adapterContent); err == nil {
+					adapterUpdated++
+				}
+			}
+			adapterRows.Close()
+			if err := adapterRows.Err(); err != nil {
+				log.Printf("[WARN] SyncStatic: lỗi duyệt apex-adapter.js: %v", err)
+			}
+			if adapterUpdated > 0 {
+				log.Printf("[INFO] SyncStatic: đã đồng bộ %d bản ghi landing_files từ đĩa (apex-adapter.js)", adapterUpdated)
+				updated += adapterUpdated
+			}
+		}
+	}
+
 	if updated > 0 {
 		log.Printf("[INFO] SyncStatic: đã đồng bộ %d bản ghi landing_files từ đĩa (tracker.js)", updated)
 	}
