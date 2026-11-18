@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"apex-backend/db"
@@ -30,15 +31,154 @@ type Dispatcher struct {
 	// Dùng cho môi trường `test`: lead thử nghiệm không được làm nhiễu chỉ số
 	// Meta Ads thật (PageView / Lead / Purchase đều tính vào ngân sách quảng cáo).
 	disabled bool
+	// blockedLandings là danh sách landing_id BỊ CẤM CAPI ở tầng server.
+	//
+	// BỐI CẢNH (fix 2026-11-18 — landing_cu):
+	//   `GetFacebookCAPIConfig(landingID)` FALLBACK sang dòng cấu hình MẶC ĐỊNH
+	//   (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ chỉ cần admin tạo
+	//   1 cấu hình CAPI mặc định là mọi landing (kể cả landing KHÔNG dùng
+	//   CAPI) bắt đầu bắn sự kiện lên Meta ⇒ chiến dịch báo lỗi dữ liệu.
+	//
+	//   ⇒ Danh sách này là chốt chặn TUYỆT ĐỐI ở tầng server, không phụ thuộc
+	//   cấu hình trong DB ⇒ không thể bị "vô hiệu hoá" do xoá/sửa cấu hình.
+	blockedLandings map[string]bool
+	// capiStatusCache cache trạng thái "landing này có bắn CAPI không" (TTL ngắn).
+	//
+	// ⚠️ `IsCAPIActiveForLanding` được gọi MỖI lần render landing ⇒ không
+	//   được query DB mỗi lượt xem. TTL 30s ⇒ thay đổi cấu hình trong CRM áp
+	//   dụng sau ≤ 30s (chấp nhận được; Admin có thể restart nếu cần tức thì).
+	capiStatusMu    sync.RWMutex
+	capiStatusCache map[string]capiStatusEntry
 }
+
+// capiStatusEntry là 1 mục cache trạng thái CAPI của landing.
+type capiStatusEntry struct {
+	active bool
+	at     time.Time
+}
+
+// capiStatusCacheTTL là thời hạn cache trạng thái CAPI (30 giây).
+const capiStatusCacheTTL = 30 * time.Second
 
 // NewDispatcher tạo dispatcher mới.
 func NewDispatcher(store *db.Store) *Dispatcher {
 	return &Dispatcher{
-		store:    store,
-		client:   NewClient(),
-		fallback: DefaultConfigFromEnv(),
+		store:           store,
+		client:          NewClient(),
+		fallback:        DefaultConfigFromEnv(),
+		blockedLandings: loadBlockedLandings(),
 	}
+}
+
+// serverCAPIDenyList là danh sách landing KHÔNG BAO GIỜ được bắn CAPI từ server.
+//
+// BỐI CẢNH (fix 2026-11-18 — landing_cu):
+//   `GetFacebookCAPIConfig(landingID)` FALLBACK sang dòng cấu hình MẶC ĐỊNH
+//   (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ chỉ cần admin tạo
+//   1 cấu hình CAPI mặc định là mọi landing (kể cả landing KHÔNG dùng CAPI)
+//   bắt đầu bắn sự kiện lên Meta ⇒ chiến dịch Meta báo lỗi dữ liệu.
+//
+//   ⇒ Danh sách này là chốt chặn TUYỆT ĐỐI ở tầng server, KHÔNG phụ thuộc
+//   cấu hình trong DB ⇒ không thể bị vô hiệu hoá do xoá/sửa cấu hình.
+//
+//   - `landing_cu`: landing chỉ dùng Meta Pixel nhúng trong HTML, KHÔNG dùng
+//     CAPI server (yêu cầu chủ repo 2026-11-18).
+//
+// ⚠️ Biến môi trường `META_CAPI_BLOCKED_LANDINGS` BỔ SUNG thêm landing vào
+// danh sách (ngăn cách bằng dấu phẩy) mà không cần sửa + build lại binary.
+var serverCAPIDenyList = []string{
+	"landing_cu",
+}
+
+// loadBlockedLandings dựng tập landing_id bị cấm CAPI ở tầng server.
+//
+// Nguồn cấu hình:
+//  1. Danh sách mặc định trong code (`serverCAPIDenyList`).
+//  2. Biến môi trường `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy).
+//
+// ⚠️ Ngoài ra, mọi dòng `facebook_capi_configs` có `landing_id <> ''` VÀ
+// `is_active = FALSE` cũng bị coi là TẮT — cơ chế này đã có sẵn trong CRM
+// (bấm "tắt CAPI" theo từng landing) và được `resolveConfig` xử lý.
+func loadBlockedLandings() map[string]bool {
+	out := make(map[string]bool)
+
+	for _, id := range serverCAPIDenyList {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out[id] = true
+		}
+	}
+
+	for _, part := range strings.Split(os.Getenv("META_CAPI_BLOCKED_LANDINGS"), ",") {
+		id := strings.TrimSpace(part)
+		if id != "" {
+			out[id] = true
+		}
+	}
+
+	return out
+}
+
+// IsLandingBlocked trả về true nếu landing bị cấm CAPI ở tầng server.
+func (d *Dispatcher) IsLandingBlocked(landingID string) bool {
+	if d == nil {
+		return false
+	}
+	id := strings.TrimSpace(landingID)
+	if id == "" {
+		return false
+	}
+	return d.blockedLandings[id]
+}
+
+// IsCAPIActiveForLanding trả về true nếu landing SẼ bắn sự kiện CAPI lên Meta.
+//
+// Dùng bởi `backend/handlers/landing_handler.go` để quyết định có cần gắn
+// `eventID` vào lệnh `fbq('track','PageView')` hay không.
+//
+// ⚠️ LÝ DO (fix 2026-11-18 — landing_cu):
+//   `eventID` chỉ có ý nghĩa khi server CAPI bắn sự kiện CÙNG `event_id`
+//   (Meta chỉ gộp browser ↔ server khi trùng khớp). Landing KHÔNG bật CAPI
+//   (vd `landing_cu` — chỉ dùng Meta Pixel nhúng) thì không cần `eventID`
+//   ⇒ giữ nguyên block Meta Pixel GỐC trong HTML, đúng như thiết kế ban đầu,
+//   không bị backend sửa đổi.
+//
+// ⚠️ Hàm này KHÔNG gửi request ra ngoài — chỉ đọc cấu hình trong DB.
+// ⚠️ Có CACHE TTL ngắn (30s) vì hàm được gọi MỖI lần render landing ⇒
+//    không được query DB mỗi lượt xem.
+func (d *Dispatcher) IsCAPIActiveForLanding(landingID string) bool {
+	if d == nil {
+		return false
+	}
+
+	// Chặn tầng server ⇒ KHÔNG cần đọc DB.
+	if d.IsLandingBlocked(landingID) {
+		return false
+	}
+
+	landingID = strings.TrimSpace(landingID)
+
+	d.capiStatusMu.RLock()
+	entry, ok := d.capiStatusCache[landingID]
+	d.capiStatusMu.RUnlock()
+	if ok && time.Since(entry.at) < capiStatusCacheTTL {
+		return entry.active
+	}
+
+	active := false
+	cfg, err := d.resolveConfig(landingID)
+	if err == nil && cfg != nil {
+		active = cfg.IsActive
+	}
+
+	d.capiStatusMu.Lock()
+	if d.capiStatusCache == nil {
+		d.capiStatusCache = make(map[string]capiStatusEntry)
+	}
+	d.capiStatusCache[landingID] = capiStatusEntry{active: active, at: time.Now()}
+	d.capiStatusMu.Unlock()
+
+	return active
 }
 
 // NewDispatcherWithSync tạo dispatcher và cho phép tắt hoàn toàn việc gửi sự
@@ -439,6 +579,20 @@ func (d *Dispatcher) resolveConfig(landingID string) (*models.FacebookCAPIConfig
 	if d.disabled {
 		return nil, nil
 	}
+
+	// ⛔ CHỐT CHẶN TUYỆT ĐỐI (fix 2026-11-18 — landing_cu).
+	//
+	// Landing nằm trong danh sách cấm (`serverCAPIDenyList` /
+	// `META_CAPI_BLOCKED_LANDINGS`) ⇒ KHÔNG BAO GIỜ bắn CAPI, kể cả khi
+	// có cấu hình riêng đang bật hoặc fallback sang cấu hình mặc định.
+	//
+	// Lý do cần chốt chặn (ngoài cấu hình `is_active = FALSE`):
+	//   `GetFacebookCAPIConfig` fallback sang dòng MẶC ĐỊNH khi landing chưa có
+	//   dòng riêng ⇒ "tắt" bằng cách xoá dòng cấu hình KHÔNG chặn được.
+	if d.IsLandingBlocked(landingID) {
+		return nil, nil
+	}
+
 	cfg, err := d.store.GetFacebookCAPIConfig(landingID)
 	if err != nil {
 		return nil, err

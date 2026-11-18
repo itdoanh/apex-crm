@@ -39,7 +39,9 @@ func TestRenderRawLandingNoDuplicatePixel(t *testing.T) {
 		},
 	}
 
-	h := &LandingHandler{}
+	h := &LandingHandler{
+		capiChecker: &stubCAPIChecker{active: map[string]bool{"landing_cu": true}},
+	}
 	out := h.InjectDynamicScripts(html, p)
 
 	if n := strings.Count(out, "fbq('init'"); n != 1 {

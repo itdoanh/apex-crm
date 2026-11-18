@@ -368,6 +368,58 @@ fbq('track', 'PageView', { eventID: pvEventId });
 cột `event_id` hiển thị đầy đủ + badge **"✓ đã gộp với Pixel"** cho sự kiện
 `PageView` có prefix `pv-`.
 
+### ⚠️ Landing CHỈ dùng Pixel — KHÔNG gắn `eventID` (fix 2026-11-18)
+
+> Yêu cầu chủ repo 2026-11-18: `landing_cu` (deploy tại
+> `https://ads.giaodichhanghoatuonglai.com/landing`) **KHÔNG dùng CAPI server**,
+> chỉ dùng Meta Pixel nhúng trong HTML.
+
+**Vì sao `eventID` phải BỎ khi landing không bật CAPI:**
+
+`eventID` (tham số thứ 4 của `fbq`) chỉ có ý nghĩa khi server CAPI bắn sự kiện
+**CÙNG** `event_id` — Meta chỉ gộp browser ↔ server khi trùng khớp 100%.
+Landing KHÔNG bật CAPI ⇒ không có sự kiện server để gộp ⇒ gắn `eventID` chỉ là
+sửa HTML không cần thiết ⇒ **giữ nguyên block Meta Pixel GỐC**.
+
+**Cơ chế (2 lớp):**
+
+| Lớp | Cơ chế | Vị trí |
+|---|---|---|
+| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` | `backend/integrations/facebook/dispatcher.go` → `resolveConfig()` |
+| 2. Dòng DB riêng | `is_active = FALSE` cho `landing_cu` (migration `D3`) | `backend/db/db.go` |
+
+**Hệ quả trong code:**
+
+| Hàm | Hành vi mới |
+|---|---|
+| `InjectDynamicScriptsWithBase()` | Chỉ gọi `rewritePageViewWithEventID()` + inject `window.APEX_PV_EVENT_ID` **khi** `isCAPIActive(landing_id) == true`. Block Pixel auto-inject cũng chọn bản có/không `eventID` theo cùng điều kiện. |
+| `RepairMetaPixelPageViewEventID()` | Landing bật CAPI ⇒ thêm `eventID`. Landing **không** bật CAPI ⇒ **gỡ** `eventID` (đưa HTML về block Pixel gốc). |
+
+> ⚠️ Landing KHÔNG bật CAPI mà vẫn gắn `eventID` ⇒ Meta ghi nhận PageView thiếu
+> thông số ⇒ chiến dịch báo lỗi dữ liệu (đúng triệu chứng đã gặp 2026-11-18).
+
+**HTML landing viết tay** (Code Studio) của landing CHỈ dùng Pixel nên dùng mẫu GỐC:
+
+```html
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1558828029597854');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1558828029597854&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+```
+
 ### ⚠️ `success_redirect` không được chứa domain (fix 2026-11-06)
 
 `form_config.success_redirect` trong CSDL của `landing_cu` từng được cấu hình là:

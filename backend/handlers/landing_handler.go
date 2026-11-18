@@ -18,6 +18,7 @@ import (
 	"apex-backend/cache"
 	"apex-backend/config"
 	"apex-backend/db"
+	"apex-backend/integrations/facebook"
 	"apex-backend/models"
 )
 
@@ -26,15 +27,39 @@ type LandingHandler struct {
 	store       *db.Store
 	cache       *cache.LandingCache
 	domainCache *cache.DomainCache
+	// capiDispatcher dùng để hỏi "landing này có thực sự bắn CAPI không?".
+	//
+	// ⚠️ (fix 2026-11-18 — landing_cu): `eventID` chỉ có ý nghĩa khi server
+	// CAPI bắn sự kiện CÙNG `event_id`. Landing CHỈ dùng Meta Pixel (vd
+	// `landing_cu`) thì KHÔNG cần `eventID` ⇒ giữ nguyên block Pixel gốc.
+	capiChecker CAPIStatusChecker
+}
+
+// CAPIStatusChecker là interface tối thiểu cần cho việc quyết định
+// "landing này có bắn CAPI server không".
+type CAPIStatusChecker interface {
+	IsCAPIActiveForLanding(landingID string) bool
 }
 
 func NewLandingHandler(cfg *config.Config, store *db.Store, cache *cache.LandingCache, domainCache *cache.DomainCache) *LandingHandler {
 	return &LandingHandler{
-		cfg:         cfg,
-		store:       store,
-		cache:       cache,
-		domainCache: domainCache,
+		cfg:            cfg,
+		store:          store,
+		cache:          cache,
+		domainCache:    domainCache,
+		capiChecker: facebook.NewDispatcherWithSync(store, cfg.IsExternalSyncEnabled()),
 	}
+}
+
+// isCAPIActive trả về true nếu landing thực sự bắn sự kiện CAPI từ server.
+//
+// ⚠️ Mặc định FALSE (an toàn): landing KHÔNG bắn CAPI ⇒ KHÔNG gắn `eventID`
+// ⇒ giữ nguyên block Meta Pixel GỐC trong HTML.
+func (h *LandingHandler) isCAPIActive(landingID string) bool {
+	if h == nil || h.capiChecker == nil {
+		return false
+	}
+	return h.capiChecker.IsCAPIActiveForLanding(landingID)
 }
 
 // ============================================================
@@ -1608,7 +1633,16 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	// (hardcode từ LadiPage) để kèm `{ eventID: window.APEX_PV_EVENT_ID }`
 	// ⇒ giá trị này được gửi lên server ⇒ server truyền nguyên văn vào
 	// `event_id` của payload CAPI ⇒ Meta gộp 2 sự kiện thành 1.
-	rawHTML = rewritePageViewWithEventID(rawHTML)
+	//
+	// ⚠️ CHỈ LÀM KHI LANDING THỰC SỰ BẬT CAPI (fix 2026-11-18 — landing_cu):
+	//   `eventID` chỉ có ý nghĩa khi server CAPI bắn sự kiện CÙNG `event_id`.
+	//   Landing CHỈ dùng Meta Pixel nhúng (vd `landing_cu`) thì KHÔNG có CAPI
+	//   ⇒ không cần `eventID` ⇒ GIỮ NGUYÊN block Meta Pixel GỐC trong HTML
+	//   (đúng như thiết kế ban đầu, không bị backend sửa đổi).
+	capiActive := h.isCAPIActive(p.PageID)
+	if capiActive {
+		rawHTML = rewritePageViewWithEventID(rawHTML)
+	}
 
 	settings := p.Settings
 	if settings == nil {
@@ -1722,8 +1756,13 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	// Block Pixel auto-inject PHẢI truyền `eventID` (tham số thứ 4 của fbq)
 	// đồng bộ với `event_id` server gửi lên Meta CAPI ⇒ Meta gộp 2 sự kiện
 	// thành 1 ⇒ không đếm trùng PageView.
+	//
+	// ⚠️ SỬA 2026-11-18 (landing_cu — chỉ dùng Pixel):
+	//   Landing KHÔNG bật CAPI ⇒ không cần `eventID` ⇒ inject block Pixel
+	//   GỐC (không tham số thứ 4) đúng như thiết kế ban đầu.
 	if fbPixel != "" && !htmlHasMetaPixel(rawHTML, fbPixel) {
-		headInjection.WriteString(fmt.Sprintf(`
+		if capiActive {
+			headInjection.WriteString(fmt.Sprintf(`
 <!-- Facebook Pixel Code -->
 <script>
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -1736,6 +1775,22 @@ fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID });
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=%s&ev=PageView&noscript=1"/></noscript>
 `, fbPixel, fbPixel))
+		} else {
+			// Landing chỉ dùng Meta Pixel (không CAPI) ⇒ block Pixel GỐC.
+			headInjection.WriteString(fmt.Sprintf(`
+<!-- Facebook Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '%s');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=%s&ev=PageView&noscript=1"/></noscript>
+`, fbPixel, fbPixel))
+		}
 	}
 
 	// Google Analytics Auto-Injection
@@ -1831,11 +1886,16 @@ gtag('config', '%s');
 	// configTrapScript) để giá trị luôn sẵn sàng khi block Pixel inline
 	// (`fbq('track','PageView',…)`) chạy.
 	//
+	// ⚠️ CHỈ CHÈN KHI LANDING BẬT CAPI (fix 2026-11-18 — landing_cu):
+	//   Landing chỉ dùng Meta Pixel (không CAPI) ⇒ không có gì để gộp ⇒
+	//   KHÔNG chèn script sinh eventID ⇒ HTML giữ nguyên block Pixel gốc.
+	//
 	// ⚠️ Idempotent: chỉ chèn nếu HTML chưa TỰ SINH giá trị này.
 	// ⚠️ KHÔNG dùng `strings.Contains(result, "APEX_PV_EVENT_ID")` vì các lệnh
 	// `fbq('track','PageView',{},{eventID: window.APEX_PV_EVENT_ID})` đã được
 	// rewrite ở trên cũng chứa chuỗi này ⇒ sẽ bỏ sót việc sinh giá trị.
-	if !strings.Contains(result, "window.APEX_PV_EVENT_ID =") &&
+	if capiActive &&
+		!strings.Contains(result, "window.APEX_PV_EVENT_ID =") &&
 		!strings.Contains(result, "window.APEX_PV_EVENT_ID=") {
 		if idx := strings.Index(strings.ToLower(result), "<head>"); idx != -1 {
 			insertAt := idx + len("<head>")

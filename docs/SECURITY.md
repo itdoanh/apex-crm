@@ -427,10 +427,34 @@ lệch toàn bộ chỉ số Landing Page View + phân phối quảng cáo.
 ```
 
 ⇒ Landing có Pixel mà **thiếu** `event_id` ⇒ server **KHÔNG bắn** PageView
-server-side (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
+   server-side (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
 
 Chi tiết: `docs/LANDING.md` mục "Dedup PageView" · `docs/API.md` mục 6 ·
 `docs/DATABASE.md` mục 5.7.
+
+### 6.2. Chặn CAPI tầng server cho landing chỉ dùng Pixel (2026-11-18)
+
+> Yêu cầu chủ repo 2026-11-18: `landing_cu` **KHÔNG dùng CAPI server**.
+
+**Rủi ro:** `GetFacebookCAPIConfig(landingID)` **fallback** sang dòng cấu hình
+MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ tạo 1 cấu hình
+mặc định là **mọi** landing (kể cả landing không dùng CAPI) bắt đầu bắn sự kiện
+lên Meta ⇒ chiến dịch Meta báo lỗi dữ liệu (thiếu `currency`/`value`) ⇒ ảnh
+hưởng chất lượng chiến dịch.
+
+**Chốt chặn 2 lớp:**
+
+| Lớp | Cơ chế | Vị trí |
+|---|---|---|
+| 1. Tầng server (tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
+| 2. Dòng DB riêng | `is_active = FALSE` (migration `D3`) ⇒ không fallback sang cấu hình mặc định | `backend/db/db.go` |
+
+Lớp 1 là **chốt chặn tuyệt đối** — Admin xoá dòng cấu hình trong DB cũng không
+vô hiệu hoá được (vì fallback sang dòng mặc định đang bật).
+
+**Hệ quả:** landing không bật CAPI ⇒ KHÔNG gắn `eventID` vào `fbq('track','PageView')`
+⇒ giữ nguyên block Meta Pixel GỐC trong HTML.
+Chi tiết: `docs/LANDING.md` mục "Landing CHỈ dùng Pixel" · `docs/DATABASE.md` mục 8.5.1.
 
 ---
 

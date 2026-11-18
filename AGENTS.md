@@ -194,6 +194,13 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
    **KHÔNG bắn** (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt).
  - DB: `analytics_sessions.pv_event_id` — giữ giá trị ĐẦU TIÊN của phiên.
  - Thứ tự thời gian: Pixel bắn TRƯỚC (sinh cookie `_fbp`) ⇒ sau đó mới ping analytics.
+29. **Landing CHỈ dùng Meta Pixel — TẮT CAPI tầng server** (fix 2026-11-18) —
+ `landing_cu` (deploy tại `https://ads.giaodichhanghoatuonglai.com/landing`) KHÔNG
+ dùng CAPI server, chỉ dùng Pixel nhúng trong HTML.
+ - ⚠️ NGUYÊN NHÂN: `GetFacebookCAPIConfig(landingID)` FALLBACK sang dòng cấu hình MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ tạo 1 cấu hình mặc định là MỌI landing (kể cả landing không dùng CAPI) bắn sự kiện lên Meta ⇒ chiến dịch Meta báo lỗi dữ liệu (thiếu currency/value).
+ - CHỐT CHẶN 2 LỚP: ① `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` ⇒ `resolveConfig()` trả `nil` TRƯỚC khi query DB (tuyệt đối, không thể vô hiệu hoá) · ② migration `D3` trong `backend/db/db.go` tạo dòng `landing_cu` với `is_active = FALSE`.
+ - ⇒ HỆ QUẢ: `eventID` chỉ gắn khi landing THỰC SỰ bật CAPI (`isCAPIActive(landing_id)`) — landing không bật CAPI ⇒ giữ nguyên block Meta Pixel GỐC (`fbq('track','PageView')`).
+ - Sửa `InjectDynamicScriptsWithBase()` (`backend/handlers/landing_handler.go`) + `RepairMetaPixelPageViewEventID()` (`backend/db/landing_pixel_repair.go`).
 
 ---
 

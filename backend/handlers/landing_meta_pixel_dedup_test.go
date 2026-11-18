@@ -60,7 +60,9 @@ fbq('track', 'PageView');
 		},
 	}
 
-	h := &LandingHandler{}
+	h := &LandingHandler{
+		capiChecker: &stubCAPIChecker{active: map[string]bool{"landing_cu": true}},
+	}
 	out := h.InjectDynamicScripts(raw, p)
 
 	initCount := strings.Count(out, "fbq('init'")
@@ -92,7 +94,9 @@ func TestInjectDynamicScripts_StillInjectsWhenNoPixel(t *testing.T) {
 		Settings: map[string]interface{}{"facebook_pixel_id": "111222333"},
 	}
 
-	h := &LandingHandler{}
+	h := &LandingHandler{
+		capiChecker: &stubCAPIChecker{active: map[string]bool{"landing_moi": true}},
+	}
 	out := h.InjectDynamicScripts(raw, p)
 
 	if !strings.Contains(out, "fbq('init', '111222333')") {

@@ -834,6 +834,55 @@ func (s *Store) migrateAnalyticsAttribution() {
 				  AND COALESCE(landing_id, '') != '';
 			`,
 		},
+		{
+			// D3. TẮT CAPI CHO LANDING CHỈ DÙNG PIXEL (fix 2026-11-18).
+			//
+			// VẤN ĐỀ:
+			//   `GetFacebookCAPIConfig(landingID)` FALLBACK sang dòng cấu hình
+			//   MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒
+			//   chỉ cần admin tạo 1 cấu hình CAPI mặc định là mọI landing (kể
+			//   cả landing KHÔNG dùng CAPI) bắt đầu bắn sự kiện lên Meta ⇒
+			//   chiến dịch Meta báo lỗi dữ liệu (thiếu currency/value).
+			//
+			//   `landing_cu` là landing CHỈ dùng Meta Pixel nhúng trong HTML
+			//   (yêu cầu chủ repo 2026-11-18) ⇒ phải TẮT CAPI thật sự.
+			//
+			// CÁCH SỬA:
+			//   Tạo dòng cấu hình RIÊNG cho landing_cu với `is_active = FALSE`
+			//   ⇒ `queryFacebookCAPIConfig` trả về dòng này ⇒ dispatcher thấy
+			//   `!cfg.IsActive` ⇒ KHÔNG fallback sang cấu hình mặc định ⇒
+			//   KHÔNG bắn CAPI, kể cả khi có cấu hình mặc định.
+			//
+			// ⚠️ Ngoài ra còn có chốt chặn ở TẦNG SERVER
+			//    (`serverCAPIDenyList` trong `backend/integrations/facebook/dispatcher.go`)
+			//    ⇒ không thể bị vô hiệu hoá kể cả khi admin xoá dòng cấu hình này.
+			//
+			// ⚠️ Idempotent: chạy lại nhiều lần vẫn cho cùng kết quả.
+			name: "D3 tat CAPI cho landing chi dung Pixel",
+			sql: `
+				INSERT INTO facebook_capi_configs
+				    (landing_id, is_active, pixel_id, access_token, api_version,
+				     gateway_enabled, gateway_endpoint, gateway_access_key,
+				     send_page_view, send_lead, send_purchase, send_crm_sync,
+				     only_facebook_traffic, course_value, currency,
+				     hash_email, hash_phone, hash_name, hash_address, hash_external_id,
+				     hash_city, hash_state, hash_zip, hash_country, send_user_data)
+				VALUES
+				    ('landing_cu', FALSE, '1558828029597854', '', 'v27.0',
+				     FALSE, '', '',
+				     FALSE, FALSE, FALSE, FALSE,
+				     TRUE, 6000000, 'VND',
+				     TRUE, TRUE, TRUE, TRUE, TRUE,
+				     TRUE, TRUE, TRUE, TRUE, TRUE)
+				ON CONFLICT (landing_id) DO UPDATE
+				SET is_active      = FALSE,
+				    send_page_view = FALSE,
+				    send_lead      = FALSE,
+				    send_purchase  = FALSE,
+				    send_crm_sync  = FALSE,
+				    updated_at     = NOW();
+			`,
+		},
 	}
 
 	for _, step := range steps {

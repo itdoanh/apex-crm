@@ -871,6 +871,59 @@ Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_even
   dedup thì 1 lượt xem bị đếm 5–10 lần trên Meta Ads Manager.
   `HasFacebookCAPISessionEvent(session_id, event_name)` kiểm tra đã gửi chưa (cửa sổ 24h).
 
+### 8.5.1 Landing CHỈ dùng Meta Pixel — TẮT CAPI tầng server (fix 2026-11-18)
+
+> Yêu cầu chủ repo 2026-11-18: `landing_cu` (deploy tại
+> `https://ads.giaodichhanghoatuonglai.com/landing`) **KHÔNG dùng CAPI server**,
+> chỉ dùng Meta Pixel nhúng trong HTML.
+
+**Vấn đề gốc:** `GetFacebookCAPIConfig(landingID)` **fallback** sang dòng cấu hình
+MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ chỉ cần admin tạo
+1 cấu hình CAPI mặc định là **mọi** landing (kể cả landing không dùng CAPI) bắt
+đầu bắn sự kiện lên Meta ⇒ chiến dịch Meta báo lỗi dữ liệu (thiếu currency/value).
+
+**Cách sửa (2 lớp):**
+
+| Lớp | Cơ chế | Vị trí |
+|---|---|---|
+| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
+| 2. Dòng DB riêng | `INSERT ... ('landing_cu', is_active = FALSE, ...)` ⇒ không fallback sang cấu hình mặc định | migration `D3` trong `backend/db/db.go` |
+
+Migration `D3` (idempotent, chạy trong `migrateAnalyticsAttribution()`):
+
+```sql
+INSERT INTO facebook_capi_configs
+    (landing_id, is_active, pixel_id, access_token, api_version,
+     gateway_enabled, gateway_endpoint, gateway_access_key,
+     send_page_view, send_lead, send_purchase, send_crm_sync,
+     only_facebook_traffic, course_value, currency,
+     hash_email, hash_phone, hash_name, hash_address, hash_external_id,
+     hash_city, hash_state, hash_zip, hash_country, send_user_data)
+VALUES
+    ('landing_cu', FALSE, '1558828029597854', '', 'v27.0',
+     FALSE, '', '',
+     FALSE, FALSE, FALSE, FALSE,
+     TRUE, 6000000, 'VND',
+     TRUE, TRUE, TRUE, TRUE, TRUE,
+     TRUE, TRUE, TRUE, TRUE, TRUE)
+ON CONFLICT (landing_id) DO UPDATE
+SET is_active = FALSE, send_page_view = FALSE, send_lead = FALSE,
+    send_purchase = FALSE, send_crm_sync = FALSE, updated_at = NOW();
+```
+
+> ⚠️ Lớp 1 là **chốt chặn tuyệt đối** — không thể bị vô hiệu hoá kể cả khi Admin
+> xoá dòng cấu hình trong DB (vì `GetFacebookCAPIConfig` sẽ fallback sang dòng
+> mặc định đang bật).
+
+**Hệ quả ⇒ `eventID` chỉ gắn khi landing THỰC SỰ bật CAPI:**
+
+- `eventID` (tham số thứ 4 của `fbq`) chỉ có ý nghĩa khi server CAPI bắn sự kiện
+  **CÙNG** `event_id` (Meta chỉ gộp browser ↔ server khi trùng khớp).
+- Landing KHÔNG bật CAPI ⇒ gắn `eventID` vô nghĩa ⇒ giữ nguyên **block Meta Pixel GỐC**
+  (`fbq('track', 'PageView')`), đúng như thiết kế ban đầu.
+- Xem `backend/handlers/landing_handler.go` (`InjectDynamicScriptsWithBase`) và
+  `backend/db/landing_pixel_repair.go` (`RepairMetaPixelPageViewEventID`).
+
 ### 8.6. Ánh xạ trạng thái CRM → sự kiện Meta CAPI (2026-11-15)
 
 Định nghĩa tập trung: `backend/models/lead_status.go` (`LeadStatusDefs.CAPIEvent`).
