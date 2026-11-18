@@ -446,7 +446,7 @@ hưởng chất lượng chiến dịch.
 
 | Lớp | Cơ chế | Vị trí |
 |---|---|---|
-| 1. Tầng server (tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
+| 1. Tầng server (tuyệt đối) | `serverCAPIDenyList = ["landing_cu", "landing_lznoew"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
 | 2. Dòng DB riêng | `is_active = FALSE` (migration `D3`) ⇒ không fallback sang cấu hình mặc định | `backend/db/db.go` |
 
 Lớp 1 là **chốt chặn tuyệt đối** — Admin xoá dòng cấu hình trong DB cũng không

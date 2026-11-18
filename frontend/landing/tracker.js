@@ -78,13 +78,22 @@
         try {
             if (window.crypto && typeof window.crypto.randomUUID === 'function') {
                 pvEventId = 'pv-' + window.crypto.randomUUID();
-                return pvEventId;
             }
         } catch (_) {}
-        pvEventId = 'pv-' + Date.now().toString(36) + '-' +
-            Math.random().toString(36).slice(2, 12);
+        if (!pvEventId) {
+            pvEventId = 'pv-' + Date.now().toString(36) + '-' +
+                Math.random().toString(36).slice(2, 12);
+        }
+        // ⚠️ Ghi ngược lại window để Pixel inline trong HTML (chạy SAU tracker.js
+        // trong một số landing) dùng CHUNG 1 event_id ⇒ Meta mới gộp được
+        // (fix dedup 0% — 2026-11-18: trước đây tracker giữ ID riêng trong closure,
+        // Pixel dùng ID khác ⇒ 0% khớp).
+        try { window.APEX_PV_EVENT_ID = pvEventId; } catch (_) {}
         return pvEventId;
     }
+    // Khởi tạo NGAY khi tracker nạp để window.APEX_PV_EVENT_ID luôn tồn tại
+    // trước khi block Pixel inline trong HTML chạy.
+    try { ensurePageViewEventId(); } catch (_) {}
 
     // ============================================================
     // 1.0 KHÓA NGĂN CÁCH THEO LANDING (TÁCH BIỆT HOÀN TOÀN)
@@ -1876,13 +1885,55 @@
     }
 
     // 1. Gửi Pageview Event ngay khi vào trang
+    // ⚠️ FIX DEDUP 2026-11-18 — chờ cookie `_fbp`/`_fbc` trước khi ping CAPI.
+    //
+    // NGUYÊN NHÂN (Meta báo FBP server chỉ 38.37% so với browser 98.81%):
+    // `fbevents.js` cần 300–800ms để sinh cookie `_fbp`. Ping analytics đầu
+    // (800ms cố định) thường chạy TRƯỚC khi `_fbp` tồn tại ⇒ server nhận
+    // payload thiếu `fbp` ⇒ CAPI gửi lên Meta thiếu `fbp` ⇒ Meta không khớp
+    // được với sự kiện browser ⇒ phải fallback sang `event_id` — nhưng
+    // `event_id` cũng đang lệch ⇒ 0% khớp ⇒ đếm đôi PageView.
+    //
+    // CÁCH SỬA: poll cookie mỗi 100ms, tối đa 2s. Gửi ngay khi `_fbp` xuất
+    // hiện (hoặc hết timeout). Áp dụng cho MỌI landing (trừ preview).
     pushAction('pageview', 'window', 'Tải trang thành công: ' + document.title, {
         url: window.location.pathname,
         search: window.location.search
     });
-    setTimeout(function () {
-        sendAnalyticsPing();
-    }, 800);
+    (function sendFirstPageviewWithFbpWait() {
+        if (isAnyPreview()) return;
+        var waitedMs = 0;
+        var fired = false;
+        var needFbc = false;
+        try {
+            needFbc = !!(getUrlParams().fbclid);
+        } catch (_) {}
+        function fbpReady() {
+            try {
+                var fbp = readCookie('_fbp');
+                if (!fbp) return false;
+                if (needFbc && !readCookie('_fbc')) return false;
+                return true;
+            } catch (_) { return false; }
+        }
+        function fire() {
+            if (fired) return;
+            fired = true;
+            try { clearInterval(timer); } catch (_) {}
+            try { sendAnalyticsPing(); } catch (_) {}
+        }
+        // Nếu Pixel chưa kịp sinh cookie, poll tối đa 2s.
+        var timer = setInterval(function () {
+            waitedMs += 100;
+            if (fbpReady() || waitedMs >= 2000) {
+                fire();
+            }
+        }, 100);
+        // Fallback an toàn: đảm bảo luôn gửi 1 ping dù interval bị clear.
+        setTimeout(function () {
+            fire();
+        }, 2300);
+    })();
 
     // 2. Heartbeat định kỳ theo dõi thời gian thực người dùng ở lại trang
     let heartbeatInterval = 10000; // bắt đầu 10s

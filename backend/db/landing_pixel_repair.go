@@ -85,6 +85,12 @@ func (s *Store) RepairMetaPixelSnippet(ctx context.Context) error {
 //   Ngược lại, landing đã từng bị thêm `eventID` mà nay TẮT CAPI ⇒ GỠ BỎ
 //   `eventID` để trở lại block Pixel gốc.
 //
+// ⚠️ SỬA 2026-11-18 (dedup 0% — deny-list tuyệt đối):
+//   `landing_cu` + `landing_lznoew` nằm trong `serverCAPIDenyList`
+//   (dispatcher.go) ⇒ KHÔNG BAO GIỜ bắn CAPI ⇒ KHÔNG được gắn `eventID`
+//   (gắn cũng vô nghĩa, chỉ làm lệch HTML gốc). Job này GỠ eventID khỏi
+//   2 landing đó kể cả khi dòng CAPI mặc định đang BẬT.
+//
 // CÁCH SỬA:
 //   - Thêm: `fbq('track', 'PageView')` → `fbq('track', 'PageView', {}, { eventID: window.APEX_PV_EVENT_ID })`
 //     (chỉ landing có CAPI bật).
@@ -112,22 +118,25 @@ func (s *Store) RepairMetaPixelPageViewEventID(ctx context.Context) error {
 	tagPages, err := s.pool.Exec(ctx, `
 		UPDATE landing_pages p
 		SET code_html = CASE
-		        WHEN EXISTS (
-		            SELECT 1 FROM facebook_capi_configs c
-		            WHERE c.landing_id = p.page_id
-		              AND COALESCE(c.is_active, FALSE) = TRUE
-		        )
-		        OR (
-		            NOT EXISTS (
+		        WHEN p.page_id NOT IN ('landing_cu', 'landing_lznoew')
+		         AND (
+		            EXISTS (
 		                SELECT 1 FROM facebook_capi_configs c
 		                WHERE c.landing_id = p.page_id
-		            )
-		            AND EXISTS (
-		                SELECT 1 FROM facebook_capi_configs c
-		                WHERE c.landing_id = ''
 		                  AND COALESCE(c.is_active, FALSE) = TRUE
 		            )
-		        )
+		            OR (
+		                NOT EXISTS (
+		                    SELECT 1 FROM facebook_capi_configs c
+		                    WHERE c.landing_id = p.page_id
+		                )
+		                AND EXISTS (
+		                    SELECT 1 FROM facebook_capi_configs c
+		                    WHERE c.landing_id = ''
+		                      AND COALESCE(c.is_active, FALSE) = TRUE
+		                )
+		            )
+		         )
 		        THEN replace(p.code_html, $1, $2)
 		        ELSE replace(p.code_html, $2, $1)
 		    END,
@@ -146,22 +155,25 @@ func (s *Store) RepairMetaPixelPageViewEventID(ctx context.Context) error {
 	tagFiles, err := s.pool.Exec(ctx, `
 		UPDATE landing_files f
 		SET content = CASE
-		        WHEN EXISTS (
-		            SELECT 1 FROM facebook_capi_configs c
-		            WHERE c.landing_id = f.page_id
-		              AND COALESCE(c.is_active, FALSE) = TRUE
-		        )
-		        OR (
-		            NOT EXISTS (
+		        WHEN f.page_id NOT IN ('landing_cu', 'landing_lznoew')
+		         AND (
+		            EXISTS (
 		                SELECT 1 FROM facebook_capi_configs c
 		                WHERE c.landing_id = f.page_id
-		            )
-		            AND EXISTS (
-		                SELECT 1 FROM facebook_capi_configs c
-		                WHERE c.landing_id = ''
 		                  AND COALESCE(c.is_active, FALSE) = TRUE
 		            )
-		        )
+		            OR (
+		                NOT EXISTS (
+		                    SELECT 1 FROM facebook_capi_configs c
+		                    WHERE c.landing_id = f.page_id
+		                )
+		                AND EXISTS (
+		                    SELECT 1 FROM facebook_capi_configs c
+		                    WHERE c.landing_id = ''
+		                      AND COALESCE(c.is_active, FALSE) = TRUE
+		                )
+		            )
+		         )
 		        THEN replace(f.content, $1, $2)
 		        ELSE replace(f.content, $2, $1)
 		    END,

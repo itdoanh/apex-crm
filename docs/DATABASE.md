@@ -886,7 +886,7 @@ MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ chỉ c
 
 | Lớp | Cơ chế | Vị trí |
 |---|---|---|
-| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
+| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu", "landing_lznoew"]` + env `META_CAPI_BLOCKED_LANDINGS` (bổ sung, ngăn cách dấu phẩy) ⇒ `resolveConfig()` trả `nil` **trước khi** query DB | `backend/integrations/facebook/dispatcher.go` |
 | 2. Dòng DB riêng | `INSERT ... ('landing_cu', is_active = FALSE, ...)` ⇒ không fallback sang cấu hình mặc định | migration `D3` trong `backend/db/db.go` |
 
 Migration `D3` (idempotent, chạy trong `migrateAnalyticsAttribution()`):

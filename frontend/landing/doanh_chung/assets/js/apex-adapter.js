@@ -22,8 +22,61 @@
 (function () {
   'use strict';
 
-  var LANDING_ID = 'doanh_chung';
+  // Landing mặc định khi không resolve được (giữ để tương thích ngược
+  // localStorage cũ). Runtime LUÔN ưu tiên định danh động từ tracker.js
+  // (fix chồng chéo 2026-11-18: xu_huong_2 tại /apex gửi lead về nhầm
+  // doanh_chung vì 2 dòng hardcode bên dưới).
+  var LANDING_ID_DEFAULT = 'doanh_chung';
+  var NGUON_DEFAULT = 'doanh_chung';
   var DEBUG = false;
+
+  /* ───────────────────────────────────────────────────────────
+     0. Resolve định danh landing ĐỘNG (không hardcode)
+     ───────────────────────────────────────────────────────────
+     Thứ tự ưu tiên (khớp tracker.js `getLandingConfig()`):
+       1. `window.ApexTracker.getLandingConfig()` — backend đã ép đúng
+          page_id của landing đang phục vụ qua `data-landing-id`.
+       2. `data-landing-id` / `data-nguon` trên thẻ <script tracker.js>.
+       3. `window.APEX_LANDING_CONFIG.landing_id` (backend inject).
+       4. `window.APEX_LANDING_ID` (biến JS landing tự khai báo).
+       5. Fallback `doanh_chung` (giữ hành vi cũ cho trang gốc).
+  */
+  function resolveLandingIdentity() {
+    try {
+      if (window.ApexTracker && typeof window.ApexTracker.getLandingConfig === 'function') {
+        var c = window.ApexTracker.getLandingConfig();
+        if (c && c.landing_id) {
+          var lid = String(c.landing_id).trim();
+          var ng = (c.nguon && String(c.nguon).trim()) || lid;
+          if (lid) return { landing_id: lid, nguon: ng };
+        }
+      }
+    } catch (_) {}
+    try {
+      var s = document.querySelector('script[src*="tracker.js"]');
+      if (s) {
+        var attrId = (s.getAttribute('data-landing-id') || '').trim();
+        var attrNg = (s.getAttribute('data-nguon') || '').trim();
+        if (attrId) return { landing_id: attrId, nguon: attrNg || attrId };
+      }
+    } catch (_) {}
+    try {
+      var g = window.APEX_LANDING_CONFIG || {};
+      var glid = String(g.landing_id || g.landingId || '').trim();
+      if (glid) {
+        var gng = String(g.nguon || g.source || '').trim() || glid;
+        return { landing_id: glid, nguon: gng };
+      }
+    } catch (_) {}
+    try {
+      var wlid = String(window.APEX_LANDING_ID || '').trim();
+      if (wlid) {
+        var wng = String(window.APEX_NGUON || '').trim() || wlid;
+        return { landing_id: wlid, nguon: wng };
+      }
+    } catch (_) {}
+    return { landing_id: LANDING_ID_DEFAULT, nguon: NGUON_DEFAULT };
+  }
 
   function log() {
     if (!DEBUG) return;
@@ -119,7 +172,15 @@
      ─────────────────────────────────────────────────────────── */
 
   function scopedKey(base) {
-    return base + '_' + LANDING_ID;
+    // Key tách theo landing ĐANG PHỤC VỤ (động). Dùng default ở đây để hàm
+    // có thể gọi trước khi tracker sẵn sàng; sendLead/collect dùng identity
+    // đã resolve nên dữ liệu không bao giờ lẫn giữa các landing.
+    var suffix = LANDING_ID_DEFAULT;
+    try {
+      var cur = resolveLandingIdentity();
+      if (cur && cur.landing_id) suffix = cur.landing_id;
+    } catch (_) {}
+    return base + '_' + suffix;
   }
 
   var ApexSafeStorage = {
@@ -153,9 +214,16 @@
 
     var tracker = window.ApexTracker;
 
+    // Định danh ĐỘNG theo landing đang phục vụ (fix chồng chéo 2026-11-18).
+    // Payload gọi lên vẫn được phép override (main.js truyền gì giữ nấy),
+    // nhưng mặc định PHẢI là landing hiện tại — không hardcode doanh_chung.
+    var identity = resolveLandingIdentity();
+    var resolvedLandingId = (payload.landing_id || payload.landingId || identity.landing_id || LANDING_ID_DEFAULT);
+    var resolvedNguon = (payload.nguon || payload.source || identity.nguon || resolvedLandingId);
+
     var fullPayload = {
-      landing_id: LANDING_ID,
-      nguon: 'doanh_chung',
+      landing_id: String(resolvedLandingId).trim(),
+      nguon: String(resolvedNguon).trim(),
       so_dien_thoai: phone,
       phone: phone,
       fullName: name,
@@ -269,7 +337,11 @@
     sessionId: '',
     configure: function () { /* không còn dùng Apps Script */ },
     getConfig: function () {
-      return { backend: 'apex', landing_id: LANDING_ID, secret_configured: false };
+      try {
+        var cur = resolveLandingIdentity();
+        return { backend: 'apex', landing_id: cur.landing_id, secret_configured: false };
+      } catch (_) {}
+      return { backend: 'apex', landing_id: LANDING_ID_DEFAULT, secret_configured: false };
     },
     __buf: []
   };
@@ -308,7 +380,8 @@
   }, true);
 
   window.ApexDoanhChung = {
-    landingId: LANDING_ID,
+    // Getter động: đọc landing hiện tại mỗi lần truy cập (tránh hardcode).
+    get landingId() { try { return resolveLandingIdentity().landing_id; } catch (_) { return LANDING_ID_DEFAULT; } },
     sendLead: sendLead,
     collectMetaMacros: collectMetaMacros,
     scopedKey: scopedKey,

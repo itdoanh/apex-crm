@@ -135,22 +135,21 @@ func (s *Store) RepairLandingIdentity(ctx context.Context) (int, error) {
 	}
 
 	// Sửa `landing_files` (config.json + HTML) và `code_html`.
+	// ⚠️ FIX 2026-11-18 (xu_huong_2 → doanh_chung): `code_html` phải sửa cho
+	//   MỌI row (domain='' + domain cụ thể). Bản trước chỉ sửa row đầu tiên
+	//   của mỗi page_id (seenLanding) ⇒ row theo domain (bản Edge Router thực
+	//   sự phục vụ qua `landingCache.Get(host, page_id)`) vẫn giữ
+	//   `data-landing-id` cũ của landing nguồn ⇒ lead/view vẫn chồng chéo.
 	fixedFiles := 0
-	seenLanding := map[string]bool{}
+	seenFilesFixed := map[string]bool{}
 
 	for _, r := range landings {
-		key := strings.ToLower(strings.TrimSpace(r.PageID))
-		if seenLanding[key] {
-			continue
-		}
-		seenLanding[key] = true
-
-		wantNguon := correctNguon[key]
+		wantNguon := correctNguon[strings.ToLower(strings.TrimSpace(r.PageID))]
 		if wantNguon == "" {
 			wantNguon = r.PageID
 		}
 
-		// 4a. `code_html` của landing.
+		// 4a. `code_html` của TỪNG row (không skip domain).
 		if strings.TrimSpace(r.HTML) != "" {
 			rewritten := RewriteLandingIdentityHTML(r.HTML, r.PageID, wantNguon, "", "")
 			if rewritten != r.HTML {
@@ -164,55 +163,60 @@ func (s *Store) RepairLandingIdentity(ctx context.Context) (int, error) {
 			}
 		}
 
-		// 4b. Các file trong `landing_files` của landing.
-		type fileRow struct {
-			domain, filePath, fileType, content string
-		}
-		fileRows, err := s.pool.Query(ctx, `
-			SELECT domain, file_path, file_type, content
-			FROM landing_files
-			WHERE page_id = $1
-			ORDER BY file_path
-		`, r.PageID)
-		if err != nil {
-			continue
-		}
-		var files []fileRow
-		for fileRows.Next() {
-			var fr fileRow
-			if err := fileRows.Scan(&fr.domain, &fr.filePath, &fr.fileType, &fr.content); err != nil {
+		// 4b. Các file trong `landing_files` — chỉ quét 1 lần cho mỗi page_id
+		// (file đã sửa ở row đầu thì row domain sau sẽ thấy rewritten == content).
+		pageKey := strings.ToLower(strings.TrimSpace(r.PageID))
+		if !seenFilesFixed[pageKey] {
+			seenFilesFixed[pageKey] = true
+			type fileRow struct {
+				domain, filePath, fileType, content string
+			}
+			fileRows, err := s.pool.Query(ctx, `
+				SELECT domain, file_path, file_type, content
+				FROM landing_files
+				WHERE page_id = $1
+				ORDER BY file_path
+			`, r.PageID)
+			if err != nil {
 				continue
 			}
-			files = append(files, fr)
-		}
-		fileRows.Close()
-
-		for _, fr := range files {
-			var rewritten string
-			switch strings.ToLower(fr.filePath) {
-			case "config.json":
-				rewritten = RewriteLandingConfigJSON(fr.content, r.PageID, wantNguon)
-			default:
-				if !strings.HasSuffix(strings.ToLower(fr.filePath), ".html") {
+			var files []fileRow
+			for fileRows.Next() {
+				var fr fileRow
+				if err := fileRows.Scan(&fr.domain, &fr.filePath, &fr.fileType, &fr.content); err != nil {
 					continue
 				}
-				rewritten = RewriteLandingIdentityHTML(fr.content, r.PageID, wantNguon, "", "")
+				files = append(files, fr)
 			}
-			if rewritten == fr.content {
-				continue
+			fileRows.Close()
+
+			for _, fr := range files {
+				var rewritten string
+				switch strings.ToLower(fr.filePath) {
+				case "config.json":
+					rewritten = RewriteLandingConfigJSON(fr.content, r.PageID, wantNguon)
+				default:
+					if !strings.HasSuffix(strings.ToLower(fr.filePath), ".html") {
+						continue
+					}
+					rewritten = RewriteLandingIdentityHTML(fr.content, r.PageID, wantNguon, "", "")
+				}
+				if rewritten == fr.content {
+					continue
+				}
+				if _, err := s.pool.Exec(ctx, `
+					UPDATE landing_files
+					SET content = $1, updated_at = NOW()
+					WHERE domain = $2 AND page_id = $3 AND file_path = $4
+				`, rewritten, fr.domain, r.PageID, fr.filePath); err != nil {
+					log.Printf("[WARN] RepairLandingIdentity: không sửa được file '%s' của landing '%s': %v",
+						fr.filePath, r.PageID, err)
+					continue
+				}
+				fixedFiles++
+				log.Printf("[INFO] RepairLandingIdentity: đã sửa định danh trong file '%s' của landing '%s' (domain='%s')",
+					fr.filePath, r.PageID, fr.domain)
 			}
-			if _, err := s.pool.Exec(ctx, `
-				UPDATE landing_files
-				SET content = $1, updated_at = NOW()
-				WHERE domain = $2 AND page_id = $3 AND file_path = $4
-			`, rewritten, fr.domain, r.PageID, fr.filePath); err != nil {
-				log.Printf("[WARN] RepairLandingIdentity: không sửa được file '%s' của landing '%s': %v",
-					fr.filePath, r.PageID, err)
-				continue
-			}
-			fixedFiles++
-			log.Printf("[INFO] RepairLandingIdentity: đã sửa định danh trong file '%s' của landing '%s' (domain='%s')",
-				fr.filePath, r.PageID, fr.domain)
 		}
 	}
 

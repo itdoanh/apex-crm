@@ -83,11 +83,16 @@ func NewDispatcher(store *db.Store) *Dispatcher {
 //
 //   - `landing_cu`: landing chỉ dùng Meta Pixel nhúng trong HTML, KHÔNG dùng
 //     CAPI server (yêu cầu chủ repo 2026-11-18).
+//   - `landing_lznoew`: trang "Chúc mừng" (thank-you page) — PageView ở đây
+//     KHÔNG phải lượt xem quảng cáo, KHÔNG được bắn CAPI (tránh nhân đôi
+//     PageView và nhiễu chỉ số Landing Page View). Yêu cầu 2026-11-18: fix
+//     dedup chỉ áp dụng cho các landing còn lại.
 //
 // ⚠️ Biến môi trường `META_CAPI_BLOCKED_LANDINGS` BỔ SUNG thêm landing vào
 // danh sách (ngăn cách bằng dấu phẩy) mà không cần sửa + build lại binary.
 var serverCAPIDenyList = []string{
 	"landing_cu",
+	"landing_lznoew",
 }
 
 // loadBlockedLandings dựng tập landing_id bị cấm CAPI ở tầng server.

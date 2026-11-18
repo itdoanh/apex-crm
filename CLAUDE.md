@@ -95,9 +95,10 @@
 33. **Landing CHỈ dùng Meta Pixel — TẮT CAPI tầng server** (fix 2026-11-18) —
  `landing_cu` KHÔNG dùng CAPI server, chỉ dùng Pixel nhúng trong HTML.
  - ⚠️ NGUYÊN NHÂN: `GetFacebookCAPIConfig(landingID)` FALLBACK sang dòng cấu hình MẶC ĐỊNH (`landing_id = ''`) khi landing chưa có dòng riêng ⇒ tạo 1 cấu hình mặc định là MỌI landing (kể cả landing không dùng CAPI) bắn sự kiện lên Meta ⇒ chiến dịch Meta báo lỗi dữ liệu (thiếu currency/value).
- - CHỐT CHẶN 2 LỚP: ① `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` ⇒ `resolveConfig()` trả `nil` TRƯỚC khi query DB (tuyệt đối) · ② migration `D3` trong `backend/db/db.go` tạo dòng `landing_cu` với `is_active = FALSE`.
+ - CHỐT CHẶN 2 LỚP: ① `serverCAPIDenyList = ["landing_cu", "landing_lznoew"]` + env `META_CAPI_BLOCKED_LANDINGS` ⇒ `resolveConfig()` trả `nil` TRƯỚC khi query DB (tuyệt đối) · ② migration `D3` trong `backend/db/db.go` tạo dòng `landing_cu` với `is_active = FALSE`.
  - ⇒ `eventID` chỉ gắn khi landing THỰC SỰ bật CAPI (`isCAPIActive(landing_id)`) — landing không bật CAPI ⇒ giữ nguyên block Meta Pixel GỐC (`fbq('track','PageView')`).
  - Sửa `InjectDynamicScriptsWithBase()` (`backend/handlers/landing_handler.go`) + `RepairMetaPixelPageViewEventID()` (`backend/db/landing_pixel_repair.go`).
+34. **Adapter `apex-adapter.js` PHẢI resolve động `landing_id`/`nguon`** (fix 2026-11-18 — `xu_huong_2` tại `/apex` gửi lead về nhầm `doanh_chung`) — hardcode `LANDING_ID='doanh_chung'` ⇒ mọi bản nhân bản ghi sai landing. Runtime resolve qua `ApexTracker.getLandingConfig()` → `data-landing-id` → `APEX_LANDING_CONFIG` → `APEX_LANDING_ID`; backend ép lại `data-landing-id`/`data-nguon` cũ trong HTML nhân bản + `<base href>` theo `basePath` route đang phục vụ.
 
 ## Production
 

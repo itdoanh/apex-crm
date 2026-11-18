@@ -1718,9 +1718,22 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 	var headInjection strings.Builder
 	headInjection.WriteString("\n<!-- [APEX DYNAMIC INJECTION - HEAD] -->\n")
 	if !strings.Contains(strings.ToLower(rawHTML), "<base ") {
+		// ⚠️ FIX CHỒNG CHÉO 2026-11-18 (xu_huong_2 → doanh_chung):
+		//   `p.PathPrefix` lấy từ row `landing_pages` (thường là "/") — KHÔNG phải
+		//   prefix của route đang phục vụ (vd "/apex"). Dùng nó làm `<base href>`
+		//   ⇒ mọi URL tương đối (`chucmung.html`, `tracker.js`, `config.json`)
+		//   trên trang `/apex` đều trỏ về GỐC "/" (landing `doanh_chung`) ⇒
+		//   trang cảm ơn + tracker/config của bản sao đều chạy dưới context
+		//   của landing nguồn ⇒ view/lead chồng chéo.
+		//   ⇒ Ưu tiên `basePath` (routePrefix từ Edge Router — luôn đúng URL
+		//   đang phục vụ), fallback về `p.PathPrefix` khi không có.
 		baseHref := "/"
-		if p.PathPrefix != "" && p.PathPrefix != "/" {
-			cleanPfx := strings.Trim(p.PathPrefix, "/")
+		effectivePrefix := strings.TrimSpace(basePath)
+		if effectivePrefix == "" || effectivePrefix == "/" {
+			effectivePrefix = strings.TrimSpace(p.PathPrefix)
+		}
+		if effectivePrefix != "" && effectivePrefix != "/" {
+			cleanPfx := strings.Trim(effectivePrefix, "/")
 			if cleanPfx != "" {
 				baseHref = "/" + cleanPfx + "/"
 			}
@@ -1945,6 +1958,28 @@ gtag('config', '%s');
 		result = strings.ReplaceAll(result,
 			`<script src="tracker.js" data-nguon=`,
 			fmt.Sprintf(`<script src="tracker.js" data-landing-id="%s" data-nguon=`, p.PageID))
+		// ⚠️ FIX CHỒNG CHÉO 2026-11-18 (xu_huong_2 → doanh_chung):
+		//   HTML nhân bản giữ `data-landing-id="doanh_chung"` của landing NGUỒN.
+		//   3 lệnh ReplaceAll ở trên CHỈ khớp khi attribute CHƯA tồn tại ⇒
+		//   giá trị cũ (sai) được giữ nguyên ⇒ `getLandingConfig()` trong
+		//   tracker.js ưu tiên `data-landing-id` (nguồn #1, cao hơn cả
+		//   `APEX_LANDING_CONFIG` đã được configTrap ép đúng) ⇒ mọi view/lead
+		//   của landing bản sao bị ghi về landing nguồn.
+		//   ⇒ GHI ĐÈ MỌI `data-landing-id` hiện có về đúng landing đang phục vụ
+		//   (cả nháy kép lẫn nháy đơn). Chạy ở runtime nên DB cũ sai vẫn đúng.
+		result = reStaleDataLandingIDDouble.ReplaceAllString(result, `data-landing-id="`+p.PageID+`"`)
+		result = reStaleDataLandingIDSingle.ReplaceAllString(result, `data-landing-id='`+p.PageID+`'`)
+		// `data-nguon` cũ cũng phải ép về nguồn của landing đang phục vụ,
+		// nếu không `nguon` gửi lên server vẫn là nguồn của landing nguồn
+		// (vd "DTN 1" của doanh_chung) ⇒ CRM lọc sai.
+		wantNguon := strings.TrimSpace(p.NguonDefault)
+		if wantNguon == "" {
+			wantNguon = p.PageID
+		}
+		if wantNguon != "" {
+			result = reStaleDataNguonDouble.ReplaceAllString(result, `data-nguon="`+wantNguon+`"`)
+			result = reStaleDataNguonSingle.ReplaceAllString(result, `data-nguon='`+wantNguon+`'`)
+		}
 	}
 
 	// Tự động kiểm tra và chèn tracker.js kèm form interceptor nếu trang chưa có.
@@ -2034,6 +2069,18 @@ func injectPageViewEventIDSnippet() string {
 </script>
 `
 }
+
+// reStaleDataLandingID* ghi đè `data-landing-id` cũ trong HTML nhân bản.
+//
+// ⚠️ FIX CHỒNG CHÉO 2026-11-18 (xu_huong_2 → doanh_chung):
+//   HTML nhân bản giữ `data-landing-id="doanh_chung"` của landing NGUỒN.
+//   Nếu chỉ chèn khi attribute chưa tồn tại, giá trị sai được giữ nguyên ⇒
+//   tracker.js ưu tiên `data-landing-id` (nguồn #1) ⇒ mọi view/lead của bản
+//   sao bị ghi về landing nguồn. Runtime phải ép về đúng landing đang phục vụ.
+var reStaleDataLandingIDDouble = regexp.MustCompile(`data-landing-id\s*=\s*"[^"]*"`)
+var reStaleDataLandingIDSingle = regexp.MustCompile(`data-landing-id\s*=\s*'[^']*'`)
+var reStaleDataNguonDouble = regexp.MustCompile(`data-nguon\s*=\s*"[^"]*"`)
+var reStaleDataNguonSingle = regexp.MustCompile(`data-nguon\s*=\s*'[^']*'`)
 
 // rePageViewCallPattern khớp lệnh `fbq('track','PageView')` (chưa có eventID).
 //

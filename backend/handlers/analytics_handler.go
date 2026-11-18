@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"apex-backend/cache"
@@ -33,15 +34,20 @@ type AnalyticsHandler struct {
 	// (browser). Landing đã có Pixel ⇒ PageView browser đã đủ, thêm server
 	// sẽ nhân đôi (trừ khi có event_id chung, mà Pixel không truyền).
 	capiDispatcher *facebook.Dispatcher
+	// pageViewFlight chặn 2 ping analytics cùng 1 phiên gửi trùng CAPI
+	// PageView khi chạy song song (fix dedup 2026-11-18).
+	pageViewFlightMu sync.Mutex
+	pageViewFlight   map[string]bool
 }
 
 func NewAnalyticsHandler(cfg *config.Config, store *db.Store, landingCache *cache.LandingCache) *AnalyticsHandler {
 	return &AnalyticsHandler{
-		cfg:         cfg,
-		store:       store,
-		landingCache: landingCache,
-		rateLimiter: security.NewIPRateLimiter(rate.Limit(2.0), 60, 5*time.Minute), // 120 req/phút, burst 60
+		cfg:            cfg,
+		store:          store,
+		landingCache:   landingCache,
+		rateLimiter:    security.NewIPRateLimiter(rate.Limit(2.0), 60, 5*time.Minute), // 120 req/phút, burst 60
 		capiDispatcher: facebook.NewDispatcherWithSync(store, cfg.IsExternalSyncEnabled()),
+		pageViewFlight: make(map[string]bool),
 	}
 }
 
@@ -307,11 +313,22 @@ func (h *AnalyticsHandler) HandleTrackEvent(w http.ResponseWriter, r *http.Reque
 	// fallback đọc từ query string entry_url.
 	if p.Fbclid == "" || p.Fbc == "" || p.Fbp == "" {
 		cookies := map[string]string{}
-		if c, err := r.Cookie("fbc"); err == nil {
+		if c, err := r.Cookie("_fbc"); err == nil {
 			cookies["_fbc"] = c.Value
 		}
-		if c, err := r.Cookie("fbp"); err == nil {
+		if c, err := r.Cookie("_fbp"); err == nil {
 			cookies["_fbp"] = c.Value
+		}
+		// Fallback tên không gạch dưới (một số proxy strip underscore).
+		if c, err := r.Cookie("fbc"); err == nil {
+			if _, ok := cookies["_fbc"]; !ok {
+				cookies["_fbc"] = c.Value
+			}
+		}
+		if c, err := r.Cookie("fbp"); err == nil {
+			if _, ok := cookies["_fbp"]; !ok {
+				cookies["_fbp"] = c.Value
+			}
 		}
 		ids := security.ResolveMetaClickIDs(p.EntryURL, cookies)
 		if p.Fbclid == "" {
@@ -458,6 +475,36 @@ func (h *AnalyticsHandler) dispatchCAPIPageView(p *models.AnalyticsEventPayload,
 	if h.landingHasMetaPixel(p.LandingID) && eventID == "" {
 		// Có Pixel nhưng KHÔNG có event_id chung ⇒ KHÔNG bắn server PageView.
 		return
+	}
+
+	// ⚠️ CHẶN GỬI TRÙNG SONG SONG (fix dedup 2026-11-18).
+	//
+	// tracker.js gửi nhiều ping /api/analytics/track trong 1 phiên
+	// (pageview, heartbeat, exit…). Mỗi ping chạy hàm này trên 1 goroutine
+	// riêng. Hai ping gần nhau cùng qua `HasFacebookCAPISessionEvent = false`
+	// trước khi log kịp ghi ⇒ cả hai cùng bắn CAPI ⇒ Meta nhận 2–3 server
+	// events cho cùng 1 event_id (đúng mẫu CSV: browser 1 + server 2/3).
+	// ⇒ Đánh dấu phiên đang gửi, ping song song thấy cờ thì bỏ qua.
+	// Flag tự xoá sau 30s để không kẹt nếu goroutine crash.
+	flightKey := strings.TrimSpace(p.SessionID)
+	if flightKey == "" {
+		flightKey = strings.TrimSpace(p.VisitorID) + "|" + strings.TrimSpace(p.LandingID)
+	}
+	if flightKey != "" {
+		h.pageViewFlightMu.Lock()
+		if h.pageViewFlight[flightKey] {
+			h.pageViewFlightMu.Unlock()
+			return
+		}
+		h.pageViewFlight[flightKey] = true
+		h.pageViewFlightMu.Unlock()
+		defer func(k string) {
+			time.AfterFunc(30*time.Second, func() {
+				h.pageViewFlightMu.Lock()
+				delete(h.pageViewFlight, k)
+				h.pageViewFlightMu.Unlock()
+			})
+		}(flightKey)
 	}
 
 	lc := &facebook.LeadContext{

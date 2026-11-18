@@ -385,8 +385,12 @@ sửa HTML không cần thiết ⇒ **giữ nguyên block Meta Pixel GỐC**.
 
 | Lớp | Cơ chế | Vị trí |
 |---|---|---|
-| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu"]` + env `META_CAPI_BLOCKED_LANDINGS` | `backend/integrations/facebook/dispatcher.go` → `resolveConfig()` |
+| 1. Tầng server (chốt chặn tuyệt đối) | `serverCAPIDenyList = ["landing_cu", "landing_lznoew"]` + env `META_CAPI_BLOCKED_LANDINGS` | `backend/integrations/facebook/dispatcher.go` → `resolveConfig()` |
 | 2. Dòng DB riêng | `is_active = FALSE` cho `landing_cu` (migration `D3`) | `backend/db/db.go` |
+
+> ⚠️ `landing_lznoew` là trang "Chúc mừng" (thank-you page) — PageView ở đây
+> KHÔNG phải lượt xem quảng cáo ⇒ KHÔNG bắn CAPI (tránh nhân đôi PageView).
+> Fix dedup 2026-11-18 chỉ áp dụng cho các landing còn lại.
 
 **Hệ quả trong code:**
 
@@ -1225,7 +1229,11 @@ frontend/landing/doanh_chung/
    `apex-adapter.js` chỉ expose `window.ApexSheetsDirect` làm shim tương thích, nhưng
    dữ liệu vẫn đi qua `POST /api/leads` ⇒ không rò rỉ secret.
 2. **MỘT** handler gọi `ApexTracker.sendLeadToBackend()` (xem mục 3 mục 5).
-3. `data-landing-id` và `data-nguon` trong thẻ `<script>` **phải** là `doanh_chung`.
+3. `data-landing-id` / `data-nguon` trong HTML gốc có thể vẫn là `doanh_chung`
+   (do nhân bản), nhưng runtime backend **tự ghi đè về đúng landing đang phục vụ**
+   (`InjectDynamicScriptsWithBase` + regex `reStaleDataLandingID*` — fix 2026-11-18),
+   còn `apex-adapter.js` resolve động qua `ApexTracker.getLandingConfig()`
+   ⇒ lead/view không bao giờ ghi nhầm về `doanh_chung` nữa.
 
 ---
 
