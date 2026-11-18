@@ -393,7 +393,8 @@ sửa HTML không cần thiết ⇒ **giữ nguyên block Meta Pixel GỐC**.
 | Hàm | Hành vi mới |
 |---|---|
 | `InjectDynamicScriptsWithBase()` | Chỉ gọi `rewritePageViewWithEventID()` + inject `window.APEX_PV_EVENT_ID` **khi** `isCAPIActive(landing_id) == true`. Block Pixel auto-inject cũng chọn bản có/không `eventID` theo cùng điều kiện. |
-| `RepairMetaPixelPageViewEventID()` | Landing bật CAPI ⇒ thêm `eventID`. Landing **không** bật CAPI ⇒ **gỡ** `eventID` (đưa HTML về block Pixel gốc). |
+| `rewritePageViewWithoutEventID()` | Landing **không** bật CAPI ⇒ **GỠ** `{ eventID: window.APEX_PV_EVENT_ID }` khỏi lệnh `fbq('track','PageView')` (kể cả khi template LadiPage đã hardcode sẵn) ⇒ HTML về đúng block Pixel gốc. Không đụng sự kiện khác (`fbq('track','Lead', …)`). |
+| `RepairMetaPixelPageViewEventID()` | Landing bật CAPI ⇒ thêm `eventID`. Landing **không** bật CAPI ⇒ **gỡ** `eventID` (đưa HTML về block Pixel gốc) — sửa cả `landing_pages.code_html` lẫn `landing_files.content`. |
 
 > ⚠️ Landing KHÔNG bật CAPI mà vẫn gắn `eventID` ⇒ Meta ghi nhận PageView thiếu
 > thông số ⇒ chiến dịch báo lỗi dữ liệu (đúng triệu chứng đã gặp 2026-11-18).
