@@ -1229,6 +1229,7 @@ frontend/landing/doanh_chung/
    `apex-adapter.js` chỉ expose `window.ApexSheetsDirect` làm shim tương thích, nhưng
    dữ liệu vẫn đi qua `POST /api/leads` ⇒ không rò rỉ secret.
 2. **MỘT** handler gọi `ApexTracker.sendLeadToBackend()` (xem mục 3 mục 5).
+3. **JS/CSS/JSON/HTML trong `landing_files` KHÔNG được cache trình duyệt** (fix 2026-11-18) — `ServeBinaryFile` trả `Cache-Control: no-cache, must-revalidate` cho `.js/.css/.json/.html` (kẻo giữ adapter cũ hardcode sau deploy ⇒ lead `/apex` ghi nhầm `doanh_chung`). Ảnh/font/media giữ `public, max-age=86400`.
 3. `data-landing-id` / `data-nguon` trong HTML gốc có thể vẫn là `doanh_chung`
    (do nhân bản), nhưng runtime backend **tự ghi đè về đúng landing đang phục vụ**
    (`InjectDynamicScriptsWithBase` + regex `reStaleDataLandingID*` — fix 2026-11-18),

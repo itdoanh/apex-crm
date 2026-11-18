@@ -151,7 +151,14 @@ alwaysApply: true
     Runtime resolve qua `ApexTracker.getLandingConfig()` →
     `data-landing-id` → `APEX_LANDING_CONFIG` → `APEX_LANDING_ID`; backend ép
     lại `data-landing-id`/`data-nguon` cũ trong HTML nhân bản + `<base href>`
-    theo `basePath` route đang phục vụ.
+    theo `basePath` route đang phục vụ. Đồng bộ adapter đĩa → DB lúc khởi
+    động (`SyncSharedStaticFilesToDB`); bằng chứng production: lead #482 lúc
+    19:20:26 vẫn sai (adapter cũ) → adapter DB update 19:54:14 → lead #484 lúc
+    20:08:52 đã đúng `xu_huong_2`.
+31. **`ServeBinaryFile` KHÔNG cache JS/CSS/JSON/HTML** (fix 2026-11-18) — file
+    trong `landing_files` quyết định landing quy kết ⇒ phải `Cache-Control:
+    no-cache, must-revalidate` (kẻo trình duyệt giữ adapter cũ hardcode sau
+    deploy). Ảnh/font/media giữ `public, max-age=86400`.
 
 ## Nguyên tắc bảo mật
 

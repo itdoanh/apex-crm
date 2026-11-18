@@ -1435,6 +1435,16 @@ func ServeBinaryFile(w http.ResponseWriter, r *http.Request, filePath string, fi
 	}
 
 	w.Header().Set("Content-Type", mimeType)
+	// JS/CSS/JSON/HTML quyết định landing quy kết ⇒ không được để trình duyệt
+	// heuristic-cache bản cũ (fix chồng chéo 2026-11-18: adapter cũ hardcode
+	// doanh_chung bị giữ lại sau deploy ⇒ lead /apex ghi nhầm landing).
+	// `no-cache` = luôn revalidate với server (304 nếu không đổi) ⇒ nhẹ mà luôn đúng.
+	switch ext {
+	case ".js", ".css", ".json", ".html":
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+	}
 	_, _ = w.Write([]byte(content))
 }
 
