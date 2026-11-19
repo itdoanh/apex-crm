@@ -82,6 +82,8 @@ var leadFieldCatalog = []LeadFieldOption{
 	{Key: "trang_thai_stage", Label: "Giai Đoạn Pipeline", Group: FieldGroupCRM},
 	{Key: "capi_event", Label: "Sự Kiện Meta Tương Ứng", Group: FieldGroupCRM},
 	{Key: "capi_has_value", Label: "Sự Kiện Có Giá Trị", Group: FieldGroupCRM},
+	{Key: "conversion_value", Label: "Số Tiền Chuyển Đổi (VND)", Header: "Doanh Thu (VND)", Group: FieldGroupCRM},
+	{Key: "lead_score", Label: "Điểm Lead (Thang Meta)", Header: "Điểm Lead", Group: FieldGroupCRM},
 
 	// ─── Địa lý & nhà mạng ──────────────────────────────────────────
 	{Key: "city", Label: "Thành Phố", Group: FieldGroupGeo},

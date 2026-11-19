@@ -1658,6 +1658,14 @@ func (h *LandingHandler) InjectDynamicScriptsWithBase(rawHTML string, p *models.
 		rawHTML = rewritePageViewWithoutEventID(rawHTML)
 	}
 
+	// ⚠️ META 2026-11-19: sự kiện Lead BẮT BUỘC kèm currency=VND + value=0.
+	// Ghi đè mọi `fbq('track','Lead')` thiếu custom_data trong HTML landing
+	// (hardcode LadiPage custom_code) ⇒ hết cảnh báo Events Manager.
+	// ⚠️ LOẠI TRỪ `landing_cu` + `landing_lznoew` (trang chúc mừng) theo yêu cầu.
+	if p.PageID != "landing_cu" && p.PageID != "landing_lznoew" {
+		rawHTML = rewriteLeadWithCurrencyValue(rawHTML)
+	}
+
 	settings := p.Settings
 	if settings == nil {
 		settings = make(map[string]interface{})
@@ -2091,6 +2099,61 @@ var reStaleDataLandingIDDouble = regexp.MustCompile(`data-landing-id\s*=\s*"[^"]
 var reStaleDataLandingIDSingle = regexp.MustCompile(`data-landing-id\s*=\s*'[^']*'`)
 var reStaleDataNguonDouble = regexp.MustCompile(`data-nguon\s*=\s*"[^"]*"`)
 var reStaleDataNguonSingle = regexp.MustCompile(`data-nguon\s*=\s*'[^']*'`)
+
+// reLeadBarePattern khớp lệnh `fbq('track','Lead')` KHÔNG kèm custom_data
+// (hardcode từ LadiPage custom_code + template mẫu).
+//
+// ⚠️ META 2026-11-19: sự kiện Lead BẮT BUỘC kèm `currency` (VND) + `value`
+// (0 = khách quan tâm). Thiếu ⇒ Events Manager báo "thiếu thông số giá trị
+// và đơn vị tiền tệ" 100% (Pixel + CAPI).
+// Bắt các biến thể: fbq('track','Lead') / fbq("track","Lead") / có `;` hay không.
+var reLeadBarePattern = regexp.MustCompile(
+	`(?i)fbq\(\s*(['"])track['"]\s*,\s*(['"])Lead['"]\s*\)`)
+
+// reLeadEmptyObjPattern khớp `fbq('track','Lead',{})` — object rỗng ⇒ thiếu currency.
+var reLeadEmptyObjPattern = regexp.MustCompile(
+	`(?i)fbq\(\s*(['"])track['"]\s*,\s*(['"])Lead['"]\s*,\s*\{\s*\}\s*\)`)
+
+// rewriteLeadWithCurrencyValue ghi đè mọi lệnh `fbq('track','Lead')` thiếu
+// custom_data trong HTML thành `fbq('track','Lead',{currency:'VND',value:0})`.
+//
+// ⚠️ LOẠI TRỪ `landing_cu` + `landing_lznoew` (trang chúc mừng): chỉ gọi hàm
+// này khi landing KHÔNG nằm trong danh sách cấm (xem InjectDynamicScriptsWithBase).
+// ⚠️ Idempotent: lệnh ĐÃ có object tham số 3 (vd `{currency:...}`) ⇒ giữ nguyên.
+// ⚠️ `tracker.js` bắn Lead động đã kèm currency/value + eventID (tham số 4) ⇒
+// regex ở đây KHÔNG khớp (vì có tham số 3+4) ⇒ không đụng.
+func rewriteLeadWithCurrencyValue(html string) string {
+	if html == "" {
+		return html
+	}
+	html = reLeadEmptyObjPattern.ReplaceAllStringFunc(html, func(m string) string {
+		sub := reLeadEmptyObjPattern.FindStringSubmatch(m)
+		qTrack := "'"
+		if len(sub) > 1 && sub[1] == `"` {
+			qTrack = `"`
+		}
+		qLead := "'"
+		if len(sub) > 2 && sub[2] == `"` {
+			qLead = `"`
+		}
+		return fmt.Sprintf("fbq(%strack%s, %sLead%s, {currency: 'VND', value: 0})",
+			qTrack, qTrack, qLead, qLead)
+	})
+	html = reLeadBarePattern.ReplaceAllStringFunc(html, func(m string) string {
+		sub := reLeadBarePattern.FindStringSubmatch(m)
+		qTrack := "'"
+		if len(sub) > 1 && sub[1] == `"` {
+			qTrack = `"`
+		}
+		qLead := "'"
+		if len(sub) > 2 && sub[2] == `"` {
+			qLead = `"`
+		}
+		return fmt.Sprintf("fbq(%strack%s, %sLead%s, {currency: 'VND', value: 0})",
+			qTrack, qTrack, qLead, qLead)
+	})
+	return html
+}
 
 // rePageViewCallPattern khớp lệnh `fbq('track','PageView')` (chưa có eventID).
 //

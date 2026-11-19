@@ -152,6 +152,24 @@ func ExtractLeadValue(fieldName string, customText string, lead *models.Lead, tr
 		}
 		return "Không"
 
+	case "conversion_value", "doanh_thu", "so_tien":
+		if lead != nil && lead.ConversionValue != 0 {
+			return lead.ConversionValue
+		}
+		if v := trackingString(trackingData, "conversion_value", "doanh_thu", "so_tien", "value"); v != "" {
+			return v
+		}
+		return ""
+
+	case "lead_score", "diem_lead":
+		if lead != nil && lead.LeadScore != 0 {
+			return lead.LeadScore
+		}
+		if v := trackingString(trackingData, "lead_score", "diem_lead"); v != "" {
+			return v
+		}
+		return ""
+
 	// ─── Địa lý & nhà mạng ──────────────────────────────────────────
 	case "city":
 		if lead != nil && lead.City != "" {

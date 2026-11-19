@@ -217,6 +217,12 @@ type LeadContext struct {
 	EventID string
 	// SessionID là định danh phiên (dùng để dedup PageView server-side).
 	SessionID string
+	// ConversionValue là số tiền chuyển đổi nhập tay ở CRM (VND).
+	// HasConversionValue = true ⇒ dùng giá trị này thay cho giá mặc định.
+	ConversionValue float64
+	HasConversionValue bool
+	// LeadScore là điểm chất lượng lead theo thang Meta (nhập tay từ CRM).
+	LeadScore *float64
 }
 
 // TrackingString đọc 1 key trong tracking dạng chuỗi.
@@ -253,6 +259,10 @@ type DispatchResult struct {
 //
 // ⚠️ CHỈ GỬI KHI LEAD ĐẾN TỪ FACEBOOK (yêu cầu anh itdoanh 2026-11-15).
 // Lead từ organic / Google Ads / TikTok ⇒ bỏ qua.
+//
+// ⚠️ META 2026-11-19: sự kiện Lead BẮT BUỘC kèm `custom_data.currency` (VND)
+// + `custom_data.value` (lead mới = 0 — chuyển đổi thật nhập tay ở CRM sau).
+// Thiếu ⇒ Events Manager báo "thiếu thông số giá trị và đơn vị tiền tệ" 100%.
 func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
 	cfg, err := d.resolveConfig(lc.LandingID)
 	if err != nil {
@@ -270,7 +280,19 @@ func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
 		return res
 	}
 
-	return d.send(cfg, lc, EventLead, nil, "lead_submit", "")
+	// ⚠️ META 2026-11-19: Lead mới là khách quan tâm ⇒ value = 0 VND.
+	// Có currency + value ⇒ hết cảnh báo Events Manager.
+	// Ưu tiên giá nhập tay (nếu CRM đã gán), fallback 0.
+	leadValue := 0.0
+	if lc != nil && lc.HasConversionValue {
+		leadValue = lc.ConversionValue
+	}
+	leadCustomData := BuildValueCustomData(leadValue, cfg.Currency, EventLead, "lead")
+	if lc != nil && lc.LeadScore != nil {
+		leadCustomData.LeadScore = lc.LeadScore
+	}
+
+	return d.send(cfg, lc, EventLead, leadCustomData, "lead_submit", "")
 }
 
 // SendPageViewEvent gửi sự kiện `PageView` từ server.
@@ -358,8 +380,27 @@ func (d *Dispatcher) SendCRMSyncEvent(lc *LeadContext, trangThai string) *Dispat
 	}
 
 	var customData *CustomData
+	// ⚠️ META 2026-11-19: MỌI sự kiện CRM sync đều kèm currency=VND + value
+	// để hết cảnh báo "thiếu thông số giá trị và đơn vị tiền tệ".
+	//  - Sự kiện có giá trị (Subscribe/Purchase): value = tiền nhập tay ở CRM
+	//    (khóa học chuyên sâu / chỉ báo / mở TK + nạp tiền, giá tùy gói),
+	//    fallback giá khóa học mặc định trong cấu hình.
+	//  - Sự kiện không giá trị (Lead/Contact/StartTrial): value = tiền nhập
+	//    tay nếu sales có nhập, fallback 0 (khách mới quan tâm chưa có doanh thu).
+	value := 0.0
 	if hasValue {
-		customData = BuildValueCustomData(cfg.CourseValue, cfg.Currency, eventName, "course")
+		value = cfg.CourseValue
+	}
+	if lc != nil && lc.HasConversionValue {
+		value = lc.ConversionValue
+	}
+	currency := strings.TrimSpace(cfg.Currency)
+	if currency == "" {
+		currency = "VND"
+	}
+	customData = BuildValueCustomData(value, currency, eventName, "course")
+	if lc != nil && lc.LeadScore != nil {
+		customData.LeadScore = lc.LeadScore
 	}
 
 	// ─── EVENT ID: chống đếm trùng ───────────────────────────────────
@@ -445,26 +486,48 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 	})
 
 	var customData *CustomData
-	if req.Value > 0 {
-		customData = BuildValueCustomData(req.Value, req.Currency, req.EventName, "course")
-	} else if len(req.CustomData) > 0 {
-		cd := &CustomData{Extra: req.CustomData}
-		if v, ok := req.CustomData["currency"].(string); ok {
-			cd.Currency = v
-		}
-		if v, ok := req.CustomData["value"].(float64); ok {
-			cd.Value = &v
-		}
-		if v, ok := req.CustomData["content_name"].(string); ok {
-			cd.ContentName = v
-		}
-		customData = cd
-	}
-
+	// ⚠️ META 2026-11-19: sự kiện Lead/test LUÔN kèm currency=VND + value
+	// (0 = khách quan tâm, chưa có doanh thu) ⇒ hết cảnh báo "thiếu thông số
+	// giá trị và đơn vị tiền tệ" trong Events Manager. Trước đây test event
+	// với value=0 ⇒ customData=nil ⇒ vẫn dính cảnh báo.
 	eventName := req.EventName
 	if eventName == "" {
 		eventName = EventLead
 	}
+	if req.Value > 0 {
+		customData = BuildValueCustomData(req.Value, req.Currency, eventName, "course")
+	} else {
+		// Lead mới / test event value=0 ⇒ vẫn kèm currency=VND + value=0
+		// (ưu tiên custom_data user gửi lên nếu có).
+		if len(req.CustomData) > 0 {
+			cd := &CustomData{Extra: req.CustomData}
+			if v, ok := req.CustomData["currency"].(string); ok {
+				cd.Currency = v
+			}
+			if v, ok := req.CustomData["value"].(float64); ok {
+				cd.Value = &v
+			}
+			if v, ok := req.CustomData["content_name"].(string); ok {
+				cd.ContentName = v
+			}
+			if cd.Currency == "" || cd.Value == nil {
+				fallback := BuildValueCustomData(0, req.Currency, eventName, "course")
+				if cd.Currency == "" {
+					cd.Currency = fallback.Currency
+				}
+				if cd.Value == nil {
+					cd.Value = fallback.Value
+				}
+				if cd.ContentName == "" {
+					cd.ContentName = fallback.ContentName
+				}
+			}
+			customData = cd
+		} else {
+			customData = BuildValueCustomData(0, req.Currency, eventName, "course")
+		}
+	}
+
 	eventSourceURL := req.EventSourceURL
 	if eventSourceURL == "" && leadCtx != nil {
 		eventSourceURL = leadCtx.URL

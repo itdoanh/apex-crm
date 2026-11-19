@@ -810,7 +810,7 @@ func (h *LeadHandler) HandleUpdateLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.UpdateLead(req.ID, req.TrangThai, req.GhiChu, req.AssignedTo); err != nil {
+	if err := h.store.UpdateLead(req.ID, req.TrangThai, req.GhiChu, req.AssignedTo, req.Value, req.LeadScore); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
@@ -819,9 +819,9 @@ func (h *LeadHandler) HandleUpdateLead(w http.ResponseWriter, r *http.Request) {
 
 	// ─── Meta Conversions API: đồng bộ chuyển đổi theo trạng thái CRM ──
 	//
-	// Khi sales đổi trạng thái sang `da_hoc_chuyen_sau` (đã học chuyên sâu) hoặc
-	// `da_mua_hang` (khách đã mua hàng) → server gửi sự kiện Meta có giá trị
-	// (Subscribe / Purchase) với giá khoá học đã cấu hình.
+	// ⚠️ META 2026-11-19: MỌI sự kiện CRM sync kèm currency=VND + value
+	// (tiền nhập tay ở CRM, fallback 0/giá khóa học) + lead_score ⇒ hết
+	// cảnh báo "thiếu thông số giá trị và đơn vị tiền tệ" trong Events Manager.
 	//
 	// ⚠️ Chạy goroutine riêng + không chặn response: CRM là nguồn sự thật,
 	// CAPI chỉ là kênh bổ sung cho Meta. Lỗi CAPI không được làm fail update.
@@ -993,7 +993,22 @@ func (h *LeadHandler) buildCAPILeadContext(lead *models.Lead, rawData map[string
 		ClientIP:  ip,
 		UserAgent: ua,
 		EventID:   eventID,
+		// ⚠️ META 2026-11-19: kèm doanh thu nhập tay + điểm Meta đã lưu ở CRM
+		// ⇒ sự kiện CRM sync nào cũng có currency=VND + value.
+		ConversionValue:    lead.ConversionValue,
+		HasConversionValue: lead.ConversionValue != 0,
+		LeadScore:          leadScorePtr(lead.LeadScore),
 	}
+}
+
+// leadScorePtr đổi điểm CRM (0 = chưa chấm) thành *float64 cho CAPI.
+// 0 ⇒ nil (không gửi) để Events Manager không nhận điểm rác.
+func leadScorePtr(v float64) *float64 {
+	if v <= 0 {
+		return nil
+	}
+	out := v
+	return &out
 }
 
 // trackingString đọc 1 key trong tracking dạng chuỗi (helper cho handler).
@@ -1157,6 +1172,8 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		"Ghi Chú Sales",
 		"Người Phụ Trách",
 		"Cập Nhật Lúc",
+		"Doanh Thu (VND)",
+		"Điểm Lead",
 		"Thiết Bị",
 		"Tự Động Điền",
 		"UTM Campaign",
@@ -1208,6 +1225,14 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 		if lead.IsTest {
 			isTestCell = "TEST"
 		}
+		convCell := ""
+		if lead.ConversionValue != 0 {
+			convCell = strconv.FormatFloat(lead.ConversionValue, 'f', -1, 64)
+		}
+		scoreCell := ""
+		if lead.LeadScore != 0 {
+			scoreCell = strconv.FormatFloat(lead.LeadScore, 'f', -1, 64)
+		}
 
 		_ = writer.Write([]string{
 			strconv.FormatUint(lead.ID, 10),
@@ -1222,6 +1247,8 @@ func (h *LeadHandler) HandleExportCSV(w http.ResponseWriter, r *http.Request) {
 			lead.GhiChu,
 			lead.AssignedTo,
 			lead.UpdatedAt,
+			convCell,
+			scoreCell,
 			dev,
 			isAf,
 			utmCamp,

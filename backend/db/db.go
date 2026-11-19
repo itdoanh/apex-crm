@@ -112,6 +112,14 @@ func (s *Store) initSchema(ctx context.Context) error {
 	--   NHƯNG vẫn đồng bộ sang Google Sheets bình thường.
 	ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
 
+	-- ⚠️ GIÁ TRỊ CHUYỂN ĐỔI + ĐIỂM LEAD (yêu cầu 2026-11-19):
+	-- Meta Events Manager báo "thiếu thông số giá trị và đơn vị tiền tệ" 100% sự kiện Lead.
+	-- Sales nhập tay số tiền theo từng trạng thái (khóa học chuyên sâu / chỉ báo / mở TK + nạp tiền,
+	-- giá tùy gói) + điểm chất lượng lead theo thang Meta ⇒ CAPI gửi kèm
+	-- custom_data {currency: VND, value, lead_score}.
+	ALTER TABLE leads ADD COLUMN IF NOT EXISTS conversion_value NUMERIC(15,2) NOT NULL DEFAULT 0;
+	ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_score NUMERIC(5,2);
+
 	CREATE INDEX IF NOT EXISTS idx_leads_landing_id ON leads (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_leads_nguon ON leads (nguon);
 	CREATE INDEX IF NOT EXISTS idx_leads_so_dien_thoai ON leads (so_dien_thoai);
@@ -1021,6 +1029,8 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       COALESCE(is_test, FALSE),
+		       COALESCE(conversion_value, 0)::float8,
+		       COALESCE(lead_score, 0)::float8,
 		       tracking::text
 		FROM leads
 		WHERE so_dien_thoai = $1
@@ -1052,6 +1062,8 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		&existing.AdPlacement,
 		&existing.URL,
 		&existing.IsTest,
+		&existing.ConversionValue,
+		&existing.LeadScore,
 		&existingTrackingStr,
 	)
 	if err == nil {
@@ -1108,6 +1120,8 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		          COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		          COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		          COALESCE(is_test, FALSE),
+		          COALESCE(conversion_value, 0),
+		          COALESCE(lead_score, 0),
 		          tracking::text;
 	`
 
@@ -1132,6 +1146,8 @@ func (s *Store) SaveLead(landingID string, nguon string, phone string, pageURL s
 		&lead.AdPlacement,
 		&lead.URL,
 		&lead.IsTest,
+		&lead.ConversionValue,
+		&lead.LeadScore,
 		&trackingStr,
 	)
 	if err != nil {
@@ -1275,6 +1291,8 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       COALESCE(is_test, FALSE),
+		       COALESCE(conversion_value, 0)::float8,
+		       COALESCE(lead_score, 0)::float8,
 		       tracking::text
 		FROM leads
 		%s
@@ -1310,6 +1328,8 @@ func (s *Store) ListLeads(page int, limit int, search string, landingID string, 
 			&lead.AdPlacement,
 			&lead.URL,
 			&lead.IsTest,
+			&lead.ConversionValue,
+			&lead.LeadScore,
 			&trackingStr,
 		); err != nil {
 			return nil, 0, fmt.Errorf("lỗi đọc dòng lead: %w", err)
@@ -1340,6 +1360,8 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       COALESCE(is_test, FALSE),
+		       COALESCE(conversion_value, 0)::float8,
+		       COALESCE(lead_score, 0)::float8,
 		       tracking::text
 		FROM leads
 		%s
@@ -1374,6 +1396,8 @@ func (s *Store) GetAllLeads(search string, landingID string, nguon string, statu
 			&lead.AdPlacement,
 			&lead.URL,
 			&lead.IsTest,
+			&lead.ConversionValue,
+			&lead.LeadScore,
 			&trackingStr,
 		); err != nil {
 			return nil, fmt.Errorf("lỗi đọc dữ liệu export CSV: %w", err)
@@ -1402,6 +1426,8 @@ func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
 		       COALESCE(city, ''), COALESCE(region, ''), COALESCE(country, 'Việt Nam'), COALESCE(isp, ''),
 		       COALESCE(ad_platform, ''), COALESCE(ad_placement, ''), COALESCE(url, ''),
 		       COALESCE(is_test, FALSE),
+		       COALESCE(conversion_value, 0)::float8,
+		       COALESCE(lead_score, 0)::float8,
 		       tracking::text
 		FROM leads
 		WHERE id = $1
@@ -1412,7 +1438,8 @@ func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
 		&lead.ID, &lead.CreatedAt, &lead.LandingID, &lead.Nguon, &lead.Phone,
 		&lead.TrangThai, &lead.GhiChu, &lead.AssignedTo, &lead.UpdatedAt,
 		&lead.City, &lead.Region, &lead.Country, &lead.ISP,
-		&lead.AdPlatform, &lead.AdPlacement, &lead.URL, &lead.IsTest, &trackingStr,
+		&lead.AdPlatform, &lead.AdPlacement, &lead.URL, &lead.IsTest,
+		&lead.ConversionValue, &lead.LeadScore, &trackingStr,
 	)
 	if err != nil {
 		return nil, err
@@ -1421,8 +1448,9 @@ func (s *Store) GetLeadByID(id uint64) (*models.Lead, error) {
 	return &lead, nil
 }
 
-// UpdateLead cập nhật trạng thái CRM, ghi chú sales và người phụ trách
-func (s *Store) UpdateLead(id uint64, status string, note string, assignedTo string) error {
+// UpdateLead cập nhật trạng thái CRM, ghi chú sales, người phụ trách,
+// số tiền chuyển đổi nhập tay (VND) và điểm lead theo thang Meta.
+func (s *Store) UpdateLead(id uint64, status string, note string, assignedTo string, convValue *float64, leadScore *float64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -1445,6 +1473,31 @@ func (s *Store) UpdateLead(id uint64, status string, note string, assignedTo str
 	if strings.TrimSpace(assignedTo) != "" {
 		sets = append(sets, fmt.Sprintf("nguoi_phu_trach = $%d", idx))
 		args = append(args, strings.TrimSpace(assignedTo))
+		idx++
+	}
+	// ⚠️ META 2026-11-19: sales nhập tay số tiền theo từng trạng thái
+	// (khóa học chuyên sâu / chỉ báo / mở TK + nạp tiền — giá tùy gói).
+	// Nil ⇒ giữ giá trị cũ (không ghi đè). Âm ⇒ coi như 0.
+	if convValue != nil {
+		v := *convValue
+		if v < 0 {
+			v = 0
+		}
+		sets = append(sets, fmt.Sprintf("conversion_value = $%d", idx))
+		args = append(args, v)
+		idx++
+	}
+	// Điểm lead theo thang Meta — nhập tay từ CRM, 0 = chưa chấm.
+	if leadScore != nil {
+		s := *leadScore
+		if s < 0 {
+			s = 0
+		}
+		if s > 10 {
+			s = 10
+		}
+		sets = append(sets, fmt.Sprintf("lead_score = $%d", idx))
+		args = append(args, s)
 		idx++
 	}
 

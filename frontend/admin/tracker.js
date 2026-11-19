@@ -2530,8 +2530,13 @@
                     // ⇒ Event Match Quality hiển thị "trùng" và chỉ số thổi phồng.
                     if (typeof window.fbq === 'function') {
                         try {
+                            // ⚠️ META 2026-11-19: sự kiện Lead PHẢI có currency (VND) + value
+                            // ⇒ hết cảnh báo "thiếu thông số giá trị và đơn vị tiền tệ" trong Events Manager.
+                            // Lead mới chỉ là khách quan tâm ⇒ value = 0 (chuyển đổi thật nhập tay ở CRM sau).
                             window.fbq('track', 'Lead', {
-                                content_name: leadPayload.package || 'Landing Lead'
+                                content_name: leadPayload.package || 'Landing Lead',
+                                currency: 'VND',
+                                value: 0
                             }, { eventID: leadEventId });
                         } catch (_) {}
                     }

@@ -498,6 +498,12 @@ function normalizeStatusLocal(raw) {
             const drawerStatus = normalizeStatusLocal(lead.trang_thai || 'moi');
             document.getElementById('drawerStatusSelect').value = drawerStatus;
             document.getElementById('drawerNoteText').value = lead.ghi_chu || '';
+            // ⚠️ META 2026-11-19: nạp doanh thu + điểm Meta đã lưu để sales thấy khi đổi trạng thái.
+            // 0 = chưa có / chưa chấm (placeholder hiển thị 0).
+            const drawerConvEl = document.getElementById('drawerConversionValue');
+            if (drawerConvEl) drawerConvEl.value = (lead.conversion_value != null && Number(lead.conversion_value) !== 0) ? lead.conversion_value : '';
+            const drawerScoreEl = document.getElementById('drawerLeadScore');
+            if (drawerScoreEl) drawerScoreEl.value = (lead.lead_score != null && Number(lead.lead_score) !== 0) ? lead.lead_score : '';
             document.getElementById('drawerSaveMsg').classList.add('hidden');
 
             const isAutofill = tr.is_autofill === true || tr.is_autofill === '1' || !!tr.autofill_source;
@@ -603,6 +609,12 @@ function normalizeStatusLocal(raw) {
             if (!currentOpenLead) return;
             const newStatus = document.getElementById('drawerStatusSelect').value;
             const newNote = document.getElementById('drawerNoteText').value.trim();
+            // ⚠️ META 2026-11-19: doanh thu nhập tay theo trạng thái + điểm Meta ⇒ CAPI (VND + value + lead_score).
+            const convRaw = document.getElementById('drawerConversionValue') ? document.getElementById('drawerConversionValue').value : '';
+            const scoreRaw = document.getElementById('drawerLeadScore') ? document.getElementById('drawerLeadScore').value : '';
+            const convVal = convRaw === '' ? null : Math.max(0, Number(convRaw) || 0);
+            let scoreVal = scoreRaw === '' ? null : (Number(scoreRaw) || 0);
+            if (scoreVal !== null) scoreVal = Math.min(10, Math.max(0, scoreVal));
 
             try {
                 const res = await fetch('/api/leads/update', {
@@ -611,12 +623,16 @@ function normalizeStatusLocal(raw) {
                     body: JSON.stringify({
                         id: currentOpenLead.id,
                         trang_thai: newStatus,
-                        ghi_chu: newNote
+                        ghi_chu: newNote,
+                        value: convVal,
+                        lead_score: scoreVal
                     })
                 });
                 if (res.ok) {
                     currentOpenLead.trang_thai = newStatus;
                     currentOpenLead.ghi_chu = newNote;
+                    if (convVal !== null) currentOpenLead.conversion_value = convVal;
+                    if (scoreVal !== null) currentOpenLead.lead_score = scoreVal;
                     document.getElementById('drawerSaveMsg').classList.remove('hidden');
                     renderDataTable(curLeads);
                     if (currentCrmView === 'kanban') renderKanbanBoard(curLeads);

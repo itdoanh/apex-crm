@@ -257,6 +257,13 @@ Trong drawer **Customer 360°** của CRM (`frontend/admin/js/crm.js`):
 | `loadCustomerJourney(phone)` | Gọi `GET /api/analytics/report/journey?phone=…` |
 | `renderJourneyTimeline(data)` | Vẽ hồ sơ + timeline từng giây |
 
+> ⭐ **Doanh thu + điểm lead nhập tay** (thêm 2026-11-19 — fix Events Manager
+> "thiếu thông số giá trị và đơn vị tiền tệ" 100% sự kiện Lead):
+> Drawer Customer 360° có 2 ô: `Doanh thu (VND)` (`#drawerConversionValue`) +
+> `Điểm Lead (thang Meta 0–10)` (`#drawerLeadScore`). `openLeadDrawer()` nạp giá trị
+> đã lưu; `saveLeadFromDrawer()` gửi `value` + `lead_score` trong `POST /api/leads/update`
+> ⇒ CAPI kèm `currency: "VND"` + `value` + `lead_score`, Sheets + CSV cùng cập nhật.
+
 Container trong `frontend/admin/index.html`: `#customerJourneyPanel`.
 
 ### Bắt buộc — an toàn render

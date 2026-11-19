@@ -237,14 +237,25 @@ Query giống `/api/leads` + `?landing_id=&nguon=`. Trả CSV **UTF-8 có BOM** 
 
 Cột CSV: `ID, Thời Gian, Trạng Thái CRM, Họ Tên, Số Điện Thoại, Nhà Mạng, Landing ID,
 **URL Trang Đăng Ký**, Nguồn Traffic, Ghi Chú Sales, Người Phụ Trách, Cập Nhật Lúc,
-Thiết Bị, Tự Động Điền, UTM Campaign, **Lead Test**, Tracking Raw`.
+**Doanh Thu (VND)**, **Điểm Lead**, Thiết Bị, Tự Động Điền, UTM Campaign, **Lead Test**, Tracking Raw`.
 
 > Cột `Lead Test` = `TEST` nếu `is_test = true`, rỗng nếu không (thêm 2026-11-16).
+> Cột `Doanh Thu (VND)` / `Điểm Lead` (thêm 2026-11-19) = số tiền chuyển đổi nhập tay ở CRM
+> + điểm lead thang Meta; rỗng nếu = 0 (chưa có / chưa chấm).
 
 ### `POST /api/leads/update` — Admin
 ```json
-{ "id": 2, "trang_thai": "da_goi", "ghi_chu": "Khách hẹn gọi lại 18h", "nguoi_phu_trach": "An" }
+{ "id": 2, "trang_thai": "da_goi", "ghi_chu": "Khách hẹn gọi lại 18h", "nguoi_phu_trach": "An", "value": 6000000, "lead_score": 8 }
 ```
+
+> ⭐ **Doanh thu + điểm lead nhập tay** (thêm 2026-11-19 — fix Events Manager
+> "thiếu thông số giá trị và đơn vị tiền tệ" 100% sự kiện Lead):
+> - `value` (VND): số tiền theo từng trạng thái (khóa học chuyên sâu / chỉ báo /
+>   mở TK + nạp tiền — giá tùy gói). Lead mới = khách quan tâm ⇒ `0`.
+>   `null` ⇒ giữ giá trị cũ (không ghi đè). Gửi kèm CAPI `custom_data.value` + `currency: "VND"`.
+> - `lead_score` (thang Meta 0–10): chấm từ lúc Lead. `0`/`null` ⇒ không gửi (tránh điểm rác).
+> - MỌI sự kiện CRM sync (`moi`→`Lead`, `da_goi`→`Contact`, `da_hoc_buoi_chia_se`→`StartTrial`,
+>   `da_hoc_chuyen_sau`→`Subscribe`, `da_mua_hang`→`Purchase`) đều kèm `currency: "VND"` + `value`.
 
 ### `GET /api/crm/stats` — Admin
 Trả toàn bộ KPI: `summary`, `hourly_distribution` (24 khung giờ), `daily_trend`, `status_counts`, `carrier_counts`, `source_counts`, `city_counts`, `region_counts`, `ad_placement_counts`, `isp_counts`, `autofill_ratio`.
