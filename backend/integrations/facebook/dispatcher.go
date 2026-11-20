@@ -340,20 +340,20 @@ func (d *Dispatcher) SendCRMSyncEvent(lc *LeadContext, trangThai string) *Dispat
 
 	cfg, err := d.resolveConfig(lc.LandingID)
 	if err != nil {
-		return d.logSkip(lc, eventName, "crm_status_change", "không đọc được cấu hình CAPI: "+err.Error())
+		return d.logSkip(lc, eventName, "crm_status_change", "không đọc được cấu hình CAPI: "+err.Error(), trangThai)
 	}
 	if cfg == nil || !cfg.IsActive {
-		return d.logSkip(lc, eventName, "crm_status_change", "CAPI chưa bật cho landing này")
+		return d.logSkip(lc, eventName, "crm_status_change", "CAPI chưa bật cho landing này", trangThai)
 	}
 	if !cfg.SendCRMSync {
-		return d.logSkip(lc, eventName, "crm_status_change", "đồng bộ CRM đang tắt trong cấu hình")
+		return d.logSkip(lc, eventName, "crm_status_change", "đồng bộ CRM đang tắt trong cấu hình", trangThai)
 	}
 	if hasValue && !cfg.SendPurchase {
-		return d.logSkip(lc, eventName, "crm_status_change", "sự kiện có giá trị đang tắt trong cấu hình")
+		return d.logSkip(lc, eventName, "crm_status_change", "sự kiện có giá trị đang tắt trong cấu hình", trangThai)
 	}
 
 	// ─── GATE: chỉ gửi cho lead đến từ Facebook ───────────────────────
-	if res := d.checkFacebookAttribution(lc, eventName, "crm_status_change", cfg); res != nil {
+	if res := d.checkFacebookAttribution(lc, eventName, "crm_status_change", cfg, trangThai); res != nil {
 		return res
 	}
 
@@ -402,9 +402,9 @@ func (d *Dispatcher) CheckFacebookAttribution(lc *LeadContext, eventName, trigge
 //
 // ⚠️ Nếu cấu hình `only_facebook_traffic = FALSE` ⇒ KHÔNG gate (gửi cho mọi
 // lead). Mặc định TRUE.
-func (d *Dispatcher) checkFacebookAttribution(lc *LeadContext, eventName, triggeredBy string, cfg *models.FacebookCAPIConfig) *DispatchResult {
+func (d *Dispatcher) checkFacebookAttribution(lc *LeadContext, eventName, triggeredBy string, cfg *models.FacebookCAPIConfig, trangThaiCRM ...string) *DispatchResult {
 	if lc == nil {
-		return d.logSkip(nil, eventName, triggeredBy, "thiếu ngữ cảnh lead")
+		return d.logSkip(nil, eventName, triggeredBy, "thiếu ngữ cảnh lead", trangThaiCRM...)
 	}
 	if cfg != nil && !cfg.OnlyFacebookTraffic {
 		return nil
@@ -412,7 +412,7 @@ func (d *Dispatcher) checkFacebookAttribution(lc *LeadContext, eventName, trigge
 	traffic := DetectFacebookTraffic(lc.Tracking)
 	if !traffic.IsFacebook {
 		return d.logSkip(lc, eventName, triggeredBy,
-			"lead không đến từ Facebook ("+traffic.Source+") → không gửi CAPI")
+			"lead không đến từ Facebook ("+traffic.Source+") → không gửi CAPI", trangThaiCRM...)
 	}
 	return nil
 }
@@ -618,13 +618,13 @@ func (d *Dispatcher) send(
 	trangThaiCRM string,
 ) *DispatchResult {
 	if cfg.PixelID == "" {
-		return d.logSkip(lc, eventName, triggeredBy, "thiếu Pixel ID")
+		return d.logSkip(lc, eventName, triggeredBy, trangThaiCRM, "thiếu Pixel ID")
 	}
 	if cfg.AccessToken == "" && !cfg.GatewayEnabled {
-		return d.logSkip(lc, eventName, triggeredBy, "thiếu Access Token")
+		return d.logSkip(lc, eventName, triggeredBy, trangThaiCRM, "thiếu Access Token")
 	}
 	if cfg.GatewayEnabled && cfg.GatewayAccessKey == "" {
-		return d.logSkip(lc, eventName, triggeredBy, "thiếu Gateway Access Key")
+		return d.logSkip(lc, eventName, triggeredBy, trangThaiCRM, "thiếu Gateway Access Key")
 	}
 
 	// ─── user_data ────────────────────────────────────────────────────
@@ -690,6 +690,16 @@ func (d *Dispatcher) send(
 		TrangThaiCRM: trangThaiCRM,
 		SessionID:    lc.SessionID,
 	}
+	// ⚠️ FB ADS TAB 2026-11-20: lưu value/currency/lead_score gửi kèm để UI
+	// hiện chi tiết mỗi lần đổi trạng thái (trước đây log không lưu nên chỉ
+	// hiện PageView/Lead lúc mới về).
+	if customData != nil {
+		if customData.Value != nil {
+			logEv.Value = *customData.Value
+		}
+		logEv.Currency = customData.Currency
+		logEv.LeadScore = customData.LeadScore
+	}
 	if len(rawBody) > 0 {
 		logEv.Response = json.RawMessage(rawBody)
 	}
@@ -718,15 +728,31 @@ func (d *Dispatcher) send(
 }
 
 // logSkip ghi log 1 sự kiện bị bỏ qua (cấu hình chưa bật / thiếu token…).
-func (d *Dispatcher) logSkip(lc *LeadContext, eventName, triggeredBy, reason string) *DispatchResult {
+// ⚠️ FB ADS TAB 2026-11-20: giữ thêm trang_thai_crm để tab hiện rõ mỗi lần
+// đổi trạng thái CRM (kể cả khi bị skip do chưa bật CAPI / không phải traffic FB).
+func (d *Dispatcher) logSkip(lc *LeadContext, eventName, triggeredBy, reason string, trangThaiCRM ...string) *DispatchResult {
 	ev := models.FacebookCAPIEvent{
-		LeadID:       lc.LeadID,
-		LandingID:    lc.LandingID,
-		EventName:    eventName,
 		ActionSource: "website",
 		Status:       "skipped",
 		TriggeredBy:  triggeredBy,
 		Error:        reason,
+	}
+	if lc != nil {
+		ev.LeadID = lc.LeadID
+		ev.LandingID = lc.LandingID
+		if lc.HasConversionValue {
+			ev.Value = lc.ConversionValue
+			ev.Currency = "VND"
+		}
+		ev.LeadScore = lc.LeadScore
+	}
+	if len(trangThaiCRM) > 0 {
+		ev.TrangThaiCRM = trangThaiCRM[0]
+	} else if triggeredBy == "crm_status_change" {
+		ev.TrangThaiCRM = eventName
+	}
+	if eventName != "" {
+		ev.EventName = eventName
 	}
 	_ = d.store.LogFacebookCAPIEvent(ev)
 	return &DispatchResult{

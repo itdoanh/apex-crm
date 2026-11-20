@@ -747,7 +747,7 @@ function renderFacebookAdsLogs() {
     if (!tb) return;
 
     if (!fbAdsLogs.length) {
-        tb.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-slate-500 text-xs">Chưa có log gửi sự kiện nào.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="12" class="py-8 text-center text-slate-500 text-xs">Chưa có log gửi sự kiện nào.</td></tr>';
         return;
     }
 
@@ -759,6 +759,21 @@ function renderFacebookAdsLogs() {
             page_view: 'PageView',
             manual_test: 'Test thủ công',
         }[l.triggered_by] || l.triggered_by || '-';
+
+        // ⚠️ FB ADS TAB 2026-11-20: hiện chi tiết mỗi lần đổi trạng thái CRM
+        // (trạng thái + giá trị VND + điểm Meta). Trước đây bảng thiếu các
+        // cột này nên sales đổi trạng thái mà tab vẫn chỉ hiện PageView/Lead.
+        const crmLabel = fbAdsCrmStatusLabel(l.trang_thai_crm);
+        const crmCell = l.trang_thai_crm
+            ? `<span class="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-semibold">${escapeHTMLFb(crmLabel)}</span>`
+            : '<span class="text-slate-600">-</span>';
+        const valNum = Number(l.value || 0);
+        const valCell = (l.triggered_by === 'crm_status_change' || valNum > 0 || l.currency)
+            ? `<span class="font-mono text-[10px] ${valNum > 0 ? 'text-emerald-400 font-bold' : 'text-slate-400'}">${valNum.toLocaleString('vi-VN')} ${escapeHTMLFb(l.currency || 'VND')}</span>`
+            : '<span class="text-slate-600">-</span>';
+        const scoreCell = (l.lead_score != null && Number(l.lead_score) > 0)
+            ? `<span class="font-mono text-[10px] text-amber-400 font-bold">${escapeHTMLFb(l.lead_score)}/10</span>`
+            : '<span class="text-slate-600">-</span>';
 
         // ⚠️ Dedup Pixel ↔ CAPI (fix 2026-11-16):
         // Sự kiện `PageView` có `event_id` dạng `pv_*` ⇒ đó là event_id
@@ -779,6 +794,9 @@ function renderFacebookAdsLogs() {
                 </td>
                 <td class="py-2.5 px-3 font-mono text-[11px] font-bold text-orange-400">${escapeHTMLFb(l.event_name || '-')}</td>
                 <td class="py-2.5 px-3">${eventIdCell}</td>
+                <td class="py-2.5 px-3">${crmCell}</td>
+                <td class="py-2.5 px-3">${valCell}</td>
+                <td class="py-2.5 px-3">${scoreCell}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${escapeHTMLFb(l.landing_id || 'Mặc định')}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${l.lead_id ? '#' + escapeHTMLFb(l.lead_id) : '-'}</td>
                 <td class="py-2.5 px-3 text-[11px] text-slate-400">${escapeHTMLFb(trigger)}</td>
@@ -787,6 +805,33 @@ function renderFacebookAdsLogs() {
             </tr>
         `;
     }).join('');
+}
+
+/**
+ * fbAdsCrmStatusLabel đổi mã trạng thái CRM thành nhãn tiếng Việt.
+ * Dùng catalog động APEX_LEAD_STATUSES nếu có, fallback map cứng.
+ */
+function fbAdsCrmStatusLabel(key) {
+    if (!key) return '-';
+    try {
+        if (typeof APEX_LEAD_STATUSES !== 'undefined' && APEX_LEAD_STATUSES.length) {
+            const f = APEX_LEAD_STATUSES.find(s => s.key === key);
+            if (f) return f.label || key;
+        }
+    } catch (_) {}
+    const fb = {
+        moi: 'Mới tiếp nhận',
+        da_goi: 'Đã gọi điện',
+        ket_ban_zalo: 'Đã kết bạn Zalo',
+        da_hoc_buoi_chia_se: 'Đã học buổi chia sẻ',
+        da_hoc_chuyen_sau: 'Đã học chuyên sâu',
+        da_mua_hang: 'Khách hàng đã mua hàng',
+        da_hoc_truoc_do: 'Đã học trước đó rồi',
+        khong_quan_tam: 'Không quan tâm',
+        spam_khong_lien_lac: 'Spam / Không liên lạc được',
+        huy: 'Hủy / Sai số',
+    };
+    return fb[key] || key;
 }
 
 // ══════════════════════════════════════════════════════════════

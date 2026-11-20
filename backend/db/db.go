@@ -558,6 +558,14 @@ func (s *Store) initSchema(ctx context.Context) error {
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	-- ⚠️ FB ADS TAB 2026-11-20: lưu giá trị chuyển đổi kèm mỗi log để tab
+	-- "Facebook Ads" hiển thị chi tiết mỗi lần đổi trạng thái CRM
+	-- (event + trạng thái + value VND + điểm Meta). Trước đây log không lưu
+	-- nên UI chỉ hiện PageView/Lead lúc mới về.
+	ALTER TABLE facebook_capi_logs ADD COLUMN IF NOT EXISTS value NUMERIC(15,2) NOT NULL DEFAULT 0;
+	ALTER TABLE facebook_capi_logs ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'VND';
+	ALTER TABLE facebook_capi_logs ADD COLUMN IF NOT EXISTS lead_score NUMERIC(5,2);
+
 	-- ─── Dedup PageView server-side (2026-11-15) ───────────────────
 	--
 	-- tracker.js gửi POST /api/analytics/track nhiều lần trong 1 phiên

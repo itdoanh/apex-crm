@@ -292,15 +292,25 @@ func (s *Store) LogFacebookCAPIEvent(e models.FacebookCAPIEvent) error {
 	const q = `
 		INSERT INTO facebook_capi_logs (
 			lead_id, landing_id, event_name, event_id, action_source, pixel_id,
-			status, http_status, response, error, triggered_by, trang_thai_crm, session_id, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, NOW())
+			status, http_status, response, error, triggered_by, trang_thai_crm,
+			value, currency, lead_score, session_id, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, NOW())
 	`
 	_, err := s.pool.Exec(ctx, q,
 		leadID, e.LandingID, e.EventName, e.EventID, e.ActionSource, e.PixelID,
 		e.Status, e.HTTPStatus, string(respBytes), e.Error, e.TriggeredBy, e.TrangThaiCRM,
+		e.Value, e.Currency, leadScoreVal(e.LeadScore),
 		e.SessionID,
 	)
 	return err
+}
+
+// leadScoreVal đổi *float64 thành driver value (nil ⇒ NULL).
+func leadScoreVal(v *float64) interface{} {
+	if v == nil {
+		return nil
+	}
+	return *v
 }
 
 // HasFacebookCAPISessionEvent kiểm tra session này đã gửi sự kiện đó chưa.
@@ -391,7 +401,9 @@ func (s *Store) ListFacebookCAPILogs(landingID string, status string, eventName 
 	q := fmt.Sprintf(`
 		SELECT id, COALESCE(lead_id, 0), landing_id, event_name, event_id,
 		       action_source, pixel_id, status, http_status, response, error,
-		       triggered_by, trang_thai_crm, session_id,
+		       triggered_by, trang_thai_crm,
+		       COALESCE(value, 0)::float8, COALESCE(currency, 'VND'), lead_score,
+		       session_id,
 		       TO_CHAR(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS')
 		FROM facebook_capi_logs
 		WHERE %s
@@ -412,7 +424,8 @@ func (s *Store) ListFacebookCAPILogs(landingID string, status string, eventName 
 		if err := rows.Scan(
 			&e.ID, &e.LeadID, &e.LandingID, &e.EventName, &e.EventID,
 			&e.ActionSource, &e.PixelID, &e.Status, &e.HTTPStatus, &respRaw, &e.Error,
-			&e.TriggeredBy, &e.TrangThaiCRM, &e.SessionID, &e.CreatedAt,
+			&e.TriggeredBy, &e.TrangThaiCRM,
+			&e.Value, &e.Currency, &e.LeadScore, &e.SessionID, &e.CreatedAt,
 		); err != nil {
 			continue
 		}

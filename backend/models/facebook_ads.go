@@ -99,6 +99,13 @@ type FacebookCAPIEvent struct {
 	Error        string          `json:"error"`
 	TriggeredBy  string          `json:"triggered_by"` // lead_submit | crm_status_change | page_view | manual_test
 	TrangThaiCRM string          `json:"trang_thai_crm"`
+	// Value/Currency/LeadScore — giá trị chuyển đổi kèm theo sự kiện
+	// (VND + số tiền nhập tay ở CRM + điểm Meta). Dùng để tab FB Ads hiển
+	// thị chi tiết mỗi lần đổi trạng thái (fix 2026-11-20: trước đây log
+	// không lưu nên UI chỉ hiện PageView/Lead lúc mới về).
+	Value     float64  `json:"value"`
+	Currency  string   `json:"currency"`
+	LeadScore *float64 `json:"lead_score,omitempty"`
 	// SessionID dùng để dedup PageView server-side: chỉ gửi 1 PageView
 	// cho mỗi session (tracker.js gửi nhiều ping /api/analytics/track).
 	SessionID string `json:"session_id,omitempty"`
