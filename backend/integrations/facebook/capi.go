@@ -53,6 +53,10 @@ type CustomData struct {
 	Contents    []interface{}          `json:"contents,omitempty"`
 	OrderID     string                 `json:"order_id,omitempty"`
 	NumItems    *int                   `json:"num_items,omitempty"`
+	// LeadScore là điểm chất lượng lead theo thang Meta (nhập tay từ CRM).
+	// Meta cho phép custom_data chứa trường tuỳ biến — Events Manager dùng
+	// để chấm điểm / phân phối. Nil ⇒ không gửi.
+	LeadScore   *float64               `json:"lead_score,omitempty"`
 	Extra       map[string]interface{} `json:"-"`
 }
 

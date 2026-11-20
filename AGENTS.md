@@ -203,6 +203,13 @@ powershell -File deploy\local\run_local.ps1 -Env test # :test  → DB apex_leads
  - Sửa `InjectDynamicScriptsWithBase()` (`backend/handlers/landing_handler.go`) + `RepairMetaPixelPageViewEventID()` (`backend/db/landing_pixel_repair.go`).
 30. **Adapter `apex-adapter.js` PHẢI resolve động `landing_id`/`nguon`** (fix 2026-11-18 — `xu_huong_2` tại `/apex` gửi lead về nhầm `doanh_chung`) — hardcode `LANDING_ID='doanh_chung'` + `nguon:'doanh_chung'` ⇒ mọi bản nhân bản dùng chung adapter đều ghi sai landing. Runtime resolve qua `ApexTracker.getLandingConfig()` → `data-landing-id` → `APEX_LANDING_CONFIG` → `APEX_LANDING_ID`, backend ép lại `data-landing-id`/`data-nguon` cũ trong HTML nhân bản (`reStaleDataLandingID*`) + `<base href>` theo `basePath` route đang phục vụ (không dùng `p.PathPrefix`). Đồng bộ adapter đĩa → DB lúc khởi động (`SyncSharedStaticFilesToDB`); bằng chứng production 2026-11-18: lead #482 lúc 19:20:26 vẫn sai (adapter cũ) → adapter DB update 19:54:14 → lead #484 lúc 20:08:52 đã đúng `xu_huong_2`.
 31. **`ServeBinaryFile` KHÔNG cache JS/CSS/JSON/HTML** (fix 2026-11-18) — file trong `landing_files` quyết định landing quy kết ⇒ phải `Cache-Control: no-cache, must-revalidate` (kẻo trình duyệt giữ adapter cũ hardcode sau deploy). Ảnh/font/media giữ `public, max-age=86400`.
+32. **Sự kiện Lead BẮT BUỘC có `currency` + `value`** (fix 2026-11-19 — Events Manager báo "100% sự kiện Lead thiếu thông số giá trị và đơn vị tiền tệ") —
+ - ⚠️ NGUYÊN NHÂN: landing export từ LadiPage có custom_code hardcode `fbq('track','Lead')` KHÔNG kèm custom_data ⇒ Meta báo lỗi (cả Pixel + CAPI).
+ - Sửa 3 tầng: ① Client `tracker.js` → `fbq('track','Lead',{content_name,currency:'VND',value:0},{eventID})` ② Server `rewriteLeadWithCurrencyValue()` (`backend/handlers/landing_handler.go`) ghi đè lệnh Lead trong HTML landing ⇒ `fbq('track','Lead',{currency:'VND',value:0})` · ③ Server `RepairMetaPixelLeadCurrency()` (`backend/db/landing_pixel_repair.go`) sửa DỮ LIỆU DB lúc khởi động.
+ - ⚠️ LOẠI TRỪ `landing_cu` + `landing_lznoew` (trang chúc mừng).
+ - CAPI: `SendLeadEvent()` + `SendCRMSyncEvent()` + `SendTestEvent()` LUÔN kèm `custom_data {currency:"VND", value}` (Lead mới = 0) + `lead_score` tuỳ chọn.
+ - CRM nhập tay: `leads.conversion_value` (VND) + `leads.lead_score` (thang Meta 0-10) — nhập trong drawer Customer 360° ⇒ đồng bộ CAPI + Sheets + CSV.
+ - Mọi sự kiện CRM sync (`Lead`/`Contact`/`StartTrial`/`Subscribe`/`Purchase`) đều kèm currency=VND + value (tiền nhập tay, fallback giá khóa học cấu hình, hoặc 0).
 
 ---
 

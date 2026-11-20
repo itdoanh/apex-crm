@@ -159,6 +159,14 @@ func main() {
 		log.Printf("[WARN] Không thể bổ sung eventID cho PageView trong HTML landing: %v", err)
 	}
 
+	// ⚠️ META 2026-11-19: bổ sung `{currency:'VND', value:0}` cho lệnh
+	// `fbq('track','Lead')` thiếu custom_data (hardcode LadiPage custom_code)
+	// ⇒ hết cảnh báo "thiếu thông số giá trị và đơn vị tiền tệ" 100% Lead.
+	// Loại trừ `landing_cu` + `landing_lznoew` (trang chúc mừng).
+	if err := store.RepairMetaPixelLeadCurrency(context.Background()); err != nil {
+		log.Printf("[WARN] Không thể bổ sung currency/value cho Lead trong HTML landing: %v", err)
+	}
+
 	// Đồng bộ `settings` giữa bản gốc (domain='') và bản theo domain của cùng
 	// page_id. Bản domain thường thiếu title/meta_description ⇒ landing chạy trên
 	// domain đích mất SEO. Chỉ điền khoá TRỐNG, không ghi đè giá trị đã có.

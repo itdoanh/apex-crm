@@ -159,6 +159,7 @@ alwaysApply: true
     trong `landing_files` quyết định landing quy kết ⇒ phải `Cache-Control:
     no-cache, must-revalidate` (kẻo trình duyệt giữ adapter cũ hardcode sau
     deploy). Ảnh/font/media giữ `public, max-age=86400`.
+32. **Sự kiện Lead BẮT BUỘC có `currency` + `value`** (fix 2026-11-19 — Events Manager "100% Lead thiếu giá trị/đơn vị tiền tệ") — LadiPage hardcode `fbq('track','Lead')` ⇒ sửa 3 tầng: ① `tracker.js` kèm `{currency:'VND',value:0}` · ② `rewriteLeadWithCurrencyValue()` rewrite HTML lúc serve · ③ `RepairMetaPixelLeadCurrency()` sửa DB lúc boot. LOẠI TRỪ `landing_cu` + `landing_lznoew`. CAPI mọi sự kiện kèm `currency:VND + value` (Lead mới = 0) + `lead_score`. CRM nhập tay `conversion_value` (VND) + `lead_score` (0–10) trong drawer ⇒ đồng bộ CAPI + Sheets + CSV.
 
 ## Nguyên tắc bảo mật
 

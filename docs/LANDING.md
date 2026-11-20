@@ -399,6 +399,8 @@ sửa HTML không cần thiết ⇒ **giữ nguyên block Meta Pixel GỐC**.
 | `InjectDynamicScriptsWithBase()` | Chỉ gọi `rewritePageViewWithEventID()` + inject `window.APEX_PV_EVENT_ID` **khi** `isCAPIActive(landing_id) == true`. Block Pixel auto-inject cũng chọn bản có/không `eventID` theo cùng điều kiện. |
 | `rewritePageViewWithoutEventID()` | Landing **không** bật CAPI ⇒ **GỠ** `{ eventID: window.APEX_PV_EVENT_ID }` khỏi lệnh `fbq('track','PageView')` (kể cả khi template LadiPage đã hardcode sẵn) ⇒ HTML về đúng block Pixel gốc. Không đụng sự kiện khác (`fbq('track','Lead', …)`). |
 | `RepairMetaPixelPageViewEventID()` | Landing bật CAPI ⇒ thêm `eventID`. Landing **không** bật CAPI ⇒ **gỡ** `eventID` (đưa HTML về block Pixel gốc) — sửa cả `landing_pages.code_html` lẫn `landing_files.content`. |
+| `rewriteLeadWithCurrencyValue()` (2026-11-19) | Ghi đè mọi `fbq('track','Lead')` thiếu custom_data (hardcode LadiPage custom_code) ⇒ `fbq('track','Lead',{currency:'VND',value:0})`. Fix Events Manager "thiếu thông số giá trị và đơn vị tiền tệ" 100% Lead. Lệnh đã có custom_data ⇒ giữ nguyên. **LOẠI TRỪ `landing_cu` + `landing_lznoew`.** |
+| `RepairMetaPixelLeadCurrency()` (2026-11-19) | Sửa DỮ LIỆU trong DB (`landing_pages.code_html` + `landing_files.content`): thay `fbq('track','Lead')`/`fbq('track','Lead',{})` ⇒ kèm `{currency:'VND',value:0}`. Loại trừ `landing_cu` + `landing_lznoew`. Idempotent. |
 
 > ⚠️ Landing KHÔNG bật CAPI mà vẫn gắn `eventID` ⇒ Meta ghi nhận PageView thiếu
 > thông số ⇒ chiến dịch báo lỗi dữ liệu (đúng triệu chứng đã gặp 2026-11-18).

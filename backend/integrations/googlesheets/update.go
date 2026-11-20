@@ -60,6 +60,8 @@ var sheetStatusFields = []string{
 	"trang_thai_stage",
 	"capi_event",
 	"capi_has_value",
+	"conversion_value",
+	"lead_score",
 	"ghi_chu",
 	"nguoi_phu_trach",
 	"cap_nhat_luc",

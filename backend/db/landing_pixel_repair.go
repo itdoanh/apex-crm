@@ -190,3 +190,62 @@ func (s *Store) RepairMetaPixelPageViewEventID(ctx context.Context) error {
 
 	return nil
 }
+
+// RepairMetaPixelLeadCurrency bổ sung `{currency:'VND', value:0}` cho lệnh
+// `fbq('track','Lead')` thiếu custom_data trong HTML landing đã lưu trong CSDL.
+//
+// BỐI CẢNH (fix 2026-11-19 — Events Manager "thiếu thông số giá trị và đơn vị
+// tiền tệ" 100% Lead): landing export từ LadiPage có custom_code
+// `fbq('track','Lead')` KHÔNG kèm currency/value ⇒ Meta báo lỗi dù CAPI đã
+// gửi đủ. Backend render đã rewrite (`rewriteLeadWithCurrencyValue`) ⇒ HTML
+// phục vụ luôn đúng. Hàm này sửa thêm DỮ LIỆU trong DB để Code Studio hiển
+// thị đúng + đường serve không qua InjectDynamicScripts vẫn đúng.
+//
+// ⚠️ LOẠI TRỪ `landing_cu` + `landing_lznoew` (trang chúc mừng) theo yêu cầu.
+// ⚠️ Idempotent: lệnh ĐÃ có object tham số 3 ⇒ giữ nguyên.
+func (s *Store) RepairMetaPixelLeadCurrency(ctx context.Context) error {
+	const bareSingle = "fbq('track', 'Lead')"
+	bareDouble := "fbq(\"track\", \"Lead\")"
+	const fixedSingle = "fbq('track', 'Lead', {currency: 'VND', value: 0})"
+	fixedDouble := "fbq(\"track\", \"Lead\", {currency: 'VND', value: 0})"
+	const emptySingle = "fbq('track', 'Lead', {})"
+	emptyDouble := "fbq(\"track\", \"Lead\", {})"
+
+	for _, pair := range [][2]string{
+		{bareSingle, fixedSingle},
+		{bareDouble, fixedDouble},
+		{emptySingle, fixedSingle},
+		{emptyDouble, fixedDouble},
+	} {
+		oldCall, newCall := pair[0], pair[1]
+		tagPages, err := s.pool.Exec(ctx, `
+			UPDATE landing_pages p
+			SET code_html = replace(p.code_html, $1, $2),
+			    updated_at = NOW()
+			WHERE p.page_id NOT IN ('landing_cu', 'landing_lznoew')
+			  AND strpos(p.code_html, $1) > 0
+		`, oldCall, newCall)
+		if err != nil {
+			return err
+		}
+		if tagPages.RowsAffected() > 0 {
+			log.Printf("[INFO] RepairMetaPixelLeadCurrency: đã bổ sung currency/value cho Lead trong %d landing_pages.code_html (%q)", tagPages.RowsAffected(), oldCall)
+		}
+		tagFiles, err := s.pool.Exec(ctx, `
+			UPDATE landing_files f
+			SET content = replace(f.content, $1, $2),
+			    updated_at = NOW()
+			WHERE f.page_id NOT IN ('landing_cu', 'landing_lznoew')
+			  AND f.file_type IN ('html', 'htm', 'text', '')
+			  AND strpos(f.content, $1) > 0
+		`, oldCall, newCall)
+		if err != nil {
+			return err
+		}
+		if tagFiles.RowsAffected() > 0 {
+			log.Printf("[INFO] RepairMetaPixelLeadCurrency: đã bổ sung currency/value cho Lead trong %d landing_files (%q)", tagFiles.RowsAffected(), oldCall)
+		}
+	}
+
+	return nil
+}

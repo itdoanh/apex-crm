@@ -24,6 +24,8 @@ type Lead struct {
 	AdPlacement string          `json:"ad_placement"`    // Vị trí phân phối: Instagram, FB Feed, Audience Network, GDN, YouTube...
 	URL         string          `json:"url"`             // URL trang khách vừa gửi form (landing + query string) — dùng để truy ngược lead về đúng trang
 	IsTest      bool            `json:"is_test"`         // TRUE = lead test (tên chứa "(test)") — không tính vào biểu đồ/thông số
+	ConversionValue float64     `json:"conversion_value"` // Số tiền chuyển đổi nhập tay ở CRM (VND) — đồng bộ CAPI custom_data.value
+	LeadScore float64           `json:"lead_score"`      // Điểm chất lượng lead theo thang Meta (nhập tay từ CRM, 0 = chưa chấm)
 	Tracking    json.RawMessage `json:"tracking"`        // Chứa toàn bộ thông tin trình duyệt + form dạng JSON linh hoạt
 }
 
@@ -36,9 +38,15 @@ type LeadSubmission struct {
 
 // UpdateLeadRequest là payload cập nhật trạng thái & ghi chú CRM từ Admin
 type UpdateLeadRequest struct {
-	ID         uint64 `json:"id"`
-	TrangThai  string `json:"trang_thai"`
-	GhiChu     string `json:"ghi_chu"`
-	AssignedTo string `json:"nguoi_phu_trach"`
+	ID         uint64   `json:"id"`
+	TrangThai  string   `json:"trang_thai"`
+	GhiChu     string   `json:"ghi_chu"`
+	AssignedTo string   `json:"nguoi_phu_trach"`
+	// ConversionValue là số tiền chuyển đổi nhập tay theo từng trạng thái
+	// (khóa học chuyên sâu / chỉ báo / mở TK + nạp tiền — giá tùy gói).
+	// Đơn vị VND. Gửi kèm CAPI (custom_data.value + currency=VND).
+	Value *float64 `json:"value"`
+	// LeadScore là điểm chất lượng lead theo thang Meta (nhập tay từ CRM).
+	LeadScore *float64 `json:"lead_score"`
 }
 

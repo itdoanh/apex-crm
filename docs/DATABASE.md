@@ -48,7 +48,9 @@ CREATE TABLE leads (
     ad_platform     VARCHAR(50)  NOT NULL DEFAULT '',
     ad_placement    VARCHAR(100) NOT NULL DEFAULT '',
     url             VARCHAR(1000) NOT NULL DEFAULT '',
-    is_test         BOOLEAN      NOT NULL DEFAULT FALSE
+    is_test         BOOLEAN      NOT NULL DEFAULT FALSE,
+    conversion_value NUMERIC(15,2) NOT NULL DEFAULT 0,  -- 2026-11-19: doanh thu nhập tay ở CRM (VND)
+    lead_score      NUMERIC(5,2)                       -- 2026-11-19: điểm lead thang Meta (0 = chưa chấm)
 );
 ```
 

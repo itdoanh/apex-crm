@@ -2134,6 +2134,26 @@
                         class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500 transition text-xs"></textarea>
                 </div>
 
+                <!-- ⚠️ META 2026-11-19: sales nhập tay doanh thu + điểm lead theo từng trạng thái.
+                     Lead mới = khách quan tâm (value 0). Sau chăm sóc: học khóa phễu (miễn phí),
+                     rồi chuyển đổi chính: bỏ / mua khóa chuyên sâu / mua chỉ báo / mở TK + nạp tiền
+                     (giá tùy gói ⇒ nhập tay). Lưu ⇒ đồng bộ CAPI (currency=VND + value + lead_score),
+                     Google Sheets và CRM. -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Doanh thu (VND):</label>
+                        <input id="drawerConversionValue" type="number" min="0" step="1000" placeholder="0"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-orange-500 transition text-xs">
+                        <p class="text-[10px] text-slate-500 mt-1 leading-relaxed">Tiền theo trạng thái (khóa học / chỉ báo / nạp tiền). 0 = chưa có doanh thu.</p>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Điểm Lead (thang Meta 0–10):</label>
+                        <input id="drawerLeadScore" type="number" min="0" max="10" step="0.5" placeholder="0"
+                            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-orange-500 transition text-xs">
+                        <p class="text-[10px] text-slate-500 mt-1 leading-relaxed">Chấm từ lúc Lead. 0 = chưa chấm.</p>
+                    </div>
+                </div>
+
                 <div class="flex items-center justify-between pt-1">
                     <span id="drawerSaveMsg" class="text-emerald-400 font-semibold text-[11px] hidden">
                         <i class="fa-solid fa-check mr-1"></i>Đã lưu vào CSDL!
