@@ -380,19 +380,33 @@ func (d *Dispatcher) SendCRMSyncEvent(lc *LeadContext, trangThai string) *Dispat
 	}
 
 	var customData *CustomData
-	// ⚠️ META 2026-11-19: MỌI sự kiện CRM sync đều kèm currency=VND + value
-	// để hết cảnh báo "thiếu thông số giá trị và đơn vị tiền tệ".
-	//  - Sự kiện có giá trị (Subscribe/Purchase): value = tiền nhập tay ở CRM
-	//    (khóa học chuyên sâu / chỉ báo / mở TK + nạp tiền, giá tùy gói),
-	//    fallback giá khóa học mặc định trong cấu hình.
-	//  - Sự kiện không giá trị (Lead/Contact/StartTrial): value = tiền nhập
-	//    tay nếu sales có nhập, fallback 0 (khách mới quan tâm chưa có doanh thu).
+	// ⚠️ META 2026-11-19 + 2026-11-21: sự kiện CRM sync kèm currency=VND + value.
+	//  - Subscribe/Purchase (hasValue): value = tiền nhập tay ở CRM, fallback
+	//    giá khóa học trong cấu hình, cuối cùng fallback 6000000 (PHẢI > 0).
+	//  - StartTrial: Meta yêu cầu trường value (nếu có) PHẢI là số > 0 —
+	//    gửi value = 0 ⇒ Events Manager báo 100% "phải là số lớn hơn 0"
+	//    (fix 2026-11-21). Dùng 1 VND symbolic để qua diagnostic mà không
+	//    phồng ROAS. Lead/Contact giữ nguyên value = 0 (đang hoạt động tốt,
+	//    không đụng tới).
 	value := 0.0
 	if hasValue {
 		value = cfg.CourseValue
+		if value <= 0 {
+			value = 6000000
+		}
 	}
 	if lc != nil && lc.HasConversionValue {
 		value = lc.ConversionValue
+	}
+	if eventName == EventStartTrial {
+		if value <= 0 {
+			value = 1
+		}
+	} else if hasValue && value <= 0 {
+		value = cfg.CourseValue
+		if value <= 0 {
+			value = 6000000
+		}
 	}
 	currency := strings.TrimSpace(cfg.Currency)
 	if currency == "" {
@@ -486,18 +500,29 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 	})
 
 	var customData *CustomData
-	// ⚠️ META 2026-11-19: sự kiện Lead/test LUÔN kèm currency=VND + value
-	// (0 = khách quan tâm, chưa có doanh thu) ⇒ hết cảnh báo "thiếu thông số
-	// giá trị và đơn vị tiền tệ" trong Events Manager. Trước đây test event
-	// với value=0 ⇒ customData=nil ⇒ vẫn dính cảnh báo.
+	// ⚠️ META 2026-11-19 + 2026-11-21: sự kiện test LUÔN kèm currency=VND + value.
+	//  - Lead/PageView/Contact giữ value = 0 (đang hoạt động tốt, không đụng).
+	//  - StartTrial: Meta yêu cầu value PHẢI > 0 ⇒ value <= 0 thì ép lên 1 VND
+	//    symbolic (fix 2026-11-21, khớp luồng CRM sync).
+	//  - Subscribe/Purchase: value <= 0 thì fallback giá khóa học trong cấu
+	//    hình (cuối cùng 6000000) để không dính cùng cảnh báo.
 	eventName := req.EventName
 	if eventName == "" {
 		eventName = EventLead
 	}
+	testFallbackValue := 0.0
+	if eventName == EventStartTrial {
+		testFallbackValue = 1
+	} else if eventName == EventSubscribe || eventName == EventPurchase {
+		testFallbackValue = cfg.CourseValue
+		if testFallbackValue <= 0 {
+			testFallbackValue = 6000000
+		}
+	}
 	if req.Value > 0 {
 		customData = BuildValueCustomData(req.Value, req.Currency, eventName, "course")
 	} else {
-		// Lead mới / test event value=0 ⇒ vẫn kèm currency=VND + value=0
+		// Lead mới / test event value=0 ⇒ vẫn kèm currency=VND + value
 		// (ưu tiên custom_data user gửi lên nếu có).
 		if len(req.CustomData) > 0 {
 			cd := &CustomData{Extra: req.CustomData}
@@ -511,7 +536,7 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 				cd.ContentName = v
 			}
 			if cd.Currency == "" || cd.Value == nil {
-				fallback := BuildValueCustomData(0, req.Currency, eventName, "course")
+				fallback := BuildValueCustomData(testFallbackValue, req.Currency, eventName, "course")
 				if cd.Currency == "" {
 					cd.Currency = fallback.Currency
 				}
@@ -524,7 +549,20 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 			}
 			customData = cd
 		} else {
-			customData = BuildValueCustomData(0, req.Currency, eventName, "course")
+			customData = BuildValueCustomData(testFallbackValue, req.Currency, eventName, "course")
+		}
+	}
+	// Chốt chặn cuối: StartTrial/Subscribe/Purchase KHÔNG bao giờ gửi value <= 0.
+	if customData != nil && (eventName == EventStartTrial || eventName == EventSubscribe || eventName == EventPurchase) {
+		if customData.Value == nil || *customData.Value <= 0 {
+			v := testFallbackValue
+			if v <= 0 {
+				v = 1
+			}
+			customData.Value = &v
+			if strings.TrimSpace(customData.Currency) == "" {
+				customData.Currency = "VND"
+			}
 		}
 	}
 
