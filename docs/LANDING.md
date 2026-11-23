@@ -344,6 +344,7 @@ fbq('track', 'PageView', { eventID: pvEventId });
 | Client | `ensurePageViewEventId()` (`tracker.js`) | Đọc `window.APEX_PV_EVENT_ID` (do server inject) hoặc tự sinh ⇒ **1 giá trị duy nhất / lần tải trang**. |
 | Client | `buildAnalyticsPayload()` | Gửi `event_id` lên server trong payload `/api/analytics/track`. |
 | Server | `dispatchCAPIPageView()` | Landing **có** Pixel ⇒ chỉ bắn CAPI PageView khi có `event_id` **chung** (từ payload, fallback `analytics_sessions.pv_event_id`). Thiếu ⇒ **bỏ qua server PageView** (chấp nhận thiếu 1 lượt thay vì thừa 1 lượt). |
+| Server | `Dispatcher.send()` — chốt chặn CUỐI (fix 2026-11-23) | Trước khi gọi Meta, check `HasFacebookCAPIEventID(event_id, event_name)` trong **48h** (khớp cửa sổ dedup Meta). 2 ping cùng session + cùng `event_id` cùng lọt qua flight-lock + dedup session vẫn bị chặn ở đây. Chi tiết: `docs/FACEBOOK_CAPI.md` mục 4. |
 | DB | `analytics_sessions.pv_event_id` | Lưu `event_id` đầu tiên của phiên (fallback khi ping đầu bị throttle / client cache bản tracker.js cũ). |
 
 **HTML landing viết tay** (Code Studio) nên dùng mẫu sau:

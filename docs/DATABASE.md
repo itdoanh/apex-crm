@@ -843,7 +843,7 @@ CREATE TABLE IF NOT EXISTS facebook_capi_logs (
 );
 ```
 
-Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_event_name`, `_landing_id`, `_session_id`.
+Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_event_name`, `_landing_id`, `_session_id`, `_event_dedup(event_id, event_name, status, created_at DESC)`.
 
 **Quy tắc dữ liệu:**
 
@@ -872,6 +872,13 @@ Index: `idx_facebook_capi_logs_created_at` (DESC), `_lead_id`, `_status`, `_even
   `POST /api/analytics/track` trong 1 phiên (pageview, heartbeat, exit, scroll…) ⇒ không
   dedup thì 1 lượt xem bị đếm 5–10 lần trên Meta Ads Manager.
   `HasFacebookCAPISessionEvent(session_id, event_name)` kiểm tra đã gửi chưa (cửa sổ 24h).
+- `event_id` + `event_name` dùng cho **chốt chặn CUỐI chống server bắn trùng** (fix 2026-11-23):
+  CSV audit dataset `1468058901923737` cho thấy 28% event bị server bắn 2–3 lần cho cùng 1 `pv-*`
+  (2 ping cùng session + cùng event_id cùng lọt qua flight-lock + dedup session trước khi log kịp ghi).
+  ⇒ `Dispatcher.send()` check `HasFacebookCAPIEventID(event_id, event_name)` trong **48h**
+  (khớp đúng cửa sổ dedup của Meta) trước khi gọi Meta; index composite
+  `idx_facebook_capi_logs_event_dedup(event_id, event_name, status, created_at DESC)`.
+  Chi tiết: `docs/FACEBOOK_CAPI.md` mục 4.
 
 ### 8.5.1 Landing CHỈ dùng Meta Pixel — TẮT CAPI tầng server (fix 2026-11-18)
 

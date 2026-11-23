@@ -13,6 +13,7 @@ alwaysApply: true
 | Go handler / DB query | `docs/API.md` + `docs/DATABASE.md` |
 | Sửa UI CRM / Studio | `docs/FRONTEND.md` |
 | Sửa landing / tracker | `docs/LANDING.md` |
+| Sửa Meta Pixel / Conversions API | `docs/FACEBOOK_CAPI.md` |
 | Auth / anti-bot | `docs/SECURITY.md` |
 | Deploy | `docs/DEPLOYMENT.md` |
 | Sự cố production | `docs/RUNBOOK.md` |

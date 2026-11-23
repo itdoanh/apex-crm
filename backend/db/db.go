@@ -590,6 +590,13 @@ func (s *Store) initSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_event_name ON facebook_capi_logs (event_name);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_landing_id ON facebook_capi_logs (landing_id);
 	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_session_id ON facebook_capi_logs (session_id);
+	-- ─── Dedup theo (event_name, event_id) 48h (fix 2026-11-23) ──────
+	--
+	-- CSV audit dataset 1468058901923737: 28% event bi server ban 2-3 lan
+	-- cho cung 1 event_id prefix pv-. Chot chan CUOI trong Dispatcher.send() check
+	-- HasFacebookCAPIEventID trong 48h (khop cua so dedup cua Meta). Index composite de query EXISTS chay nhanh.
+	CREATE INDEX IF NOT EXISTS idx_facebook_capi_logs_event_dedup
+		ON facebook_capi_logs (event_id, event_name, status, created_at DESC);
 	`
 	_, err := s.pool.Exec(ctx, schemaSQL)
 	return err

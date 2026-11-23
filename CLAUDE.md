@@ -13,6 +13,7 @@
 | Go handler / DB | `docs/API.md`, `docs/DATABASE.md` |
 | UI CRM / Studio | `docs/FRONTEND.md` |
 | Landing / tracker | `docs/LANDING.md` |
+| Meta Pixel / Conversions API | `docs/FACEBOOK_CAPI.md` |
 | Auth / anti-bot | `docs/SECURITY.md` |
 | Deploy / server | `docs/DEPLOYMENT.md` |
 | Sự cố production | `docs/RUNBOOK.md` |

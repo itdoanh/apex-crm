@@ -7,7 +7,7 @@
 
 - `AGENTS.md` — bản đồ repo + bất biến kỹ thuật
 - `docs/ARCHITECTURE.md` — kiến trúc
-- Task-specific: `docs/API.md` · `docs/DATABASE.md` · `docs/FRONTEND.md` · `docs/LANDING.md` · `docs/SECURITY.md` · `docs/DEPLOYMENT.md` · `docs/RUNBOOK.md`
+- Task-specific: `docs/API.md` · `docs/DATABASE.md` · `docs/FRONTEND.md` · `docs/LANDING.md` · `docs/FACEBOOK_CAPI.md` · `docs/SECURITY.md` · `docs/DEPLOYMENT.md` · `docs/RUNBOOK.md`
 
 ## Bất biến
 
