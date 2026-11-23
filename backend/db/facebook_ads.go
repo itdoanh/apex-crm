@@ -344,6 +344,37 @@ func (s *Store) HasFacebookCAPISessionEvent(sessionID, eventName string) (bool, 
 	return exists, nil
 }
 
+// HasFacebookCAPIEventID kiểm tra `event_id` này đã gửi THÀNH CÔNG trong 48h chưa.
+//
+// ⚠️ Fix 2026-11-23 (CSV dedup: server bắn 2–3 events cho cùng 1 `pv-*`):
+// flight-lock trong analytics_handler chặn trùng SONG SONG, dedup theo
+// session chặn trùng KHÁC event_id — nhưng 2 ping cùng session + cùng
+// event_id vẫn có thể cùng lọt qua trước khi log kịp ghi. Đây là chốt chặn
+// CUỐI trong `send()`: Meta dedup theo (event_name, event_id) trong 48h ⇒
+// server cũng chỉ gửi 1 lần cho mỗi cặp đó trong 48h.
+func (s *Store) HasFacebookCAPIEventID(eventID, eventName string) (bool, error) {
+	if eventID == "" || eventName == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const q = `
+		SELECT EXISTS (
+			SELECT 1 FROM facebook_capi_logs
+			WHERE event_id = $1
+			  AND event_name = $2
+			  AND status = 'success'
+			  AND created_at >= NOW() - INTERVAL '48 hours'
+		)
+	`
+	var exists bool
+	if err := s.pool.QueryRow(ctx, q, eventID, eventName).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // GetSessionPvEventID đọc `event_id` của PageView đã lưu theo phiên.
 //
 // Dùng làm FALLBACK khi client không gửi `event_id` trong payload analytics

@@ -2,7 +2,9 @@ package facebook
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // ─── Phân tích URL quảng cáo Meta theo "URL Parameters" của Ads Manager ──
@@ -162,6 +164,11 @@ func (p MetaAdsParams) ClickID() string {
 //
 // Meta chỉ chấp nhận `_fbc` đúng định dạng. Nếu client gửi `fbclid` thô
 // (không phải `_fbc`), ta dựng lại theo chuẩn.
+//
+// ⚠️ Fix 2026-11-23: trước đây timestamp dựng lại luôn là `"0"`
+// (`fb.1.0.<fbclid>`) — Meta dùng `creation_time` để tính độ tươi click
+// và chấm EMQ. Nay dùng `time.Now().UnixMilli()` ⇒ khớp thời điểm click
+// thực tế hơn, tăng điểm `fbc` trong Dataset Quality.
 func NormalizeFBC(fbc, fbclid string) string {
 	fbc = strings.TrimSpace(fbc)
 	if fbc != "" {
@@ -179,7 +186,7 @@ func NormalizeFBC(fbc, fbclid string) string {
 	if strings.HasPrefix(fbclid, "fb.") && len(strings.Split(fbclid, ".")) >= 4 {
 		return fbclid
 	}
-	return "fb.1.0." + fbclid
+	return "fb.1." + strconv.FormatInt(time.Now().UnixMilli(), 10) + "." + fbclid
 }
 
 // NormalizeFBP chuẩn hoá `_fbp` theo định dạng Meta: fb.1.<timestamp>.<random>.

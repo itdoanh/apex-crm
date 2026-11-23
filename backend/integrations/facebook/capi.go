@@ -15,6 +15,14 @@ import (
 // DefaultAPIVersion là phiên bản Graph API mặc định cho Conversions API.
 const DefaultAPIVersion = "v27.0"
 
+// PartnerAgentName là định danh nền tảng gửi CAPI thay mặt khách hàng.
+//
+// 📌 Theo tài liệu Meta "Thư viện công cụ tạo thông số": `partner_agent`
+// trong POST /{pixel_id}/events và `agent_name` trong GET dataset_quality
+// phải là CÙNG 1 giá trị đã chuẩn hoá (lowercase). Ta dùng `apex_crm` ở
+// cả hai nơi ⇒ Dataset Quality lọc đúng sự kiện do hệ thống gửi.
+const PartnerAgentName = "apex_crm"
+
 // GraphBaseURL là endpoint gốc của Meta Graph API.
 const GraphBaseURL = "https://graph.facebook.com"
 
@@ -45,19 +53,50 @@ type UserData struct {
 
 // CustomData là dữ liệu tuỳ chỉnh của sự kiện (value, currency, content_name…).
 type CustomData struct {
-	Currency    string                 `json:"currency,omitempty"`
-	Value       *float64               `json:"value,omitempty"`
-	ContentName string                 `json:"content_name,omitempty"`
-	ContentType string                 `json:"content_type,omitempty"`
-	ContentIDs  []string               `json:"content_ids,omitempty"`
-	Contents    []interface{}          `json:"contents,omitempty"`
-	OrderID     string                 `json:"order_id,omitempty"`
-	NumItems    *int                   `json:"num_items,omitempty"`
+	Currency    string        `json:"currency,omitempty"`
+	Value       *float64      `json:"value,omitempty"`
+	ContentName string        `json:"content_name,omitempty"`
+	ContentType string        `json:"content_type,omitempty"`
+	ContentIDs  []string      `json:"content_ids,omitempty"`
+	Contents    []interface{} `json:"contents,omitempty"`
+	OrderID     string        `json:"order_id,omitempty"`
+	NumItems    *int          `json:"num_items,omitempty"`
 	// LeadScore là điểm chất lượng lead theo thang Meta (nhập tay từ CRM).
 	// Meta cho phép custom_data chứa trường tuỳ biến — Events Manager dùng
 	// để chấm điểm / phân phối. Nil ⇒ không gửi.
-	LeadScore   *float64               `json:"lead_score,omitempty"`
-	Extra       map[string]interface{} `json:"-"`
+	LeadScore *float64 `json:"lead_score,omitempty"`
+	// Extra chứa trường tuỳ biến do Admin UI gửi lên (vd test custom_data).
+	// Được gộp vào JSON khi serialize (xem MarshalJSON).
+	Extra map[string]interface{} `json:"-"`
+}
+
+// MarshalJSON gộp trường chuẩn + Extra thành 1 object phẳng.
+//
+// ⚠️ Fix 2026-11-23: trước đây `Extra` gắn tag `json:"-"` ⇒ mọi custom_data
+// do Admin UI gửi lên (SendTestEvent) bị lặng lẽ LOẠI BỎ khỏi payload.
+// Giờ Extra được merge (trường chuẩn ưu tiên) ⇒ test event giữ đủ dữ liệu.
+func (c *CustomData) MarshalJSON() ([]byte, error) {
+	if c == nil {
+		return []byte("null"), nil
+	}
+	type plain CustomData
+	base, err := json.Marshal((*plain)(c))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Extra) == 0 {
+		return base, nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(base, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range c.Extra {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
 }
 
 // CAPIEvent là 1 sự kiện gửi lên Meta.

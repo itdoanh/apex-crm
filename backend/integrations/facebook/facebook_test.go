@@ -187,9 +187,9 @@ func TestDisplayFallbackToID(t *testing.T) {
 }
 
 func TestNormalizeFBC(t *testing.T) {
-	// fbclid thô → dựng thành fbc chuẩn
+	// fbclid thô → dựng thành fbc chuẩn (timestamp = thời điểm hiện tại, ms)
 	got := NormalizeFBC("", "IwZXh0bgNhZW0")
-	if got != "fb.1.0.IwZXh0bgNhZW0" {
+	if !strings.HasPrefix(got, "fb.1.") || !strings.HasSuffix(got, ".IwZXh0bgNhZW0") {
 		t.Fatalf("fbc sai: %q", got)
 	}
 	// fbc đã đúng định dạng → giữ nguyên
@@ -198,8 +198,9 @@ func TestNormalizeFBC(t *testing.T) {
 		t.Fatal("fbc đúng định dạng phải giữ nguyên")
 	}
 	// fbc quá ngắn → coi như fbclid
-	if NormalizeFBC("abc123", "") != "fb.1.0.abc123" {
-		t.Fatal("fbc ngắn phải được dựng lại")
+	got2 := NormalizeFBC("abc123", "")
+	if !strings.HasPrefix(got2, "fb.1.") || !strings.HasSuffix(got2, ".abc123") {
+		t.Fatalf("fbc dựng lại sai: %q", got2)
 	}
 	if NormalizeFBC("", "") != "" {
 		t.Fatal("fbc rỗng phải trả rỗng")
@@ -405,7 +406,7 @@ func TestCAPIRequestJSONShape(t *testing.T) {
 		},
 		CustomData: BuildValueCustomData(6000000, "VND", "Khoá", "course"),
 	})
-	b, err := json.Marshal(&CAPIRequest{Data: []CAPIEvent{ev}, PartnerAgent: "apex-crm"})
+	b, err := json.Marshal(&CAPIRequest{Data: []CAPIEvent{ev}, PartnerAgent: PartnerAgentName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +421,7 @@ func TestCAPIRequestJSONShape(t *testing.T) {
 		`"fbp":"fb.1.0.y"`,
 		`"currency":"VND"`,
 		`"value":6000000`,
-		`"partner_agent":"apex-crm"`,
+		`"partner_agent":"apex_crm"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("payload thiếu %s\n%s", want, s)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -264,6 +265,9 @@ type DispatchResult struct {
 // + `custom_data.value` (lead mới = 0 — chuyển đổi thật nhập tay ở CRM sau).
 // Thiếu ⇒ Events Manager báo "thiếu thông số giá trị và đơn vị tiền tệ" 100%.
 func (d *Dispatcher) SendLeadEvent(lc *LeadContext) *DispatchResult {
+	if lc == nil {
+		return d.logSkip(nil, EventLead, "lead_submit", "thiếu ngữ cảnh lead")
+	}
 	cfg, err := d.resolveConfig(lc.LandingID)
 	if err != nil {
 		return d.logSkip(lc, EventLead, "lead_submit", "không đọc được cấu hình CAPI: "+err.Error())
@@ -581,7 +585,7 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 
 	// Gắn IP + UA thật (Meta dùng để đối soát, KHÔNG băm).
 	if leadCtx != nil {
-		if leadCtx.ClientIP != "" {
+		if isPublicIP(leadCtx.ClientIP) {
 			ev.UserData = withIP(ev.UserData, leadCtx.ClientIP)
 		}
 		if leadCtx.UserAgent != "" {
@@ -598,7 +602,7 @@ func (d *Dispatcher) SendTestEvent(cfg *models.FacebookCAPIConfig, req models.Fa
 	payload := &CAPIRequest{
 		Data:         []CAPIEvent{ev},
 		TestEventCode: strings.TrimSpace(req.TestEventCode),
-		PartnerAgent: "apex-crm",
+		PartnerAgent: PartnerAgentName,
 	}
 
 	// ⚠️ Meta CHỈ chấp nhận `test_event_code` do Events Manager sinh ra.
@@ -753,7 +757,28 @@ func (d *Dispatcher) send(
 	})
 
 	// IP + UA + fbc/fbp: Meta dùng để khớp lượt nhấp. KHÔNG băm.
-	if lc.ClientIP != "" {
+	// ⚠️ Fix 2026-11-23 (EMQ "Server sending mismatched IP addresses"):
+	// Bỏ qua IP private/loopback (127.0.0.1, ::1, 10/8, 192.168/16…).
+	// IP local không bao giờ khớp với IP browser của Meta ⇒ gửi lên chỉ
+	// làm nhiễu diagnostic + hạ điểm EMQ.
+	// ─── DEDUP theo (event_name, event_id) trong 48h ────────────────
+	// ⚠️ Fix 2026-11-23 (CSV dedup: server bắn 2–3 events cho cùng 1 `pv-*`):
+	// flight-lock trong analytics_handler chặn trùng SONG SONG, dedup theo
+	// session chặn trùng KHÁC event_id — nhưng 2 ping cùng session + cùng
+	// event_id vẫn có thể cùng lọt qua trước khi log kịp ghi. Meta dedup
+	// theo (event_name, event_id) trong 48h ⇒ server cũng chỉ gửi 1 lần
+	// cho mỗi cặp đó trong 48h. Đây là chốt chặn CUỐI trong `send()`.
+	if d.store != nil && ev.EventID != "" {
+		if dup, dbErr := d.store.HasFacebookCAPIEventID(ev.EventID, eventName); dbErr == nil && dup {
+			return &DispatchResult{
+				Skipped: true,
+				Event:   eventName,
+				EventID: ev.EventID,
+				Message: "event_id đã gửi trong 48h (dedup)",
+			}
+		}
+	}
+	if isPublicIP(lc.ClientIP) {
 		ev.UserData = withIP(ev.UserData, lc.ClientIP)
 	}
 	if lc.UserAgent != "" {
@@ -770,7 +795,7 @@ func (d *Dispatcher) send(
 
 	payload := &CAPIRequest{
 		Data:         []CAPIEvent{ev},
-		PartnerAgent: "apex-crm",
+		PartnerAgent: PartnerAgentName,
 	}
 
 	endpoint := BuildEventURL(cfg.PixelID, cfg.APIVersion, cfg.GatewayEnabled, cfg.GatewayEndpoint, cfg.GatewayAccessKey)
@@ -867,6 +892,27 @@ func (d *Dispatcher) logSkip(lc *LeadContext, eventName, triggeredBy, reason str
 //
 // `client_ip_address` và `client_user_agent` PHẢI là giá trị rõ (Meta yêu cầu).
 // `fbc`/`fbp` cũng gửi rõ — chúng là định danh lượt nhấp/phiên của Meta.
+
+// isPublicIP kiểm tra IP có phải IP public thật (gửi được lên Meta).
+//
+// ⚠️ Fix 2026-11-23 (EMQ "Server sending mismatched IP addresses"):
+// IP private/loopback (127.0.0.1, ::1, 10/8, 172.16/12, 192.168/16,
+// link-local, unspecified) KHÔNG bao giờ khớp IP browser của Meta ⇒
+// gửi lên chỉ làm nhiễu diagnostic + hạ điểm EMQ ⇒ bỏ qua.
+func isPublicIP(ip string) bool {
+	ip = strings.TrimSpace(ip)
+	if ip == "" || ip == "localhost" {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	if parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsUnspecified() || parsed.IsLinkLocalUnicast() {
+		return false
+	}
+	return true
+}
 
 func withIP(ud *UserData, ip string) *UserData {
 	if ud == nil {

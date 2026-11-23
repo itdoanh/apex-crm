@@ -38,6 +38,7 @@ deploy/           Caddyfile, systemd, nginx, windows scripts
 | Sửa giao diện CRM / Studio | `docs/FRONTEND.md` |
 | Sửa landing page / tracker | `docs/LANDING.md` |
 | Đụng tới auth, PoW, honeypot, rate limit | `docs/SECURITY.md` |
+| Sửa Meta Pixel / Conversions API | `docs/FACEBOOK_CAPI.md` |
 | Deploy lên server | `docs/DEPLOYMENT.md` |
 | Lỗi production, 502, mất lead | `docs/RUNBOOK.md` |
 | Lần đầu vào dự án | `docs/ONBOARDING.md` |

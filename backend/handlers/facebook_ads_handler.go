@@ -347,8 +347,10 @@ func (h *FacebookAdsHandler) HandleDatasetQuality(w http.ResponseWriter, r *http
 	defer cancel()
 
 	// `agent_name` là tuỳ chọn — dùng để lọc sự kiện theo đối tác gửi.
-	// Giá trị phải ở dạng chuẩn hoá (lowercase). Ta dùng "apex_crm".
-	raw, httpStatus, rawBody, err := client.FetchDatasetQuality(ctx, cfg.APIVersion, cfg.PixelID, cfg.AccessToken, "apex_crm")
+	// Giá trị phải ở dạng chuẩn hoá (lowercase). Dùng chung hằng số
+	// `facebook.PartnerAgentName` với `partner_agent` lúc gửi sự kiện
+	// (Meta yêu cầu 2 giá trị này khớp nhau để lọc đúng).
+	raw, httpStatus, rawBody, err := client.FetchDatasetQuality(ctx, cfg.APIVersion, cfg.PixelID, cfg.AccessToken, facebook.PartnerAgentName)
 	if err != nil {
 		fbWriteJSON(w, http.StatusOK, map[string]interface{}{
 			"success":     false,

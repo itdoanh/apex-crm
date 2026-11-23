@@ -34,6 +34,7 @@ docs/
 ├── FRONTEND.md                ← CRM SPA, Ladi Studio, tracker.js
 ├── LANDING.md                 ← Hướng dẫn vận hành landing page
 ├── SECURITY.md                ← PoW, honeypot, rate limit, Argon2id, auth
+├── FACEBOOK_CAPI.md           ← Meta Pixel + Conversions API v27.0 (dedup, EMQ, test TEST90946)
 ├── DEPLOYMENT.md              ← Quy trình deploy, Windows Server, firewall
 ├── RUNBOOK.md                 ← Xử lý sự cố production
 └── ONBOARDING.md              ← Checklist cho người mới
